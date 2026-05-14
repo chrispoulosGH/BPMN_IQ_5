@@ -1,0 +1,192 @@
+/* ─── bpmn-js CSS imports ─────────────────────────────────── */
+@import 'bpmn-js/dist/assets/diagram-js.css';
+@import 'bpmn-js/dist/assets/bpmn-js.css';
+@import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css';
+@import '@bpmn-io/properties-panel/dist/assets/properties-panel.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Global Overrides ────────────────────────────────────── */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* ─── App Header ──────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 48px;
+  line-height: 48px;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.version-badge {
+  background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.dirty-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f97316;
+  animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.toolbar-btn {
+  color: #94a3b8 !important;
+  transition: all 0.15s;
+}
+.toolbar-btn:hover {
+  color: #e2e8f0 !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
+}
+
+/* ─── BPMN Canvas Area ────────────────────────────────────── */
+.bpmn-content {
+  position: relative;
+  background: #f8fafc;
+  min-height: 0;  /* critical for flex child to shrink */
+  flex: 1;
+  height: calc(100vh - 48px); /* viewport minus header */
+  overflow: hidden;
+}
+
+/* The canvas MUST fill the entire container vertically.
+   This ensures the bpmn-js palette (left tool column) is fully visible. */
+.bpmn-canvas {
+  position: absolute !important;
+  inset: 0;
+}
+.bpmn-canvas > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Give the bpmn-js left palette enough room */
+.djs-palette {
+  top: 12px !important;
+  left: 12px !important;
+}
+
+/* Properties panel scroll */
+.properties-panel-container {
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* ─── Sidebar ─────────────────────────────────────────────── */
+.sidebar-panel {
+  background: #ffffff !important;
+  border-left: 1px solid #e5e7eb !important;
+  padding: 12px !important;
+  overflow: hidden !important;
+}
+.sidebar-panel .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.sidebar-card .ant-card-body {
+  padding: 12px;
+}
+.sidebar-card .ant-card-head {
+  padding: 8px 12px;
+  min-height: auto;
+  border-bottom-color: #f3f4f6;
+}
+
+/* Make the MongoDB card fill remaining space */
+.sidebar-panel .ant-card:last-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-panel .ant-card:last-child .ant-card-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Diagram List Items ──────────────────────────────────── */
+.diagram-list-item {
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+.diagram-list-item:hover {
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+}
+.diagram-list-item.active {
+  background-color: #eff6ff;
+  border-color: #bfdbfe;
+  border-left: 3px solid #3b82f6;
+}
+
+/* ─── Capability Match Items ──────────────────────────────── */
+.capability-match-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+.capability-match-item:hover {
+  background-color: #f5f3ff;
+  border-color: #e9d5ff;
+}
+.capability-match-item.selected {
+  background-color: #f0fdf4;
+  border-color: #bbf7d0;
+  border-left: 3px solid #22c55e;
+}
+
+/* ─── Ant Design Layout overrides ─────────────────────────── */
+.ant-layout {
+  height: 100%;
+}
+.ant-layout .ant-layout {
+  height: calc(100vh - 48px);
+  overflow: hidden;
+}
+.ant-layout-content {
+  min-height: 0;
+  flex: 1;
+}
+

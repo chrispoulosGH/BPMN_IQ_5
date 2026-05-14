@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.log
+
+# Generated prompt test files
+prompt1_techfast.txt
+prompt2_techfast.txt
+
+# OS files
+Thumbs.db
+.DS_Store
