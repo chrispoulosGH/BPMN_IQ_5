@@ -42,12 +42,12 @@ router.get('/:id', async (req, res) => {
 
 // POST /api/diagrams — create new diagram
 router.post('/', async (req, res) => {
-  const { name, description, xml, tags } = req.body;
+  const { name, description, xml, tags, capabilities } = req.body;
   if (!name || !xml) {
     return res.status(400).json({ error: 'Fields "name" and "xml" are required.' });
   }
   try {
-    const diagram = await Diagram.create({ name, description, xml, tags });
+    const diagram = await Diagram.create({ name, description, xml, tags, capabilities });
     res.status(201).json(diagram);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -56,11 +56,31 @@ router.post('/', async (req, res) => {
 
 // PUT /api/diagrams/:id — update diagram
 router.put('/:id', async (req, res) => {
-  const { name, description, xml, tags } = req.body;
+  const { name, description, xml, tags, capabilities, changeNote } = req.body;
   try {
+    const $set = {};
+    if (name !== undefined) $set.name = name;
+    if (description !== undefined) $set.description = description;
+    if (xml !== undefined) $set.xml = xml;
+    if (tags !== undefined) $set.tags = tags;
+    if (capabilities !== undefined) $set.capabilities = capabilities;
+
+    const update = { $set, $inc: { version: 1 } };
+
+    // Append change note to history
+    if (changeNote) {
+      update.$push = {
+        changeHistory: {
+          date: new Date(),
+          userId: changeNote.userId,
+          note: changeNote.note,
+        },
+      };
+    }
+
     const diagram = await Diagram.findByIdAndUpdate(
       req.params.id,
-      { name, description, xml, tags, $inc: { version: 1 } },
+      update,
       { new: true, runValidators: true }
     );
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });

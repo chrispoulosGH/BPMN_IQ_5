@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { List, Typography, Tag, Space, Button, Popconfirm, Empty } from 'antd';
+import { List, Typography, Tag, Space, Button, Popconfirm, Empty, Alert } from 'antd';
 import {
   DeleteOutlined,
   FileTextOutlined,
@@ -25,9 +25,11 @@ interface DiagramListProps {
 export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTick, searchQuery }: DiagramListProps) {
   const [diagrams, setDiagrams] = useState<DiagramMeta[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       if (searchQuery.trim()) {
         const results = await searchDiagrams(searchQuery.trim());
@@ -36,6 +38,12 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
         const data = await getDiagrams();
         setDiagrams(data);
       }
+    } catch (err: any) {
+      const msg = err?.message?.includes('Network Error')
+        ? 'Cannot connect to server — is the backend running?'
+        : `Failed to load diagrams: ${err?.message || 'Unknown error'}`;
+      setError(msg);
+      setDiagrams([]);
     } finally {
       setLoading(false);
     }
@@ -60,21 +68,32 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
   };
 
   return (
-    <List
-      loading={loading}
-      dataSource={diagrams}
-      locale={{
-        emptyText: (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={searchQuery ? 'No matches found' : 'No diagrams saved'}
-            className="py-6"
-          />
-        ),
-      }}
-      renderItem={(item) => (
-        <div
-          key={item._id}
+    <>
+      {error && (
+        <Alert
+          type="error"
+          message={error}
+          showIcon
+          closable
+          className="mx-1 mb-2"
+          onClose={() => setError(null)}
+        />
+      )}
+      <List
+        loading={loading}
+        dataSource={diagrams}
+        locale={{
+          emptyText: (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={searchQuery ? 'No matches found' : 'No diagrams saved'}
+              className="py-6"
+            />
+          ),
+        }}
+        renderItem={(item) => (
+          <div
+            key={item._id}
           onClick={() => onSelect(item._id)}
           className={`diagram-list-item cursor-pointer rounded-md mx-1 mb-1 px-3 py-2.5 group ${
             selectedId === item._id ? 'active' : ''
@@ -135,5 +154,6 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
         </div>
       )}
     />
+    </>
   );
 }

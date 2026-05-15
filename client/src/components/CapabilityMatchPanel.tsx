@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { Select, Tag, Tooltip, Typography, Spin, Empty } from 'antd';
-import { ThunderboltOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { Tag, Tooltip, Typography, Spin, Empty, Alert } from 'antd';
+import { ThunderboltOutlined, CheckCircleOutlined, CloseOutlined } from '@ant-design/icons';
 import type { CapabilityMatch } from '../types';
 
 const { Text } = Typography;
@@ -10,6 +9,9 @@ interface Props {
   loading: boolean;
   selected: CapabilityMatch[];
   onSelectionChange: (selected: CapabilityMatch[]) => void;
+  onDelete?: (capabilityId: number) => void;
+  error?: string | null;
+  savedCaps?: CapabilityMatch[];
 }
 
 function confidenceColor(c: number) {
@@ -19,7 +21,7 @@ function confidenceColor(c: number) {
   return 'default';
 }
 
-export default function CapabilityMatchPanel({ matches, loading, selected, onSelectionChange }: Props) {
+export default function CapabilityMatchPanel({ matches, loading, selected, onSelectionChange, onDelete, error, savedCaps = [] }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-6 gap-2">
@@ -29,59 +31,88 @@ export default function CapabilityMatchPanel({ matches, loading, selected, onSel
     );
   }
 
-  if (!matches.length) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Load a diagram to match capabilities" className="!my-2" />;
+  if (error) {
+    return <Alert type="error" message="Match Failed" description={error} showIcon className="!text-xs" />;
+  }
+
+  if (!matches.length && !selected.length) {
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Load a diagram and click Match" className="!my-2" />;
+  }
+
+  // Show assigned capabilities when no fresh matches
+  if (!matches.length && selected.length) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Text type="secondary" className="text-xs">Assigned Capabilities:</Text>
+        {selected.map((cap) => (
+          <div key={cap.capabilityId} className="capability-match-item selected">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <CheckCircleOutlined className="text-green-500 text-xs flex-shrink-0" />
+              <Text ellipsis className="text-xs !leading-tight flex-1 min-w-0">
+                {cap.capabilityName}
+              </Text>
+            </div>
+            <div className="flex items-center gap-1">
+              <Tag color={confidenceColor(cap.confidence)} className="!text-[10px] !px-1 !py-0 !m-0 !leading-4">
+                {cap.confidence}%
+              </Tag>
+              <CloseOutlined
+                className="text-red-400 hover:text-red-600 text-xs cursor-pointer"
+                onClick={() => onDelete ? onDelete(cap.capabilityId) : onSelectionChange(selected.filter((s) => s.capabilityId !== cap.capabilityId))}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   const selectedIds = new Set(selected.map((s) => s.capabilityId));
+  const savedIds = new Set(savedCaps.map((s) => s.capabilityId));
+  const top5 = [...matches].sort((a, b) => b.confidence - a.confidence).slice(0, 5);
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Select
-        mode="multiple"
-        placeholder="Select capabilities to save…"
-        value={selected.map((s) => s.capabilityId)}
-        onChange={(ids: number[]) => {
-          const sel = ids.map((id) => matches.find((m) => m.capabilityId === id)!).filter(Boolean);
-          onSelectionChange(sel);
-        }}
-        options={matches.map((m) => ({
-          value: m.capabilityId,
-          label: `${m.capabilityName} (${m.confidence}%)`,
-        }))}
-        className="w-full"
-        size="small"
-        maxTagCount={2}
-        maxTagPlaceholder={(omitted) => `+${omitted.length} more`}
-      />
-      {matches.map((m) => (
-        <Tooltip key={m.capabilityId} title={m.justification} placement="left">
-          <div
-            className={`capability-match-item ${selectedIds.has(m.capabilityId) ? 'selected' : ''}`}
-            onClick={() => {
-              if (selectedIds.has(m.capabilityId)) {
-                onSelectionChange(selected.filter((s) => s.capabilityId !== m.capabilityId));
-              } else {
+      {top5.map((m) => {
+        const isSelected = selectedIds.has(m.capabilityId);
+        const isSaved = savedIds.has(m.capabilityId);
+        return (
+          <Tooltip key={m.capabilityId} title={m.justification} placement="left">
+            <div
+              className={`capability-match-item ${isSelected ? 'selected' : 'cursor-pointer'}`}
+              onClick={() => {
+                if (isSelected) return;
                 onSelectionChange([...selected, m]);
-              }
-            }}
-          >
-            <div className="flex items-center gap-1.5 min-w-0">
-              {selectedIds.has(m.capabilityId) ? (
-                <CheckCircleOutlined className="text-green-500 text-xs flex-shrink-0" />
-              ) : (
-                <ThunderboltOutlined className="text-gray-400 text-xs flex-shrink-0" />
-              )}
-              <Text ellipsis className="text-xs !leading-tight flex-1 min-w-0">
-                {m.capabilityName}
-              </Text>
+              }}
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                {isSelected ? (
+                  <CheckCircleOutlined className="text-green-500 text-xs flex-shrink-0" />
+                ) : (
+                  <ThunderboltOutlined className="text-gray-400 text-xs flex-shrink-0" />
+                )}
+                <Text ellipsis className="text-xs !leading-tight flex-1 min-w-0">
+                  {m.capabilityName}
+                </Text>
+                {isSaved && (
+                  <Tag color="purple" className="!text-[10px] !px-1 !py-0 !m-0 !leading-4">assigned</Tag>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <Tag color={confidenceColor(m.confidence)} className="!text-[10px] !px-1 !py-0 !m-0 !leading-4">
+                  {m.confidence}%
+                </Tag>
+                {isSelected && (
+                  <CloseOutlined
+                    className="text-red-400 hover:text-red-600 text-xs cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); isSaved && onDelete ? onDelete(m.capabilityId) : onSelectionChange(selected.filter((s) => s.capabilityId !== m.capabilityId)); }}
+                  />
+                )}
+              </div>
             </div>
-            <Tag color={confidenceColor(m.confidence)} className="!text-[10px] !px-1 !py-0 !m-0 !leading-4">
-              {m.confidence}%
-            </Tag>
-          </div>
-        </Tooltip>
-      ))}
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }

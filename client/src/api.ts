@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult } from './types';
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData } from './types';
 
 const api = axios.create({ baseURL: '/api' });
 
@@ -38,3 +38,28 @@ export const deleteFile = (filename: string): Promise<{ message: string }> =>
 // ── Capabilities (LLM matching) ─────────────────────────────
 export const matchCapabilities = (xml: string): Promise<CapabilityMatchResult> =>
   api.post('/capabilities/match', { xml }).then((r) => r.data);
+
+// ── Tasks (Task Factory) ────────────────────────────────────
+export const getTaskReference = (): Promise<ReferenceData> =>
+  api.get('/tasks/reference').then((r) => r.data);
+
+export const getTasks = (params?: Record<string, string>): Promise<TaskRecord[]> =>
+  api.get('/tasks', { params }).then((r) => r.data);
+
+export const getTask = (id: string): Promise<TaskRecord> =>
+  api.get(`/tasks/${id}`).then((r) => r.data);
+
+export const createTask = (data: TaskCreatePayload): Promise<TaskRecord> =>
+  api.post('/tasks', data).then((r) => r.data);
+
+export const updateTask = (id: string, data: Partial<TaskCreatePayload>): Promise<TaskRecord> =>
+  api.put(`/tasks/${id}`, data).then((r) => r.data);
+
+export const deleteTask = (id: string): Promise<{ success: boolean }> =>
+  api.delete(`/tasks/${id}`).then((r) => r.data);
+
+export const validateTasks = (taskNames: string[]): Promise<{ valid: string[]; invalid: string[] }> =>
+  api.post('/tasks/validate', { taskNames }).then((r) => r.data);
+
+export const getTaskNames = (): Promise<string[]> =>
+  api.get('/tasks/names').then((r) => r.data);

@@ -4,11 +4,13 @@ import { Modal, Form, Input, Space } from 'antd';
 interface SaveModalProps {
   open: boolean;
   initial?: { name?: string; description?: string; tags?: string[] };
-  onSave: (values: { name: string; description: string; tags: string[] }) => void;
+  isUpdate?: boolean;
+  defaultChangeNote?: string;
+  onSave: (values: { name: string; description: string; tags: string[]; changeNote?: string }) => void;
   onClose: () => void;
 }
 
-export default function SaveModal({ open, initial = {}, onSave, onClose }: SaveModalProps) {
+export default function SaveModal({ open, initial = {}, isUpdate, defaultChangeNote, onSave, onClose }: SaveModalProps) {
   const [form] = Form.useForm();
 
   const handleOk = async () => {
@@ -17,7 +19,7 @@ export default function SaveModal({ open, initial = {}, onSave, onClose }: SaveM
       .split(',')
       .map((t: string) => t.trim())
       .filter(Boolean);
-    onSave({ name: values.name, description: values.description || '', tags });
+    onSave({ name: values.name, description: values.description || '', tags, changeNote: values.changeNote || undefined });
   };
 
   return (
@@ -36,6 +38,7 @@ export default function SaveModal({ open, initial = {}, onSave, onClose }: SaveM
           name: initial.name || '',
           description: initial.description || '',
           tags: (initial.tags || []).join(', '),
+          changeNote: defaultChangeNote || '',
         }}
         className="mt-4"
       >
@@ -48,6 +51,11 @@ export default function SaveModal({ open, initial = {}, onSave, onClose }: SaveM
         <Form.Item name="tags" label="Tags (comma-separated)">
           <Input placeholder="order, finance, v2" />
         </Form.Item>
+        {isUpdate && (
+          <Form.Item name="changeNote" label="Change Note">
+            <Input.TextArea rows={2} placeholder="Describe what changed…" />
+          </Form.Item>
+        )}
       </Form>
     </Modal>
   );

@@ -1,0 +1,32 @@
+{
+  "name": "BpmnIQ",
+  "prefix": "bpmniq",
+  "uri": "http://bpmniq.io/schema/1.0",
+  "xml": {
+    "tagAlias": "lowerCase"
+  },
+  "types": [
+    {
+      "name": "TaskApplications",
+      "superClass": ["Element"],
+      "properties": [
+        {
+          "name": "applications",
+          "type": "Application",
+          "isMany": true
+        }
+      ]
+    },
+    {
+      "name": "Application",
+      "superClass": ["Element"],
+      "properties": [
+        {
+          "name": "name",
+          "type": "String",
+          "isAttr": true
+        }
+      ]
+    }
+  ]
+}

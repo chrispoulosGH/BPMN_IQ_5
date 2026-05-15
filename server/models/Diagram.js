@@ -39,6 +39,16 @@ const diagramSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    changeHistory: {
+      type: [
+        {
+          date: { type: Date, default: Date.now },
+          userId: { type: String, required: true },
+          note: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );

@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -n SERVER,CLIENT -c cyan,magenta \"yarn --cwd server dev\" \"yarn --cwd client dev\"",
+    "predev": "scripts\\cleanup.bat",
+    "dev": "concurrently -n SERVER,CLIENT -c cyan,magenta \"yarn --cwd server dev\" \"wait-on http://localhost:3001/api/health && yarn --cwd client dev\"",
     "dev:server": "yarn --cwd server dev",
     "dev:client": "yarn --cwd client dev",
     "install:all": "yarn install && yarn --cwd server install && yarn --cwd client install"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "wait-on": "^9.0.10"
   }
 }
