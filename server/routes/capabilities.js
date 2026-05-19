@@ -96,4 +96,42 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST /api/capabilities — create a new capability
+router.post('/', async (req, res) => {
+  try {
+    // Auto-assign capabilityId if not provided
+    if (!req.body.capabilityId) {
+      const max = await Capability.findOne().sort('-capabilityId').lean();
+      req.body.capabilityId = (max?.capabilityId || 0) + 1;
+    }
+    const cap = await Capability.create(req.body);
+    res.status(201).json(cap);
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ error: 'Capability already exists' });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// PUT /api/capabilities/:id — update capability by _id
+router.put('/:id', async (req, res) => {
+  try {
+    const cap = await Capability.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true });
+    if (!cap) return res.status(404).json({ error: 'Capability not found.' });
+    res.json(cap);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// DELETE /api/capabilities/:id — delete capability by _id
+router.delete('/:id', async (req, res) => {
+  try {
+    const cap = await Capability.findByIdAndDelete(req.params.id);
+    if (!cap) return res.status(404).json({ error: 'Capability not found.' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

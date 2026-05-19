@@ -26,14 +26,21 @@ import {
   ThunderboltOutlined,
   PartitionOutlined,
   AppstoreOutlined,
+  LaptopOutlined,
+  ClusterOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import BpmnEditor, { EMPTY_DIAGRAM, type BpmnEditorHandle } from './components/BpmnEditor';
 import DiagramList from './components/DiagramList';
 import SaveModal from './components/SaveModal';
+import AppMatchModal, { computeAppMatches, type AppMatchResult } from './components/AppMatchModal';
 import CapabilityMatchPanel from './components/CapabilityMatchPanel';
 import TaskFactory from './components/TaskFactory';
-import { getDiagram, createDiagram, updateDiagram, saveFile, matchCapabilities, getTaskReference } from './api';
-import type { CapabilityMatch } from './types';
+import ReferenceFactory from './components/ReferenceFactory';
+import CapabilitiesFactory from './components/CapabilitiesFactory';
+import PersonaFactory from './components/PersonaFactory';
+import { getDiagram, createDiagram, updateDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getPersonas } from './api';
+import type { CapabilityMatch, TaskAddData, DiagramMetadata } from './types';
 
 const { Header, Sider, Content } = Layout;
 const { Text, Title } = Typography;
@@ -55,6 +62,40 @@ function extractTaskNames(xml: string): string[] {
     tasks.push(match[1]);
   }
   return tasks;
+}
+
+function extractApplicationsFromXml(xml: string): string[] {
+  const apps: string[] = [];
+  // Source: bpmniq:application elements
+  const appRegex = /<(?:bpmniq|ns\d+):application>[\s\S]*?<(?:bpmniq|ns\d+):name>([\s\S]*?)<\/(?:bpmniq|ns\d+):name>[\s\S]*?<\/(?:bpmniq|ns\d+):application>/gi;
+  let m;
+  while ((m = appRegex.exec(xml)) !== null) {
+    const name = m[1].trim();
+    if (name && !apps.includes(name)) apps.push(name);
+  }
+  return apps;
+}
+
+/** Parse metadata from `<bpmndi:BPMNDiagram ... name="...">` attribute */
+function extractDiagramMetadata(xml: string): DiagramMetadata {
+  const meta: DiagramMetadata = {};
+  const match = /<bpmndi:BPMNDiagram[^>]+name="([^"]+)"/i.exec(xml);
+  if (!match) return meta;
+  const pairs = match[1].split('|').map((s) => s.trim());
+  for (const pair of pairs) {
+    const idx = pair.indexOf(':');
+    if (idx < 0) continue;
+    const key = pair.slice(0, idx).trim().toLowerCase();
+    const value = pair.slice(idx + 1).trim();
+    if (!value) continue;
+    if (key === 'line of business') meta.lineOfBusiness = value;
+    else if (key === 'channel') meta.channel = value;
+    else if (key === 'domain') meta.domain = value;
+    else if (key === 'subdomain') meta.subdomain = value;
+    else if (key === 'product') meta.product = value;
+    else if (key === 'business flow') meta.businessFlow = value;
+  }
+  return meta;
 }
 
 function generateChangeNote(
@@ -123,6 +164,25 @@ export default function App() {
 
   // Application names for the assignment popover
   const [allAppNames, setAllAppNames] = useState<string[]>([]);
+  // Task names for validity checks
+  const [allTaskNames, setAllTaskNames] = useState<string[]>([]);
+  // Persona names for lane validation
+  const [allPersonaNames, setAllPersonaNames] = useState<string[]>([]);
+  // Diagram metadata (parsed from BPMNDiagram name attribute)
+  const [diagramMeta, setDiagramMeta] = useState<DiagramMetadata>({});
+
+  // Factory navigation (from diagram links)
+  const [factorySearch, setFactorySearch] = useState<Record<string, string>>({});
+  const [factoryAdd, setFactoryAdd] = useState<Record<string, string | TaskAddData>>({});
+
+  // Selected task in diagram (for right sidebar link)
+  const [selectedDiagramTask, setSelectedDiagramTask] = useState<{ name: string; id: string } | null>(null);
+
+  // Fuzzy matching
+  const [showAppMatch, setShowAppMatch] = useState(false);
+  const [appMatchResults, setAppMatchResults] = useState<AppMatchResult[]>([]);
+  const [showTaskMatch, setShowTaskMatch] = useState(false);
+  const [taskMatchResults, setTaskMatchResults] = useState<AppMatchResult[]>([]);
 
   const editorRef = useRef<BpmnEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -142,17 +202,105 @@ export default function App() {
 
   const refresh = useCallback(() => setRefreshTick((t) => t + 1), []);
 
-  // Load all application names for the assignment popover
-  useEffect(() => {
+  // Load all application and task names for validity checks
+  const refreshReferenceData = useCallback(() => {
     getTaskReference().then((ref) => {
       setAllAppNames(ref.applications.map((a: any) => a.name).sort());
     }).catch(() => {});
+    getTaskNames().then((names) => {
+      setAllTaskNames(names);
+    }).catch(() => {});
+    getPersonas().then((personas) => {
+      setAllPersonaNames(personas.map((p) => p.name));
+    }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    refreshReferenceData();
+  }, [refreshReferenceData]);
+
+  // Navigate from diagram panel to a factory tab
+  const handleNavigateToFactory = useCallback((tab: string, searchTerm: string, mode: 'view' | 'add' = 'view', extra?: { applications?: string[]; persona?: string }) => {
+    if (mode === 'add') {
+      if (tab === 'tasks') {
+        setFactoryAdd((prev) => ({ ...prev, [tab]: { name: searchTerm, ...diagramMeta, ...extra } }));
+      } else {
+        setFactoryAdd((prev) => ({ ...prev, [tab]: searchTerm }));
+      }
+      setFactorySearch((prev) => ({ ...prev, [tab]: '' }));
+    } else {
+      setFactorySearch((prev) => ({ ...prev, [tab]: searchTerm }));
+      setFactoryAdd((prev) => ({ ...prev, [tab]: '' }));
+    }
+    setActiveTab(tab);
+  }, [diagramMeta]);
 
   const handleXmlChange = useCallback((xml: string) => {
     setCurrentXml(xml);
     setIsDirty(true);
   }, []);
+
+  // ─── Fuzzy Matching ─────────────────────────────────────────
+
+  /** Trigger fuzzy match on current diagram's applications */
+  const runAppFuzzyMatch = useCallback(() => {
+    const apps = extractApplicationsFromXml(currentXml);
+    if (!apps.length) {
+      message.info('No applications found in the current diagram');
+      return;
+    }
+    if (!allAppNames.length) {
+      message.warning('Application reference data not loaded');
+      return;
+    }
+    const results = computeAppMatches(apps, allAppNames);
+    const fuzzy = results.filter((r) => !r.exact);
+    if (!fuzzy.length) {
+      message.success('All applications already match reference data');
+      return;
+    }
+    setAppMatchResults(fuzzy);
+    setShowAppMatch(true);
+  }, [currentXml, allAppNames, message]);
+
+  /** Handle approved application matches */
+  const handleAppMatchApprove = useCallback(async (approved: AppMatchResult[]) => {
+    setShowAppMatch(false);
+    if (!approved.length) return;
+    const replacements = new Map(approved.map((r) => [r.original.toLowerCase().trim(), r.refMatch!]));
+    await editorRef.current?.replaceAppNames(replacements);
+    message.success(`Replaced ${replacements.size} application name(s) with reference data`);
+  }, [message]);
+
+  /** Trigger fuzzy match on current diagram's task names */
+  const runTaskFuzzyMatch = useCallback(() => {
+    const tasks = extractTaskNames(currentXml);
+    if (!tasks.length) {
+      message.info('No tasks found in the current diagram');
+      return;
+    }
+    if (!allTaskNames.length) {
+      message.warning('Task reference data not loaded');
+      return;
+    }
+    const results = computeAppMatches(tasks, allTaskNames);
+    const fuzzy = results.filter((r) => !r.exact);
+    if (!fuzzy.length) {
+      message.success('All task names already match reference data');
+      return;
+    }
+    setTaskMatchResults(fuzzy);
+    setShowTaskMatch(true);
+  }, [currentXml, allTaskNames, message]);
+
+  /** Handle approved task matches */
+  const handleTaskMatchApprove = useCallback(async (approved: AppMatchResult[]) => {
+    setShowTaskMatch(false);
+    if (!approved.length) return;
+    const replacements = new Map(approved.map((r) => [r.original, r.refMatch!]));
+    await editorRef.current?.replaceTaskNames(replacements);
+    message.success(`Replaced ${replacements.size} task name(s) with reference data`);
+  }, [message]);
 
   // ─── Capability Matching ────────────────────────────────────
   const runCapabilityMatch = useCallback(
@@ -195,6 +343,7 @@ export default function App() {
       reader.onload = (ev) => {
         const xml = ev.target?.result as string;
         setCurrentXml(xml);
+        setDiagramMeta(extractDiagramMetadata(xml));
         setActiveDiagram(null);
         setActiveFileName(file.name);
         setIsDirty(false);
@@ -241,6 +390,7 @@ export default function App() {
           tags: diagram.tags,
         });
         setCurrentXml(diagram.xml);
+        setDiagramMeta(extractDiagramMetadata(diagram.xml));
         savedXmlRef.current = diagram.xml;
         setActiveFileName(null);
         setIsDirty(false);
@@ -360,6 +510,7 @@ export default function App() {
     setActiveDiagram(null);
     setActiveFileName(null);
     setCurrentXml(EMPTY_DIAGRAM);
+    setDiagramMeta({});
     setIsDirty(false);
     setCapMatches([]);
     setSelectedCaps([]);
@@ -448,6 +599,15 @@ export default function App() {
           <Tooltip title="Fit to View">
             <Button type="text" icon={<ExpandOutlined />} onClick={() => editorRef.current?.fitViewport()} className="toolbar-btn" />
           </Tooltip>
+
+          <div className="toolbar-divider" />
+
+          <Tooltip title="Match Applications to Reference Data">
+            <Button type="text" icon={<LaptopOutlined />} onClick={runAppFuzzyMatch} className="toolbar-btn" />
+          </Tooltip>
+          <Tooltip title="Match Task Names to Reference Data">
+            <Button type="text" icon={<AppstoreOutlined />} onClick={runTaskFuzzyMatch} className="toolbar-btn" />
+          </Tooltip>
         </Space>
       </Header>
 
@@ -470,12 +630,32 @@ export default function App() {
                   xml={currentXml}
                   onXmlChange={handleXmlChange}
                   allApplicationNames={allAppNames}
+                  allTaskNames={allTaskNames}
+                  allPersonaNames={allPersonaNames}
+                  diagramName={diagramMeta.businessFlow || undefined}
+                  onNavigateToFactory={handleNavigateToFactory}
+                  onTaskSelect={setSelectedDiagramTask}
                 />,
               },
               {
                 key: 'tasks',
                 label: <span><AppstoreOutlined /> Task Factory</span>,
-                children: <TaskFactory />,
+                children: <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} />,
+              },
+              {
+                key: 'applications',
+                label: <span><LaptopOutlined /> Application Factory</span>,
+                children: <ReferenceFactory collection="applications" title="Application" defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} onItemAdded={refreshReferenceData} />,
+              },
+              {
+                key: 'capabilities',
+                label: <span><ClusterOutlined /> Capability Factory</span>,
+                children: <CapabilitiesFactory />,
+              },
+              {
+                key: 'personas',
+                label: <span><UserOutlined /> Persona Factory</span>,
+                children: <PersonaFactory defaultAdd={typeof factoryAdd.personas === 'string' ? factoryAdd.personas : ''} onItemAdded={refreshReferenceData} />,
               },
             ]}
           />
@@ -490,44 +670,6 @@ export default function App() {
           trigger={null}
         >
           <div className="flex flex-col h-full overflow-hidden">
-            {/* ─ File Actions Card ─ */}
-            <Card
-              size="small"
-              className="sidebar-card !mb-3"
-              title={
-                <span className="flex items-center gap-2 text-sm font-medium">
-                  <FolderOpenOutlined className="text-green-500" /> Local Files
-                </span>
-              }
-            >
-              <Space direction="vertical" className="w-full" size="small">
-                <Button
-                  block
-                  icon={<UploadOutlined />}
-                  onClick={handleUploadLocal}
-                  className="!text-left"
-                >
-                  Open .bpmn from computer
-                </Button>
-                <Button
-                  block
-                  icon={<DownloadOutlined />}
-                  onClick={handleDownloadLocal}
-                  className="!text-left"
-                >
-                  Download .bpmn to computer
-                </Button>
-                <Button
-                  block
-                  icon={<SaveOutlined />}
-                  onClick={handleSaveToServer}
-                  className="!text-left"
-                >
-                  Save to server directory
-                </Button>
-              </Space>
-            </Card>
-
             {/* ─ Capability Match Card ─ */}
             <Card
               size="small"
@@ -615,6 +757,22 @@ export default function App() {
         defaultChangeNote={activeDiagram?._id ? generateChangeNote(savedXmlRef.current, currentXmlRef.current, savedCapsRef.current, selectedCapsRef.current) : undefined}
         onSave={handleSaveDb}
         onClose={() => setShowSaveDb(false)}
+      />
+
+      {/* Fuzzy Match Modals */}
+      <AppMatchModal
+        open={showAppMatch}
+        matches={appMatchResults}
+        title="Application Name Matching"
+        onApprove={handleAppMatchApprove}
+        onClose={() => setShowAppMatch(false)}
+      />
+      <AppMatchModal
+        open={showTaskMatch}
+        matches={taskMatchResults}
+        title="Task Name Matching"
+        onApprove={handleTaskMatchApprove}
+        onClose={() => setShowTaskMatch(false)}
       />
     </Layout>
   );

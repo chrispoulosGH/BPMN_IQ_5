@@ -1,10 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Select, Input, Button, Modal, Form, Tag, App as AntApp, Space, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
-import type { TaskRecord, TaskCreatePayload, ReferenceData } from '../types';
+import type { TaskRecord, TaskCreatePayload, ReferenceData, TaskAddData } from '../types';
 import { getTasks, getTaskReference, createTask, updateTask, deleteTask } from '../api';
 
-export default function TaskFactory() {
+interface TaskFactoryProps {
+  defaultSearch?: string;
+  defaultAddData?: TaskAddData;
+  onItemAdded?: () => void;
+}
+
+export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded }: TaskFactoryProps = {}) {
   const { message, modal } = AntApp.useApp();
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [refData, setRefData] = useState<ReferenceData | null>(null);
@@ -18,6 +24,29 @@ export default function TaskFactory() {
   useEffect(() => {
     getTaskReference().then(setRefData).catch((e) => message.error(e.message));
   }, [message]);
+
+  // Sync external search prop
+  useEffect(() => {
+    if (defaultSearch !== undefined) setFilters((f) => ({ ...f, search: defaultSearch }));
+  }, [defaultSearch]);
+
+  // Open add form when defaultAddData prop changes
+  useEffect(() => {
+    if (defaultAddData) {
+      setEditingTask(null);
+      form.resetFields();
+      const formValues: Record<string, unknown> = { name: defaultAddData.name };
+      if (defaultAddData.applications?.length) formValues.applications = defaultAddData.applications;
+      if (defaultAddData.persona) formValues.persona = defaultAddData.persona;
+      if (defaultAddData.businessFlow) formValues.businessFlow = defaultAddData.businessFlow;
+      if (defaultAddData.product) formValues.product = defaultAddData.product;
+      if (defaultAddData.channel) formValues.channel = defaultAddData.channel;
+      if (defaultAddData.domain) formValues.domain = defaultAddData.domain;
+      if (defaultAddData.subdomain) formValues.subdomain = defaultAddData.subdomain;
+      form.setFieldsValue(formValues);
+      setShowForm(true);
+    }
+  }, [defaultAddData, form]);
 
   // Load tasks when filters change
   const loadTasks = useCallback(async () => {
@@ -69,6 +98,7 @@ export default function TaskFactory() {
       } else {
         await createTask(values);
         message.success('Task created');
+        onItemAdded?.();
       }
       setShowForm(false);
       loadTasks();

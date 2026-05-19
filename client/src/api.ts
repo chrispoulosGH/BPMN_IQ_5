@@ -1,5 +1,6 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData } from './types';
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, PersonaItem } from './types';
+export type { RefItem, CapabilityItem, PersonaItem };
 
 const api = axios.create({ baseURL: '/api' });
 
@@ -63,3 +64,42 @@ export const validateTasks = (taskNames: string[]): Promise<{ valid: string[]; i
 
 export const getTaskNames = (): Promise<string[]> =>
   api.get('/tasks/names').then((r) => r.data);
+
+// ── Reference Data CRUD (for ReferenceFactory) ──────────────
+export const getRefItems = (collection: string): Promise<RefItem[]> =>
+  api.get(`/tasks/reference/${collection}`).then((r) => r.data);
+
+export const createRefItem = (collection: string, name: string): Promise<RefItem> =>
+  api.post(`/tasks/reference/${collection}`, { name }).then((r) => r.data);
+
+export const updateRefItem = (collection: string, id: string, name: string): Promise<RefItem> =>
+  api.put(`/tasks/reference/${collection}/${id}`, { name }).then((r) => r.data);
+
+export const deleteRefItem = (collection: string, id: string): Promise<{ success: boolean }> =>
+  api.delete(`/tasks/reference/${collection}/${id}`).then((r) => r.data);
+
+// ── Capabilities CRUD (for CapabilitiesFactory) ─────────────
+export const getCapabilities = (): Promise<CapabilityItem[]> =>
+  api.get('/capabilities').then((r) => r.data.capabilities || r.data);
+
+export const createCapability = (data: Partial<CapabilityItem>): Promise<CapabilityItem> =>
+  api.post('/capabilities', data).then((r) => r.data);
+
+export const updateCapability = (id: string, data: Partial<CapabilityItem>): Promise<CapabilityItem> =>
+  api.put(`/capabilities/${id}`, data).then((r) => r.data);
+
+export const deleteCapability = (id: string): Promise<{ success: boolean }> =>
+  api.delete(`/capabilities/${id}`).then((r) => r.data);
+
+// ── Personas CRUD (for PersonaFactory) ──────────────────────
+export const getPersonas = (): Promise<PersonaItem[]> =>
+  api.get('/personas').then((r) => r.data);
+
+export const createPersona = (data: Partial<PersonaItem>): Promise<PersonaItem> =>
+  api.post('/personas', data).then((r) => r.data);
+
+export const updatePersona = (id: string, data: Partial<PersonaItem>): Promise<PersonaItem> =>
+  api.put(`/personas/${id}`, data).then((r) => r.data);
+
+export const deletePersona = (id: string): Promise<{ success: boolean }> =>
+  api.delete(`/personas/${id}`).then((r) => r.data);

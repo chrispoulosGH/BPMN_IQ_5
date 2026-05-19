@@ -8,6 +8,7 @@ const diagramsRouter = require('./routes/diagrams');
 const filesRouter = require('./routes/files');
 const capabilitiesRouter = require('./routes/capabilities');
 const tasksRouter = require('./routes/tasks');
+const personasRouter = require('./routes/personas');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,6 +23,7 @@ app.use('/api/diagrams', diagramsRouter);
 app.use('/api/files', filesRouter);
 app.use('/api/capabilities', capabilitiesRouter);
 app.use('/api/tasks', tasksRouter);
+app.use('/api/personas', personasRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));

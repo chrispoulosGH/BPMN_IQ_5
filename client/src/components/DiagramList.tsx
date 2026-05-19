@@ -132,6 +132,16 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
                   )}
                 </div>
               )}
+
+              {(item.product || item.channel || item.domain || item.subdomain || item.lineOfBusiness) && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {[item.lineOfBusiness, item.channel, item.domain, item.subdomain, item.product].filter(Boolean).map((val) => (
+                    <Tag key={val} color="blue" className="!text-[10px] !leading-4 !m-0">
+                      {val}
+                    </Tag>
+                  ))}
+                </div>
+              )}
             </div>
 
             <Popconfirm

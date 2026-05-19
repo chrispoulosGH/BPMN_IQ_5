@@ -4,6 +4,8 @@ const Task = require('../models/Task');
 const { BusinessFlow, Product, Application, Persona, Channel, Domain, Subdomain } = require('../models/ReferenceData');
 
 // ─── Reference Data ──────────────────────────────────────────
+const refModels = { businessFlows: BusinessFlow, products: Product, applications: Application, personas: Persona, channels: Channel, domains: Domain, subdomains: Subdomain };
+
 router.get('/reference', async (_req, res) => {
   const [businessFlows, products, applications, personas, channels, domains, subdomains] = await Promise.all([
     BusinessFlow.find().sort('name').lean(),
@@ -15,6 +17,47 @@ router.get('/reference', async (_req, res) => {
     Subdomain.find().sort('name').lean(),
   ]);
   res.json({ businessFlows, products, applications, personas, channels, domains, subdomains });
+});
+
+// CRUD for individual reference collections
+router.get('/reference/:collection', async (req, res) => {
+  const Model = refModels[req.params.collection];
+  if (!Model) return res.status(404).json({ error: 'Unknown collection' });
+  const items = await Model.find().sort('name').lean();
+  res.json(items);
+});
+
+router.post('/reference/:collection', async (req, res) => {
+  const Model = refModels[req.params.collection];
+  if (!Model) return res.status(404).json({ error: 'Unknown collection' });
+  try {
+    const item = await Model.create({ name: req.body.name });
+    res.status(201).json(item);
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ error: 'Already exists' });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/reference/:collection/:id', async (req, res) => {
+  const Model = refModels[req.params.collection];
+  if (!Model) return res.status(404).json({ error: 'Unknown collection' });
+  try {
+    const item = await Model.findByIdAndUpdate(req.params.id, { name: req.body.name }, { new: true, runValidators: true });
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    res.json(item);
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ error: 'Already exists' });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/reference/:collection/:id', async (req, res) => {
+  const Model = refModels[req.params.collection];
+  if (!Model) return res.status(404).json({ error: 'Unknown collection' });
+  const item = await Model.findByIdAndDelete(req.params.id);
+  if (!item) return res.status(404).json({ error: 'Not found' });
+  res.json({ success: true });
 });
 
 // ─── Tasks CRUD ──────────────────────────────────────────────

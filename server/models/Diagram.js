@@ -49,6 +49,13 @@ const diagramSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    // Parsed from <bpmndi:BPMNDiagram name="..."> on save
+    lineOfBusiness: { type: String, default: null },
+    channel: { type: String, default: null },
+    domain: { type: String, default: null },
+    subdomain: { type: String, default: null },
+    product: { type: String, default: null },
+    businessFlow: { type: String, default: null },
   },
   { timestamps: true }
 );

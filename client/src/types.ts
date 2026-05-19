@@ -6,6 +6,12 @@ export interface DiagramMeta {
   version: number;
   fileName: string | null;
   capabilities: CapabilityMatch[];
+  lineOfBusiness?: string | null;
+  channel?: string | null;
+  domain?: string | null;
+  subdomain?: string | null;
+  product?: string | null;
+  businessFlow?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +61,29 @@ export interface CapabilityMatchResult {
 }
 
 // ─── Task Factory ────────────────────────────────────────────
+
+/** Data bundle passed when navigating to "Add to Task Factory" from the diagram */
+export interface TaskAddData {
+  name: string;
+  applications?: string[];
+  persona?: string;
+  businessFlow?: string;
+  product?: string;
+  channel?: string;
+  domain?: string;
+  subdomain?: string;
+}
+
+/** Metadata parsed from the BPMNDiagram name attribute */
+export interface DiagramMetadata {
+  lineOfBusiness?: string;
+  channel?: string;
+  domain?: string;
+  subdomain?: string;
+  product?: string;
+  businessFlow?: string;
+}
+
 export interface TaskRecord {
   _id: string;
   name: string;
@@ -90,4 +119,34 @@ export interface ReferenceData {
   channels: { _id: string; name: string }[];
   domains: { _id: string; name: string }[];
   subdomains: { _id: string; name: string }[];
+}
+
+// ─── Reference Factory ───────────────────────────────────────
+export interface RefItem {
+  _id: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ─── Capabilities Factory ────────────────────────────────────
+export interface CapabilityItem {
+  _id: string;
+  capabilityId?: number;
+  name: string;
+  domainName?: string;
+  aspect?: string;
+  briefDescription?: string;
+  tmfVersion?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PersonaItem {
+  _id: string;
+  name: string;
+  role?: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
