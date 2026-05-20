@@ -20,6 +20,14 @@ export const updateDiagram = (id: string, data: DiagramUpdatePayload): Promise<D
 export const deleteDiagram = (id: string): Promise<{ message: string }> =>
   api.delete(`/diagrams/${id}`).then((r) => r.data);
 
+export interface BatchImportResult {
+  success: { _id: string; name: string; fileName: string }[];
+  failed: { fileName: string; error: string }[];
+}
+
+export const batchImportDiagrams = (files: { xml: string; fileName: string }[], createdBy?: string): Promise<BatchImportResult> =>
+  api.post('/diagrams/batch', { files, createdBy }).then((r) => r.data);
+
 export const searchDiagrams = (q: string): Promise<DiagramMeta[]> =>
   api.get('/diagrams/search', { params: { q } }).then((r) => r.data);
 

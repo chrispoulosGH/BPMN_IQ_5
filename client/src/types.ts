@@ -6,14 +6,30 @@ export interface DiagramMeta {
   version: number;
   fileName: string | null;
   capabilities: CapabilityMatch[];
+  tasks: DiagramTask[];
   lineOfBusiness?: string | null;
   channel?: string | null;
   domain?: string | null;
   subdomain?: string | null;
   product?: string | null;
   businessFlow?: string | null;
+  status?: string | null;
+  sourcedFrom?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DiagramTaskApplication {
+  name: string;
+}
+
+export interface DiagramTask {
+  name: string;
+  source: string | null;
+  target: string | null;
+  applications: DiagramTaskApplication[];
 }
 
 export interface Diagram extends DiagramMeta {
@@ -26,6 +42,9 @@ export interface DiagramCreatePayload {
   xml: string;
   tags?: string[];
   capabilities?: CapabilityMatch[];
+  status?: string;
+  sourcedFrom?: string;
+  createdBy?: string;
 }
 
 export interface DiagramUpdatePayload {
@@ -35,6 +54,9 @@ export interface DiagramUpdatePayload {
   tags?: string[];
   capabilities?: CapabilityMatch[];
   changeNote?: { userId: string; note: string };
+  status?: string;
+  sourcedFrom?: string;
+  updatedBy?: string;
 }
 
 export interface FileSaveResult {

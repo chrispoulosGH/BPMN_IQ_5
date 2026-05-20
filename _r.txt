@@ -1,0 +1,27 @@
+Count:26
+TechFast | Draft
+Activate Line | Staged
+Activate New AIA Customer | Staged
+Activate New Mobility Customer | Staged
+TechFast | Staged
+Add a Line | Staged
+Apply Promotions | Staged
+BOPIS | Staged
+Change Rate Plan | Staged
+Create New Customer | Staged
+Get Technical Support | Staged
+Inquire Billing | Staged
+Install Consumer Broadband | Staged
+LiveInFive CallBack | Staged
+Manage Account | Staged
+Nat Dist Buy Wireless | Staged
+Onboard New Hire to Payroll | Staged
+Post Paid Billing w Radius | Staged
+Pre Paid Billing with TLG Ericsson | Staged
+Pre Post Paid Billing | Staged
+Purchase Product | Staged
+Setup Device | Staged
+Triage MVNO Care | Staged
+Troubleshoot Repair Consumer Broadband | Staged
+Upgrade Device | Staged
+Upgrade Trade In Device | Staged

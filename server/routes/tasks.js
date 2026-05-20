@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
-const { BusinessFlow, Product, Application, Persona, Channel, Domain, Subdomain } = require('../models/ReferenceData');
+const { BusinessFlow, Product, Application, Persona, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
 
 // ─── Reference Data ──────────────────────────────────────────
-const refModels = { businessFlows: BusinessFlow, products: Product, applications: Application, personas: Persona, channels: Channel, domains: Domain, subdomains: Subdomain };
+const refModels = { businessFlows: BusinessFlow, products: Product, applications: Application, personas: Persona, channels: Channel, domains: Domain, subdomains: Subdomain, linesOfBusiness: LineOfBusiness };
 
 router.get('/reference', async (_req, res) => {
-  const [businessFlows, products, applications, personas, channels, domains, subdomains] = await Promise.all([
+  const [businessFlows, products, applications, personas, channels, domains, subdomains, linesOfBusiness] = await Promise.all([
     BusinessFlow.find().sort('name').lean(),
     Product.find().sort('name').lean(),
     Application.find().sort('name').lean(),
@@ -15,8 +15,9 @@ router.get('/reference', async (_req, res) => {
     Channel.find().sort('name').lean(),
     Domain.find().sort('name').lean(),
     Subdomain.find().sort('name').lean(),
+    LineOfBusiness.find().sort('name').lean(),
   ]);
-  res.json({ businessFlows, products, applications, personas, channels, domains, subdomains });
+  res.json({ businessFlows, products, applications, personas, channels, domains, subdomains, linesOfBusiness });
 });
 
 // CRUD for individual reference collections

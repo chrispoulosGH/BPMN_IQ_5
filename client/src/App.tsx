@@ -9,6 +9,7 @@ import {
   Card,
   Tabs,
   Modal,
+  Select,
   App as AntApp,
 } from 'antd';
 import {
@@ -29,6 +30,13 @@ import {
   LaptopOutlined,
   ClusterOutlined,
   UserOutlined,
+  ShoppingOutlined,
+  BankOutlined,
+  PhoneOutlined,
+  GlobalOutlined,
+  ApartmentOutlined,
+  RightOutlined,
+  LeftOutlined,
 } from '@ant-design/icons';
 import BpmnEditor, { EMPTY_DIAGRAM, type BpmnEditorHandle } from './components/BpmnEditor';
 import DiagramList from './components/DiagramList';
@@ -39,7 +47,8 @@ import TaskFactory from './components/TaskFactory';
 import ReferenceFactory from './components/ReferenceFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
 import PersonaFactory from './components/PersonaFactory';
-import { getDiagram, createDiagram, updateDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getPersonas } from './api';
+import BpmnFactory from './components/BpmnFactory';
+import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getPersonas } from './api';
 import type { CapabilityMatch, TaskAddData, DiagramMetadata } from './types';
 
 const { Header, Sider, Content } = Layout;
@@ -147,6 +156,15 @@ export default function App() {
   // Sidebar
   const [refreshTick, setRefreshTick] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [rightWidth, setRightWidth] = useState(320);
+  const rightResizing = useRef(false);
+  const rightStartX = useRef(0);
+  const rightStartW = useRef(320);
+
+  // Canvas diagram search
+  const [canvasDiagramOptions, setCanvasDiagramOptions] = useState<{ value: string; label: string; desc?: string }[]>([]);
+  const canvasSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Modals
   const [showSaveDb, setShowSaveDb] = useState(false);
@@ -412,6 +430,31 @@ export default function App() {
     [message],
   );
 
+  // Canvas tab diagram search handler
+  const handleCanvasDiagramSearch = useCallback((value: string) => {
+    if (canvasSearchTimer.current) clearTimeout(canvasSearchTimer.current);
+    if (!value.trim()) {
+      // Load all diagrams when search is empty
+      getDiagrams().then((data) => {
+        setCanvasDiagramOptions(data.map((d) => ({
+          value: d._id,
+          label: d.name,
+          desc: [d.businessFlow, d.status, d.lineOfBusiness].filter(Boolean).join(' · '),
+        })));
+      }).catch(() => {});
+      return;
+    }
+    canvasSearchTimer.current = setTimeout(() => {
+      searchDiagrams(value.trim()).then((results) => {
+        setCanvasDiagramOptions(results.map((d) => ({
+          value: d._id,
+          label: d.name,
+          desc: [d.businessFlow, d.status, d.lineOfBusiness].filter(Boolean).join(' · '),
+        })));
+      }).catch(() => {});
+    }, 300);
+  }, []);
+
   const handleDeleteCapability = useCallback(
     async (capabilityId: number) => {
       const removed = selectedCaps.find((c) => c.capabilityId === capabilityId);
@@ -445,6 +488,7 @@ export default function App() {
             xml: currentXmlRef.current,
             capabilities: selectedCapsRef.current,
             changeNote: { userId: CURRENT_USER, note: autoNote },
+            updatedBy: CURRENT_USER,
           });
           setActiveDiagram({
             _id: updated._id,
@@ -455,7 +499,7 @@ export default function App() {
           setSavedCaps(selectedCapsRef.current);
           message.success(`Updated in DB: ${updated.name}`);
         } else {
-          const created = await createDiagram({ name, description, tags, xml: currentXmlRef.current, capabilities: selectedCapsRef.current });
+          const created = await createDiagram({ name, description, tags, xml: currentXmlRef.current, capabilities: selectedCapsRef.current, createdBy: CURRENT_USER, sourcedFrom: activeFileName || undefined });
           setActiveDiagram({
             _id: created._id,
             name: created.name,
@@ -544,7 +588,7 @@ export default function App() {
                 <FolderOpenOutlined className="text-green-400 text-xs" />
               )}
               <Text className="!text-gray-300 text-sm">
-                {activeDiagram?.name || activeFileName}
+                {activeDiagram?.name || diagramMeta.businessFlow || activeFileName}
               </Text>
               {isDirty && <span className="dirty-indicator" />}
             </div>
@@ -624,18 +668,59 @@ export default function App() {
             items={[
               {
                 key: 'bpmn',
-                label: <span><PartitionOutlined /> BPMN Factory</span>,
-                children: <BpmnEditor
-                  ref={editorRef}
-                  xml={currentXml}
-                  onXmlChange={handleXmlChange}
-                  allApplicationNames={allAppNames}
-                  allTaskNames={allTaskNames}
-                  allPersonaNames={allPersonaNames}
-                  diagramName={diagramMeta.businessFlow || undefined}
-                  onNavigateToFactory={handleNavigateToFactory}
-                  onTaskSelect={setSelectedDiagramTask}
-                />,
+                label: <span><PartitionOutlined /> BPMN Canvas</span>,
+                children: (
+                  <div className="flex flex-col h-full w-full">
+                    {/* Diagram search bar */}
+                    <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 border-b border-gray-200" style={{ zIndex: 30 }}>
+                      <Select
+                        showSearch
+                        placeholder="Search & load diagram…"
+                        suffixIcon={<SearchOutlined />}
+                        filterOption={false}
+                        onSearch={handleCanvasDiagramSearch}
+                        onFocus={() => handleCanvasDiagramSearch('')}
+                        onChange={(id: string) => { handleSelectDiagram(id); }}
+                        value={activeDiagram?._id || undefined}
+                        options={canvasDiagramOptions.map((o) => ({
+                          value: o.value,
+                          label: (
+                            <div>
+                              <div className="text-sm font-medium">{o.label}</div>
+                              {o.desc && <div className="text-xs text-gray-400">{o.desc}</div>}
+                            </div>
+                          ),
+                        }))}
+                        size="small"
+                        allowClear
+                        onClear={() => { setCanvasDiagramOptions([]); }}
+                        style={{ width: 320 }}
+                      />
+                      {activeDiagram && (
+                        <span className="text-xs text-gray-500 ml-2 truncate">{diagramMeta.businessFlow || activeDiagram.name}</span>
+                      )}
+                    </div>
+                    {/* Canvas area */}
+                    <div className="flex-1 min-h-0 relative">
+                      <BpmnEditor
+                        ref={editorRef}
+                        xml={currentXml}
+                        onXmlChange={handleXmlChange}
+                        allApplicationNames={allAppNames}
+                        allTaskNames={allTaskNames}
+                        allPersonaNames={allPersonaNames}
+                        diagramName={diagramMeta.businessFlow || undefined}
+                        onNavigateToFactory={handleNavigateToFactory}
+                        onTaskSelect={setSelectedDiagramTask}
+                      />
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: 'diagramFactory',
+                label: <span><DatabaseOutlined /> BPMN Factory</span>,
+                children: <BpmnFactory onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
               },
               {
                 key: 'tasks',
@@ -657,19 +742,79 @@ export default function App() {
                 label: <span><UserOutlined /> Persona Factory</span>,
                 children: <PersonaFactory defaultAdd={typeof factoryAdd.personas === 'string' ? factoryAdd.personas : ''} onItemAdded={refreshReferenceData} />,
               },
+              {
+                key: 'products',
+                label: <span><ShoppingOutlined /> Product Factory</span>,
+                children: <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} />,
+              },
+              {
+                key: 'linesOfBusiness',
+                label: <span><BankOutlined /> LOB Factory</span>,
+                children: <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} />,
+              },
+              {
+                key: 'channels',
+                label: <span><PhoneOutlined /> Channel Factory</span>,
+                children: <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} />,
+              },
+              {
+                key: 'domains',
+                label: <span><GlobalOutlined /> Domain Factory</span>,
+                children: <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} />,
+              },
+              {
+                key: 'subdomains',
+                label: <span><ApartmentOutlined /> Subdomain Factory</span>,
+                children: <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} />,
+              },
             ]}
           />
         </Content>
 
         {/* ─── Right Sidebar ──────────────────────────────── */}
         <Sider
-          width={320}
+          width={rightCollapsed ? 0 : rightWidth}
           className="sidebar-panel"
-          breakpoint="lg"
           collapsedWidth={0}
+          collapsed={rightCollapsed}
           trigger={null}
+          style={{ position: 'relative', transition: rightResizing.current ? 'none' : 'width 0.2s' }}
         >
+          {/* Resize handle */}
+          {!rightCollapsed && (
+            <div
+              style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, cursor: 'col-resize', zIndex: 10 }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                rightResizing.current = true;
+                rightStartX.current = e.clientX;
+                rightStartW.current = rightWidth;
+                const onMove = (ev: MouseEvent) => {
+                  const delta = rightStartX.current - ev.clientX;
+                  const newW = Math.max(200, Math.min(600, rightStartW.current + delta));
+                  setRightWidth(newW);
+                };
+                const onUp = () => {
+                  rightResizing.current = false;
+                  document.removeEventListener('mousemove', onMove);
+                  document.removeEventListener('mouseup', onUp);
+                };
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+              }}
+            />
+          )}
           <div className="flex flex-col h-full overflow-hidden">
+            {/* Collapse toggle */}
+            <div className="flex justify-end p-1">
+              <Button
+                size="small"
+                type="text"
+                icon={<RightOutlined />}
+                onClick={() => setRightCollapsed(true)}
+                title="Collapse sidebar"
+              />
+            </div>
             {/* ─ Capability Match Card ─ */}
             <Card
               size="small"
@@ -747,12 +892,23 @@ export default function App() {
             </Card>
           </div>
         </Sider>
+        {rightCollapsed && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', paddingTop: 8 }}>
+            <Button
+              size="small"
+              type="text"
+              icon={<LeftOutlined />}
+              onClick={() => setRightCollapsed(false)}
+              title="Expand sidebar"
+            />
+          </div>
+        )}
       </Layout>
 
       {/* ─── Modals ───────────────────────────────────────── */}
       <SaveModal
         open={showSaveDb}
-        initial={activeDiagram ?? { name: activeFileName?.replace(/\.bpmn$/i, '') || '' }}
+        initial={activeDiagram ?? { name: diagramMeta.businessFlow || activeFileName?.replace(/\.bpmn$/i, '') || '' }}
         isUpdate={!!activeDiagram?._id}
         defaultChangeNote={activeDiagram?._id ? generateChangeNote(savedXmlRef.current, currentXmlRef.current, savedCapsRef.current, selectedCapsRef.current) : undefined}
         onSave={handleSaveDb}

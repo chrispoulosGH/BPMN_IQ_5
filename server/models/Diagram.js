@@ -49,6 +49,21 @@ const diagramSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    tasks: {
+      type: [
+        {
+          name: { type: String, required: true, trim: true },
+          source: { type: String, default: null, trim: true },
+          target: { type: String, default: null, trim: true },
+          applications: [
+            {
+              name: { type: String, required: true, trim: true },
+            },
+          ],
+        },
+      ],
+      default: [],
+    },
     // Parsed from <bpmndi:BPMNDiagram name="..."> on save
     lineOfBusiness: { type: String, default: null },
     channel: { type: String, default: null },
@@ -56,11 +71,35 @@ const diagramSchema = new mongoose.Schema(
     subdomain: { type: String, default: null },
     product: { type: String, default: null },
     businessFlow: { type: String, default: null },
+    status: { type: String, default: 'Draft', trim: true },
+    sourcedFrom: { type: String, default: null, trim: true },
+    createdBy: { type: String, default: null, trim: true },
+    updatedBy: { type: String, default: null, trim: true },
   },
   { timestamps: true }
 );
 
-// Text index for search
-diagramSchema.index({ name: 'text', description: 'text', tags: 'text' });
+// Text index for search across all metadata fields
+diagramSchema.index({
+  name: 'text',
+  description: 'text',
+  tags: 'text',
+  'tasks.name': 'text',
+  'tasks.applications.name': 'text',
+  lineOfBusiness: 'text',
+  channel: 'text',
+  domain: 'text',
+  subdomain: 'text',
+  product: 'text',
+  businessFlow: 'text',
+  status: 'text',
+  createdBy: 'text',
+  updatedBy: 'text',
+});
+
+// Multikey indexes for efficient cross-diagram task/app lookups
+diagramSchema.index({ 'tasks.name': 1 });
+diagramSchema.index({ 'tasks.applications.name': 1 });
+diagramSchema.index({ 'tasks.name': 1, businessFlow: 1 });
 
 module.exports = mongoose.model('Diagram', diagramSchema);

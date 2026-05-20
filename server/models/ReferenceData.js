@@ -12,5 +12,6 @@ const Persona = mongoose.model('Persona', refSchema);
 const Channel = mongoose.model('Channel', refSchema);
 const Domain = mongoose.model('Domain', refSchema);
 const Subdomain = mongoose.model('Subdomain', refSchema);
+const LineOfBusiness = mongoose.model('LineOfBusiness', refSchema);
 
-module.exports = { BusinessFlow, Product, Application, Persona, Channel, Domain, Subdomain };
+module.exports = { BusinessFlow, Product, Application, Persona, Channel, Domain, Subdomain, LineOfBusiness };

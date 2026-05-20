@@ -64,10 +64,18 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     const modelerRef = useRef<any>(null);
     const xmlRef = useRef<string>(xml);
     const importingRef = useRef(false);
+    const importVersionRef = useRef(0);
     const taskNamesRef = useRef<string[]>([]);
     const autocompleteRef = useRef<HTMLDivElement | null>(null);
     const appPopoverRef = useRef<HTMLDivElement | null>(null);
     const popoverDirtyRef = useRef(false);
+
+    // Properties panel resize & collapse state
+    const [propsWidth, setPropsWidth] = useState(280);
+    const [propsCollapsed, setPropsCollapsed] = useState(false);
+    const propsResizing = useRef(false);
+    const propsStartX = useRef(0);
+    const propsStartW = useRef(280);
     const allAppNamesRef = useRef<string[]>(allApplicationNames);
     const renderAppOverlaysRef = useRef<(m?: any) => void>(() => {});
     const getTaskAppsRef = useRef<(bo: any) => string[]>(() => []);
@@ -753,14 +761,22 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       const modeler = modelerRef.current;
       if (!modeler) return;
       const source = xml || EMPTY_DIAGRAM;
+      // Increment version to detect stale imports (prevents race condition)
+      const version = ++importVersionRef.current;
       importingRef.current = true;
       modeler.importXML(source).then(async () => {
+        // Abort if a newer import was started while this one was in progress
+        if (importVersionRef.current !== version) return;
         importingRef.current = false;
-        const canvas = modeler.get('canvas');
-        canvas.zoom('fit-viewport');
-        // Scroll down slightly so diagram name banner is visible, and right to avoid toolbar overlap
-        const vbox = canvas.viewbox();
-        canvas.viewbox({ x: vbox.x - 120, y: vbox.y - 80, width: vbox.outer.width, height: vbox.outer.height });
+        // Guard: ensure modeler is still alive
+        if (!modelerRef.current) return;
+        try {
+          const canvas = modeler.get('canvas');
+          canvas.zoom('fit-viewport');
+          // Scroll down slightly so diagram name banner is visible, and right to avoid toolbar overlap
+          const vbox = canvas.viewbox();
+          canvas.viewbox({ x: vbox.x - 120, y: vbox.y - 80, width: vbox.outer.width, height: vbox.outer.height });
+        } catch { /* canvas not ready */ }
         // Migrate text-annotation apps to extension elements
         migrateTextAnnotationApps(modeler);
         // Validate tasks against Task Factory
@@ -770,6 +786,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         // Render application overlays
         renderAppOverlaysRef.current();
       }).catch((err: Error) => {
+        if (importVersionRef.current !== version) return;
         importingRef.current = false;
         console.error('[BpmnEditor] Import error:', err.message);
       });
@@ -1003,16 +1020,66 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
           </div>
         )}
         <div ref={canvasRef} className="bpmn-canvas absolute inset-0" />
+        {/* Collapse toggle when properties hidden */}
+        {showProperties && propsCollapsed && (
+          <button
+            className="absolute right-0 top-2 z-30 bg-white border border-gray-200 rounded-l px-1 py-2 text-gray-500 hover:text-gray-800 hover:bg-gray-50 shadow-sm"
+            onClick={() => setPropsCollapsed(false)}
+            title="Show properties panel"
+          >
+            ◀
+          </button>
+        )}
         {showProperties && (
           <div
             ref={propertiesRef}
-            className="properties-panel-container w-[280px] min-w-[240px] border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-10"
-            style={{ display: (selectedApp || selectedTask?.name || selectedLane) ? 'none' : undefined }}
-          />
+            className="properties-panel-container border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-10 overflow-hidden"
+            style={{
+              width: propsCollapsed ? 0 : propsWidth,
+              display: (selectedApp || selectedTask?.name || selectedLane) ? 'none' : undefined,
+              transition: propsResizing.current ? 'none' : 'width 0.2s',
+              borderLeftWidth: propsCollapsed ? 0 : undefined,
+            }}
+          >
+            {/* Resize handle */}
+            {!propsCollapsed && (
+              <div
+                style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, cursor: 'col-resize', zIndex: 11 }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  propsResizing.current = true;
+                  propsStartX.current = e.clientX;
+                  propsStartW.current = propsWidth;
+                  const onMove = (ev: MouseEvent) => {
+                    const delta = propsStartX.current - ev.clientX;
+                    setPropsWidth(Math.max(180, Math.min(500, propsStartW.current + delta)));
+                  };
+                  const onUp = () => {
+                    propsResizing.current = false;
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                  };
+                  document.addEventListener('mousemove', onMove);
+                  document.addEventListener('mouseup', onUp);
+                }}
+              />
+            )}
+          </div>
         )}
-        {showProperties && !selectedApp && !selectedLane && selectedTask && selectedTask.name && (
-          <div className="w-[280px] min-w-[240px] border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"
-            style={{ fontFamily: '"IBM Plex Sans", Arial, sans-serif' }}>
+        {/* Collapse button — rendered outside propertiesRef so bpmn-js content doesn't cover it */}
+        {showProperties && !propsCollapsed && !selectedApp && !selectedTask?.name && !selectedLane && (
+          <button
+            className="absolute top-1 bg-white border border-gray-300 rounded shadow-sm text-gray-500 hover:text-gray-800 hover:bg-gray-50 text-xs px-1.5 py-0.5"
+            style={{ right: propsWidth + 4, zIndex: 20 }}
+            onClick={() => setPropsCollapsed(true)}
+            title="Collapse properties panel"
+          >
+            ▶
+          </button>
+        )}
+        {showProperties && !propsCollapsed && !selectedApp && !selectedLane && selectedTask && selectedTask.name && (
+          <div className="border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"
+            style={{ width: propsWidth, fontFamily: '"IBM Plex Sans", Arial, sans-serif' }}>
             <div className="p-4">
               <div className="flex items-center gap-2 mb-4">
                 <div className={`w-8 h-8 rounded ${isSelectedTaskValid ? 'bg-blue-50 border border-blue-200' : 'bg-orange-50 border border-orange-200'} flex items-center justify-center`}>
@@ -1082,9 +1149,9 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
             </div>
           </div>
         )}
-        {showProperties && !selectedApp && !selectedTask?.name && selectedLane && (
-          <div className="w-[280px] min-w-[240px] border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"
-            style={{ fontFamily: '"IBM Plex Sans", Arial, sans-serif' }}>
+        {showProperties && !propsCollapsed && !selectedApp && !selectedTask?.name && selectedLane && (
+          <div className="border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"
+            style={{ width: propsWidth, fontFamily: '"IBM Plex Sans", Arial, sans-serif' }}>
             <div className="p-4">
               <div className="flex items-center gap-2 mb-4">
                 <div className={`w-8 h-8 rounded ${isSelectedLaneValid ? 'bg-blue-50 border border-blue-200' : 'bg-orange-50 border border-orange-200'} flex items-center justify-center`}>
@@ -1125,9 +1192,9 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
             </div>
           </div>
         )}
-        {selectedApp && (
-          <div className="w-[280px] min-w-[240px] border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"
-            style={{ fontFamily: '"IBM Plex Sans", Arial, sans-serif' }}>
+        {selectedApp && !propsCollapsed && (
+          <div className="border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"
+            style={{ width: propsWidth, fontFamily: '"IBM Plex Sans", Arial, sans-serif' }}>
             <div className="p-4">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded bg-blue-50 border border-blue-200 flex items-center justify-center">
