@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Select, Input, Button, Modal, Form, Tag, App as AntApp, Space, Tooltip } from 'antd';
+import { Table, Select, Input, Button, Modal, Form, Tag, App as AntApp, Space, Tooltip, Typography } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import type { TaskRecord, TaskCreatePayload, ReferenceData, TaskAddData } from '../types';
 import { getTasks, getTaskReference, createTask, updateTask, deleteTask } from '../api';
@@ -8,9 +8,10 @@ interface TaskFactoryProps {
   defaultSearch?: string;
   defaultAddData?: TaskAddData;
   onItemAdded?: () => void;
+  onNavigateToFactory?: (tab: string, search: string) => void;
 }
 
-export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded }: TaskFactoryProps = {}) {
+export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded, onNavigateToFactory }: TaskFactoryProps = {}) {
   const { message, modal } = AntApp.useApp();
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [refData, setRefData] = useState<ReferenceData | null>(null);
@@ -109,14 +110,21 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
 
   const columns = [
     { title: 'Task Name', dataIndex: 'name', key: 'name', ellipsis: true, width: 220 },
-    { title: 'Business Flow', dataIndex: 'businessFlow', key: 'businessFlow', ellipsis: true, width: 180 },
-    { title: 'Product', dataIndex: 'product', key: 'product', width: 140 },
-    { title: 'Channel', dataIndex: 'channel', key: 'channel', width: 90 },
+    { title: 'Business Flow', dataIndex: 'businessFlow', key: 'businessFlow', ellipsis: true, width: 180,
+      render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('businessFlows', v)}>{v}</Typography.Link> : '—' },
+    { title: 'Product', dataIndex: 'product', key: 'product', width: 140,
+      render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('products', v)}>{v}</Typography.Link> : '—' },
+    { title: 'Channel', dataIndex: 'channel', key: 'channel', width: 90,
+      render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('channels', v)}>{v}</Typography.Link> : '—' },
     { title: 'Persona', dataIndex: 'persona', key: 'persona', width: 130,
-      render: (v: string) => v ? <Tag color="blue">{v}</Tag> : <Tag>—</Tag>,
+      render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('personas', v)}>{v}</Typography.Link> : <Tag>—</Tag>,
     },
     { title: 'Applications', dataIndex: 'applications', key: 'applications', ellipsis: true,
-      render: (apps: string[]) => apps?.length ? apps.slice(0, 2).join(', ') + (apps.length > 2 ? ` +${apps.length - 2}` : '') : '—',
+      render: (apps: string[]) => apps?.length
+        ? apps.slice(0, 2).map((a, i) => (
+            <span key={a}>{i > 0 && ', '}<Typography.Link onClick={() => onNavigateToFactory?.('applications', a)}>{a}</Typography.Link></span>
+          )).concat(apps.length > 2 ? [<span key="more"> +{apps.length - 2}</span>] : [])
+        : '—',
     },
     { title: '', key: 'actions', width: 80, render: (_: unknown, record: TaskRecord) => (
       <Space size="small">

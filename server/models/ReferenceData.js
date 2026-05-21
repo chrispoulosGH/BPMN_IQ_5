@@ -5,9 +5,34 @@ const refSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
 }, { timestamps: true });
 
+// Richer schema for Application (ITAP data)
+const applicationSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true, trim: true },
+  correlationId: { type: String, default: null },
+  shortDescription: { type: String, default: null },
+  applicationType: { type: String, default: null },
+  businessCriticality: { type: String, default: null },
+  discoverySource: { type: String, default: null },
+  installType: { type: String, default: null },
+  cpniIndicator: { type: String, default: null },
+  customerFacing: { type: String, default: null },
+  handleSpi: { type: String, default: null },
+  internetFacing: { type: String, default: null },
+  pciData: { type: String, default: null },
+  soxFsa: { type: String, default: null },
+  storeSpi: { type: String, default: null },
+  acronym: { type: String, default: null },
+  applPurpose: { type: String, default: null },
+  lifecycle: { type: String, default: null },
+  lifecycleStatus: { type: String, default: null },
+  businessPurpose: { type: String, default: null },
+  pciDataStored: { type: String, default: null },
+  userInterface: { type: String, default: null },
+}, { timestamps: true });
+
 const BusinessFlow = mongoose.model('BusinessFlow', refSchema);
 const Product = mongoose.model('Product', refSchema);
-const Application = mongoose.model('Application', refSchema);
+const Application = mongoose.model('Application', applicationSchema);
 const Persona = mongoose.model('Persona', refSchema);
 const Channel = mongoose.model('Channel', refSchema);
 const Domain = mongoose.model('Domain', refSchema);

@@ -1,9 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form } from 'antd';
+import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form, Typography } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { getCapabilities, createCapability, updateCapability, deleteCapability, type CapabilityItem } from '../api';
 
-export default function CapabilitiesFactory() {
+interface CapabilitiesFactoryProps {
+  onNavigateToFactory?: (tab: string, search: string) => void;
+}
+
+export default function CapabilitiesFactory({ onNavigateToFactory }: CapabilitiesFactoryProps = {}) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<CapabilityItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -91,7 +95,8 @@ export default function CapabilitiesFactory() {
 
   const columns = [
     { title: 'Name', dataIndex: 'name', key: 'name', width: 260, sorter: (a: CapabilityItem, b: CapabilityItem) => a.name.localeCompare(b.name) },
-    { title: 'Domain', dataIndex: 'domainName', key: 'domainName', width: 200, sorter: (a: CapabilityItem, b: CapabilityItem) => (a.domainName || '').localeCompare(b.domainName || '') },
+    { title: 'Domain', dataIndex: 'domainName', key: 'domainName', width: 200, sorter: (a: CapabilityItem, b: CapabilityItem) => (a.domainName || '').localeCompare(b.domainName || ''),
+      render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('domains', v)}>{v}</Typography.Link> : '—' },
     { title: 'Aspect', dataIndex: 'aspect', key: 'aspect', width: 180, sorter: (a: CapabilityItem, b: CapabilityItem) => (a.aspect || '').localeCompare(b.aspect || '') },
     { title: 'Description', dataIndex: 'briefDescription', key: 'briefDescription', ellipsis: true },
     { title: 'TMF Version', dataIndex: 'tmfVersion', key: 'tmfVersion', width: 110 },

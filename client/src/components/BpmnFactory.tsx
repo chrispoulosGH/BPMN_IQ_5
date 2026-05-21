@@ -383,6 +383,7 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory }: Bpmn
         size="small"
         loading={loading}
         pagination={{ pageSize: 20, showSizeChanger: true }}
+        scroll={{ y: 'calc(100vh - 260px)' }}
       />
     </div>
   );

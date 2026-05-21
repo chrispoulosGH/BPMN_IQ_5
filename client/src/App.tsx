@@ -35,6 +35,7 @@ import {
   PhoneOutlined,
   GlobalOutlined,
   ApartmentOutlined,
+  BranchesOutlined,
   RightOutlined,
   LeftOutlined,
 } from '@ant-design/icons';
@@ -45,6 +46,8 @@ import AppMatchModal, { computeAppMatches, type AppMatchResult } from './compone
 import CapabilityMatchPanel from './components/CapabilityMatchPanel';
 import TaskFactory from './components/TaskFactory';
 import ReferenceFactory from './components/ReferenceFactory';
+import ApplicationFactory from './components/ApplicationFactory';
+import BusinessFlowFactory from './components/BusinessFlowFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
 import PersonaFactory from './components/PersonaFactory';
 import BpmnFactory from './components/BpmnFactory';
@@ -671,35 +674,6 @@ export default function App() {
                 label: <span><PartitionOutlined /> BPMN Canvas</span>,
                 children: (
                   <div className="flex flex-col h-full w-full">
-                    {/* Diagram search bar */}
-                    <div className="flex items-center gap-2 px-2 py-1 bg-gray-50 border-b border-gray-200" style={{ zIndex: 30 }}>
-                      <Select
-                        showSearch
-                        placeholder="Search & load diagram…"
-                        suffixIcon={<SearchOutlined />}
-                        filterOption={false}
-                        onSearch={handleCanvasDiagramSearch}
-                        onFocus={() => handleCanvasDiagramSearch('')}
-                        onChange={(id: string) => { handleSelectDiagram(id); }}
-                        value={activeDiagram?._id || undefined}
-                        options={canvasDiagramOptions.map((o) => ({
-                          value: o.value,
-                          label: (
-                            <div>
-                              <div className="text-sm font-medium">{o.label}</div>
-                              {o.desc && <div className="text-xs text-gray-400">{o.desc}</div>}
-                            </div>
-                          ),
-                        }))}
-                        size="small"
-                        allowClear
-                        onClear={() => { setCanvasDiagramOptions([]); }}
-                        style={{ width: 320 }}
-                      />
-                      {activeDiagram && (
-                        <span className="text-xs text-gray-500 ml-2 truncate">{diagramMeta.businessFlow || activeDiagram.name}</span>
-                      )}
-                    </div>
                     {/* Canvas area */}
                     <div className="flex-1 min-h-0 relative">
                       <BpmnEditor
@@ -725,22 +699,27 @@ export default function App() {
               {
                 key: 'tasks',
                 label: <span><AppstoreOutlined /> Task Factory</span>,
-                children: <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} />,
+                children: <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
               },
               {
                 key: 'applications',
                 label: <span><LaptopOutlined /> Application Factory</span>,
-                children: <ReferenceFactory collection="applications" title="Application" defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} onItemAdded={refreshReferenceData} />,
+                children: <ApplicationFactory defaultSearch={factorySearch.applications} />,
               },
               {
                 key: 'capabilities',
                 label: <span><ClusterOutlined /> Capability Factory</span>,
-                children: <CapabilitiesFactory />,
+                children: <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
               },
               {
                 key: 'personas',
                 label: <span><UserOutlined /> Persona Factory</span>,
                 children: <PersonaFactory defaultAdd={typeof factoryAdd.personas === 'string' ? factoryAdd.personas : ''} onItemAdded={refreshReferenceData} />,
+              },
+              {
+                key: 'businessFlows',
+                label: <span><BranchesOutlined /> Business Flow Factory</span>,
+                children: <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} />,
               },
               {
                 key: 'products',

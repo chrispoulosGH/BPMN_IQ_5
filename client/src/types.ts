@@ -151,6 +151,29 @@ export interface RefItem {
   updatedAt?: string;
 }
 
+export interface ApplicationItem extends RefItem {
+  correlationId?: string;
+  shortDescription?: string;
+  applicationType?: string;
+  businessCriticality?: string;
+  discoverySource?: string;
+  installType?: string;
+  cpniIndicator?: string;
+  customerFacing?: string;
+  handleSpi?: string;
+  internetFacing?: string;
+  pciData?: string;
+  soxFsa?: string;
+  storeSpi?: string;
+  acronym?: string;
+  applPurpose?: string;
+  lifecycle?: string;
+  lifecycleStatus?: string;
+  businessPurpose?: string;
+  pciDataStored?: string;
+  userInterface?: string;
+}
+
 // ─── Capabilities Factory ────────────────────────────────────
 export interface CapabilityItem {
   _id: string;

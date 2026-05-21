@@ -73,6 +73,9 @@ export const validateTasks = (taskNames: string[]): Promise<{ valid: string[]; i
 export const getTaskNames = (): Promise<string[]> =>
   api.get('/tasks/names').then((r) => r.data);
 
+export const getBusinessFlowMap = (): Promise<Record<string, string>> =>
+  api.get('/diagrams/business-flow-map').then((r) => r.data);
+
 // ── Reference Data CRUD (for ReferenceFactory) ──────────────
 export const getRefItems = (collection: string): Promise<RefItem[]> =>
   api.get(`/tasks/reference/${collection}`).then((r) => r.data);

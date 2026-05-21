@@ -169,6 +169,20 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/diagrams/business-flow-map — returns { flowName: diagramId } for all diagrams with a businessFlow
+router.get('/business-flow-map', async (req, res) => {
+  try {
+    const docs = await Diagram.find({ businessFlow: { $ne: null } }, { businessFlow: 1 }).lean();
+    const map = {};
+    for (const d of docs) {
+      if (d.businessFlow) map[d.businessFlow] = d._id.toString();
+    }
+    res.json(map);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/diagrams/search?q=term — full-text + regex fallback search
 router.get('/search', async (req, res) => {
   const { q } = req.query;
