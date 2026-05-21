@@ -6,12 +6,12 @@ const path = require('path');
 const mongoose = require('mongoose');
 const XLSX = require('xlsx');
 const Task = require('../models/Task');
-const { BusinessFlow, Product, Application, Persona, Channel, Domain, Subdomain } = require('../models/ReferenceData');
+const { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain } = require('../models/ReferenceData');
 
 const EXCEL_PATH = path.resolve(__dirname, '../../data/E2EUX Journey View.xlsx');
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/bpmn_iq';
 
-const PERSONAS = ['Customer', 'Call Center Agent', 'Scheduler', 'Technician'];
+const ACTORS = ['Customer', 'Call Center Agent', 'Scheduler', 'Technician'];
 
 async function seed() {
   await mongoose.connect(MONGO_URI);
@@ -83,7 +83,7 @@ async function seed() {
   await upsertRef(Channel, channels);
   await upsertRef(Domain, domains);
   await upsertRef(Subdomain, subdomains);
-  await upsertRef(Persona, PERSONAS);
+  await upsertRef(Actor, ACTORS);
   console.log('Reference data seeded');
 
   // Upsert tasks

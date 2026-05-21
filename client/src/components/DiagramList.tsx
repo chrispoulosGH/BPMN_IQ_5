@@ -20,9 +20,10 @@ interface DiagramListProps {
   onRefresh: () => void;
   refreshTick: number;
   searchQuery: string;
+  readOnly?: boolean;
 }
 
-export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTick, searchQuery }: DiagramListProps) {
+export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTick, searchQuery, readOnly }: DiagramListProps) {
   const [diagrams, setDiagrams] = useState<DiagramMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +145,7 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
               )}
             </div>
 
-            <Popconfirm
+            {!readOnly && <Popconfirm
               title="Delete this diagram?"
               onConfirm={(e) => handleDelete(e as React.MouseEvent | undefined, item._id)}
               okText="Delete"
@@ -159,7 +160,7 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
                 onClick={(e) => e.stopPropagation()}
                 className="opacity-0 group-hover:opacity-100 transition-opacity"
               />
-            </Popconfirm>
+            </Popconfirm>}
           </div>
         </div>
       )}

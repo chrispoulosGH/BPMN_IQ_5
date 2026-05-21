@@ -73,6 +73,7 @@ const diagramSchema = new mongoose.Schema(
     businessFlow: { type: String, default: null },
     status: { type: String, default: 'Draft', trim: true },
     sourcedFrom: { type: String, default: null, trim: true },
+    owner: { type: String, default: null, trim: true },
     createdBy: { type: String, default: null, trim: true },
     updatedBy: { type: String, default: null, trim: true },
   },

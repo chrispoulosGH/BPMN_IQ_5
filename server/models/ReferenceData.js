@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 // Shared schema for simple name-only reference collections
 const refSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
+  owner: { type: String, trim: true, default: null },
 }, { timestamps: true });
 
 // Richer schema for Application (ITAP data)
@@ -28,15 +29,16 @@ const applicationSchema = new mongoose.Schema({
   businessPurpose: { type: String, default: null },
   pciDataStored: { type: String, default: null },
   userInterface: { type: String, default: null },
+  owner: { type: String, trim: true, default: null },
 }, { timestamps: true });
 
 const BusinessFlow = mongoose.model('BusinessFlow', refSchema);
 const Product = mongoose.model('Product', refSchema);
 const Application = mongoose.model('Application', applicationSchema);
-const Persona = mongoose.model('Persona', refSchema);
+const Actor = mongoose.model('Actor', refSchema);
 const Channel = mongoose.model('Channel', refSchema);
 const Domain = mongoose.model('Domain', refSchema);
 const Subdomain = mongoose.model('Subdomain', refSchema);
 const LineOfBusiness = mongoose.model('LineOfBusiness', refSchema);
 
-module.exports = { BusinessFlow, Product, Application, Persona, Channel, Domain, Subdomain, LineOfBusiness };
+module.exports = { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, LineOfBusiness };

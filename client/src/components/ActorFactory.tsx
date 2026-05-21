@@ -1,26 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
-import { getPersonas, createPersona, updatePersona, deletePersona, type PersonaItem } from '../api';
+import { getActors, createActor, updateActor, deleteActor, type ActorItem } from '../api';
 
-interface PersonaFactoryProps {
+interface ActorFactoryProps {
   defaultAdd?: string;
   onItemAdded?: () => void;
+  readOnly?: boolean;
 }
 
-export default function PersonaFactory({ defaultAdd, onItemAdded }: PersonaFactoryProps) {
+export default function ActorFactory({ defaultAdd, onItemAdded, readOnly }: ActorFactoryProps) {
   const { message, modal } = AntApp.useApp();
-  const [items, setItems] = useState<PersonaItem[]>([]);
+  const [items, setItems] = useState<ActorItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [editingItem, setEditingItem] = useState<PersonaItem | null>(null);
+  const [editingItem, setEditingItem] = useState<ActorItem | null>(null);
   const [form] = Form.useForm();
 
   const loadItems = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getPersonas();
+      const data = await getActors();
       setItems(data);
     } catch (e: any) {
       message.error(e.message);
@@ -33,7 +34,7 @@ export default function PersonaFactory({ defaultAdd, onItemAdded }: PersonaFacto
 
   // Open Add modal when navigated from BpmnEditor properties panel
   useEffect(() => {
-    console.log('[PersonaFactory] defaultAdd effect:', defaultAdd);
+    console.log('[ActorFactory] defaultAdd effect:', defaultAdd);
     if (defaultAdd) {
       setEditingItem(null);
       form.resetFields();
@@ -48,42 +49,44 @@ export default function PersonaFactory({ defaultAdd, onItemAdded }: PersonaFacto
     setShowForm(true);
   };
 
-  const handleEdit = (item: PersonaItem) => {
+  const handleEdit = (item: ActorItem) => {
     setEditingItem(item);
     form.setFieldsValue({
       name: item.name,
       role: item.role,
       description: item.description,
+      owner: item.owner || '',
     });
     setShowForm(true);
   };
 
-  const handleDelete = (item: PersonaItem) => {
+  const handleDelete = (item: ActorItem) => {
     modal.confirm({
       title: `Delete "${item.name}"?`,
-      content: 'This will permanently remove this persona.',
+      content: 'This will permanently remove this actor.',
       okText: 'Delete',
       okButtonProps: { danger: true },
       onOk: async () => {
-        await deletePersona(item._id);
+        await deleteActor(item._id);
         message.success('Deleted');
         loadItems();
       },
     });
   };
 
-  const handleFormSubmit = async (values: { name: string; role?: string; description?: string }) => {
+  const handleFormSubmit = async (values: { name: string; role?: string; description?: string; owner?: string }) => {
     try {
       const payload = {
         name: values.name,
         role: values.role || '',
         description: values.description || '',
+        owner: values.owner || '',
       };
       if (editingItem) {
-        await updatePersona(editingItem._id, payload);
+        await updateActor(editingItem._id, payload);
         message.success('Updated');
       } else {
-        await createPersona(payload);
+        await createActor(payload);
         message.success('Created');
       }
       setShowForm(false);
@@ -103,10 +106,12 @@ export default function PersonaFactory({ defaultAdd, onItemAdded }: PersonaFacto
     : items;
 
   const columns = [
-    { title: 'Name', dataIndex: 'name', key: 'name', width: 220, sorter: (a: PersonaItem, b: PersonaItem) => a.name.localeCompare(b.name) },
-    { title: 'Role', dataIndex: 'role', key: 'role', width: 200, sorter: (a: PersonaItem, b: PersonaItem) => (a.role || '').localeCompare(b.role || '') },
+    { title: 'Name', dataIndex: 'name', key: 'name', width: 220, sorter: (a: ActorItem, b: ActorItem) => a.name.localeCompare(b.name) },
+    { title: 'Role', dataIndex: 'role', key: 'role', width: 200, sorter: (a: ActorItem, b: ActorItem) => (a.role || '').localeCompare(b.role || '') },
     { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
-    { title: '', key: 'actions', width: 80, render: (_: unknown, record: PersonaItem) => (
+    { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 130, ellipsis: true,
+      render: (v: string) => v || '—' },
+    { title: '', key: 'actions', width: 80, render: (_: unknown, record: ActorItem) => readOnly ? null : (
       <Space size="small">
         <Tooltip title="Edit"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} /></Tooltip>
         <Tooltip title="Delete"><Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} /></Tooltip>
@@ -118,7 +123,7 @@ export default function PersonaFactory({ defaultAdd, onItemAdded }: PersonaFacto
     <div className="flex flex-col h-full p-3 gap-3">
       <div className="flex items-center gap-2">
         <Input
-          placeholder="Search personas…"
+          placeholder="Search actors…"
           size="small"
           prefix={<SearchOutlined />}
           style={{ width: 280 }}
@@ -127,9 +132,9 @@ export default function PersonaFactory({ defaultAdd, onItemAdded }: PersonaFacto
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
-          New Persona
-        </Button>
+        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+          New Actor
+        </Button>}
       </div>
 
       <Table
@@ -144,7 +149,7 @@ export default function PersonaFactory({ defaultAdd, onItemAdded }: PersonaFacto
       />
 
       <Modal
-        title={editingItem ? 'Edit Persona' : 'New Persona'}
+        title={editingItem ? 'Edit Actor' : 'New Actor'}
         open={showForm}
         onCancel={() => setShowForm(false)}
         onOk={() => form.submit()}
@@ -161,7 +166,10 @@ export default function PersonaFactory({ defaultAdd, onItemAdded }: PersonaFacto
             <Input placeholder="e.g. End User, Support Staff, Field Engineer" />
           </Form.Item>
           <Form.Item name="description" label="Description">
-            <Input.TextArea rows={3} placeholder="Brief description of this persona's responsibilities" />
+            <Input.TextArea rows={3} placeholder="Brief description of this actor's responsibilities" />
+          </Form.Item>
+          <Form.Item name="owner" label="Owner">
+            <Input placeholder="Owner name or ID" />
           </Form.Item>
         </Form>
       </Modal>

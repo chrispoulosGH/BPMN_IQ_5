@@ -15,6 +15,7 @@ export interface DiagramMeta {
   businessFlow?: string | null;
   status?: string | null;
   sourcedFrom?: string | null;
+  owner?: string | null;
   createdBy?: string | null;
   updatedBy?: string | null;
   createdAt: string;
@@ -88,7 +89,7 @@ export interface CapabilityMatchResult {
 export interface TaskAddData {
   name: string;
   applications?: string[];
-  persona?: string;
+  actor?: string;
   businessFlow?: string;
   product?: string;
   channel?: string;
@@ -114,9 +115,10 @@ export interface TaskRecord {
   domain?: string;
   subdomain?: string;
   channel?: string;
-  persona?: string;
+  actor?: string;
   applications: string[];
   sequence?: number;
+  owner?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -128,16 +130,17 @@ export interface TaskCreatePayload {
   domain?: string;
   subdomain?: string;
   channel?: string;
-  persona?: string;
+  actor?: string;
   applications?: string[];
   sequence?: number;
+  owner?: string;
 }
 
 export interface ReferenceData {
   businessFlows: { _id: string; name: string }[];
   products: { _id: string; name: string }[];
   applications: { _id: string; name: string }[];
-  personas: { _id: string; name: string }[];
+  actors: { _id: string; name: string }[];
   channels: { _id: string; name: string }[];
   domains: { _id: string; name: string }[];
   subdomains: { _id: string; name: string }[];
@@ -147,6 +150,7 @@ export interface ReferenceData {
 export interface RefItem {
   _id: string;
   name: string;
+  owner?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -183,15 +187,17 @@ export interface CapabilityItem {
   aspect?: string;
   briefDescription?: string;
   tmfVersion?: string;
+  owner?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface PersonaItem {
+export interface ActorItem {
   _id: string;
   name: string;
   role?: string;
   description?: string;
+  owner?: string;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { BusinessFlow, Product, Application, Persona, Channel, Domain, Subdomain, BusinessCapability } = require('../models/ReferenceData');
+const { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, BusinessCapability } = require('../models/ReferenceData');
 
 const models = {
   applications: Application,
   businessFlows: BusinessFlow,
   products: Product,
-  personas: Persona,
+  actors: Actor,
   channels: Channel,
   domains: Domain,
   subdomains: Subdomain,

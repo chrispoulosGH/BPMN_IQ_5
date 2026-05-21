@@ -1,8 +1,29 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, PersonaItem } from './types';
-export type { RefItem, CapabilityItem, PersonaItem };
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem } from './types';
+export type { RefItem, CapabilityItem, ActorItem };
 
-const api = axios.create({ baseURL: '/api' });
+const api = axios.create({ baseURL: '/api', withCredentials: true });
+
+// Notify listeners when session expires (401)
+let onSessionExpired: (() => void) | null = null;
+export const setSessionExpiredHandler = (handler: () => void) => { onSessionExpired = handler; };
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401 && onSessionExpired) {
+      onSessionExpired();
+    }
+    return Promise.reject(err);
+  }
+);
+
+// ── Auth ─────────────────────────────────────────────────────
+export const checkSession = (): Promise<{ authenticated: boolean; user?: { _id: string; userId: string; displayName: string; role?: string | null; capabilities?: { function: string; permission: string }[] } }> =>
+  api.get('/auth/session').then((r) => r.data);
+
+export const logout = (): Promise<void> =>
+  api.post('/auth/logout').then(() => {});
 
 // ── Diagrams (MongoDB) ──────────────────────────────────────
 export const getDiagrams = (): Promise<DiagramMeta[]> =>
@@ -80,11 +101,11 @@ export const getBusinessFlowMap = (): Promise<Record<string, string>> =>
 export const getRefItems = (collection: string): Promise<RefItem[]> =>
   api.get(`/tasks/reference/${collection}`).then((r) => r.data);
 
-export const createRefItem = (collection: string, name: string): Promise<RefItem> =>
-  api.post(`/tasks/reference/${collection}`, { name }).then((r) => r.data);
+export const createRefItem = (collection: string, name: string, owner?: string): Promise<RefItem> =>
+  api.post(`/tasks/reference/${collection}`, { name, owner }).then((r) => r.data);
 
-export const updateRefItem = (collection: string, id: string, name: string): Promise<RefItem> =>
-  api.put(`/tasks/reference/${collection}/${id}`, { name }).then((r) => r.data);
+export const updateRefItem = (collection: string, id: string, name: string, owner?: string): Promise<RefItem> =>
+  api.put(`/tasks/reference/${collection}/${id}`, { name, owner }).then((r) => r.data);
 
 export const deleteRefItem = (collection: string, id: string): Promise<{ success: boolean }> =>
   api.delete(`/tasks/reference/${collection}/${id}`).then((r) => r.data);
@@ -102,15 +123,17 @@ export const updateCapability = (id: string, data: Partial<CapabilityItem>): Pro
 export const deleteCapability = (id: string): Promise<{ success: boolean }> =>
   api.delete(`/capabilities/${id}`).then((r) => r.data);
 
-// ── Personas CRUD (for PersonaFactory) ──────────────────────
-export const getPersonas = (): Promise<PersonaItem[]> =>
-  api.get('/personas').then((r) => r.data);
+// ── Actors CRUD (for ActorFactory) ──────────────────────────────
+export const getActors = (): Promise<ActorItem[]> =>
+  api.get('/actors').then((r) => r.data);
 
-export const createPersona = (data: Partial<PersonaItem>): Promise<PersonaItem> =>
-  api.post('/personas', data).then((r) => r.data);
+export const createActor = (data: Partial<ActorItem>): Promise<ActorItem> =>
+  api.post('/actors', data).then((r) => r.data);
 
-export const updatePersona = (id: string, data: Partial<PersonaItem>): Promise<PersonaItem> =>
-  api.put(`/personas/${id}`, data).then((r) => r.data);
+export const updateActor = (id: string, data: Partial<ActorItem>): Promise<ActorItem> =>
+  api.put(`/actors/${id}`, data).then((r) => r.data);
 
-export const deletePersona = (id: string): Promise<{ success: boolean }> =>
-  api.delete(`/personas/${id}`).then((r) => r.data);
+export const deleteActor = (id: string): Promise<{ success: boolean }> =>
+  api.delete(`/actors/${id}`).then((r) => r.data);
+
+export default api;

@@ -7,9 +7,10 @@ const taskSchema = new mongoose.Schema({
   domain: { type: String, trim: true },
   subdomain: { type: String, trim: true },
   channel: { type: String, trim: true },
-  persona: { type: String, trim: true },
+  actor: { type: String, trim: true },
   applications: [{ type: String, trim: true }],
   sequence: { type: Number },
+  owner: { type: String, trim: true, default: null },
 }, { timestamps: true });
 
 // A task is unique by name + businessFlow + product

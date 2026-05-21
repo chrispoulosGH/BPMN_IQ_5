@@ -42,9 +42,9 @@ interface BpmnEditorProps {
   showProperties?: boolean;
   allApplicationNames?: string[];
   allTaskNames?: string[];
-  allPersonaNames?: string[];
+  allActorNames?: string[];
   diagramName?: string;
-  onNavigateToFactory?: (tab: string, searchTerm: string, mode?: 'view' | 'add', extra?: { applications?: string[]; persona?: string }) => void;
+  onNavigateToFactory?: (tab: string, searchTerm: string, mode?: 'view' | 'add', extra?: { applications?: string[]; actor?: string }) => void;
   onTaskSelect?: (task: { name: string; id: string } | null) => void;
 }
 
@@ -58,7 +58,7 @@ function isActivityType(type?: string): boolean {
 }
 
 const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
-  ({ xml, onXmlChange, showProperties = true, allApplicationNames = [], allTaskNames = [], allPersonaNames = [], diagramName, onNavigateToFactory, onTaskSelect }, ref) => {
+  ({ xml, onXmlChange, showProperties = true, allApplicationNames = [], allTaskNames = [], allActorNames = [], diagramName, onNavigateToFactory, onTaskSelect }, ref) => {
     const canvasRef = useRef<HTMLDivElement>(null);
     const propertiesRef = useRef<HTMLDivElement>(null);
     const modelerRef = useRef<any>(null);
@@ -87,8 +87,8 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     xmlRef.current = xml;
     allAppNamesRef.current = allApplicationNames;
     if (allTaskNames.length) taskNamesRef.current = allTaskNames;
-    const personaNamesRef = useRef<string[]>(allPersonaNames);
-    personaNamesRef.current = allPersonaNames;
+    const actorNamesRef = useRef<string[]>(allActorNames);
+    actorNamesRef.current = allActorNames;
 
     useImperativeHandle(ref, () => ({
       getXml: async () => {
@@ -562,7 +562,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       });
 
       // Right-click on tasks opens direct editing (shows task name autocomplete)
-      // Right-click on lanes shows persona dropdown directly (no direct editing)
+      // Right-click on lanes shows actor dropdown directly (no direct editing)
       modeler.on('element.contextmenu', (event: any) => {
         const element = event.element;
         const boType = element?.businessObject?.$type || '';
@@ -572,7 +572,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
           directEditing.activate(element);
         } else if (boType === 'bpmn:Lane' || boType === 'bpmn2:Lane') {
           event.originalEvent?.preventDefault();
-          // Show persona dropdown directly without activating direct editing
+          // Show actor dropdown directly without activating direct editing
           removeAutocomplete();
           const canvas = modeler.get('canvas');
           const container = canvas.getContainer();
@@ -596,7 +596,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
           document.body.appendChild(dropdown);
           autocompleteRef.current = dropdown;
 
-          const namesList = personaNamesRef.current;
+          const namesList = actorNamesRef.current;
           const currentName = (element.businessObject?.name || '').toLowerCase();
           for (const pName of namesList.slice(0, 20)) {
             const item = document.createElement('div');
@@ -624,7 +624,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                     onXmlChange?.(updated);
                   });
                 }
-                validateLanePersonas(modeler);
+                validateLaneActors(modeler);
               } catch (err) {
                 console.error('[BpmnEditor] Lane rename failed:', err);
               }
@@ -737,7 +737,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         removeAutocomplete();
         // Re-validate colors immediately after any name edit
         validateAndColorTasks(modeler);
-        validateLanePersonas(modeler);
+        validateLaneActors(modeler);
       });
 
       function removeAutocomplete() {
@@ -781,8 +781,8 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         migrateTextAnnotationApps(modeler);
         // Validate tasks against Task Factory
         await validateAndColorTasks(modeler);
-        // Validate lane personas against Persona Factory
-        validateLanePersonas(modeler);
+        // Validate lane actors against Actor Factory
+        validateLaneActors(modeler);
         // Render application overlays
         renderAppOverlaysRef.current();
       }).catch((err: Error) => {
@@ -806,12 +806,12 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       }
     }, [allTaskNames]);
 
-    // Re-validate lane persona colors when persona reference data changes
+    // Re-validate lane actor colors when actor reference data changes
     useEffect(() => {
-      if (allPersonaNames.length && modelerRef.current) {
-        validateLanePersonas(modelerRef.current);
+      if (allActorNames.length && modelerRef.current) {
+        validateLaneActors(modelerRef.current);
       }
-    }, [allPersonaNames]);
+    }, [allActorNames]);
 
     /**
      * Migrate legacy text-annotation-based app lists to bpmniq extension elements.
@@ -972,9 +972,9 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       }
     }
 
-    function validateLanePersonas(modeler: any) {
+    function validateLaneActors(modeler: any) {
       try {
-        const names = personaNamesRef.current;
+        const names = actorNamesRef.current;
         if (!names.length) return;
         const validSet = new Set(names.map((n) => n.toLowerCase().trim()));
         const elementRegistry = modeler.get('elementRegistry');
@@ -988,7 +988,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
           const isValid = validSet.has(laneName.toLowerCase());
           const gfx = elementRegistry.getGraphics(el);
           if (gfx) {
-            // Color the lane label text orange if not a known persona
+            // Color the lane label text orange if not a known actor
             const label = gfx.querySelector('.djs-label') || gfx.querySelector('text');
             if (label) {
               const texts = label.tagName === 'text' ? [label] : label.querySelectorAll('text');
@@ -1007,8 +1007,8 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     const validAppSet = new Set(allApplicationNames.map((n) => n.toLowerCase().trim()));
     const isSelectedAppValid = selectedApp ? validAppSet.has(selectedApp.name.toLowerCase().trim()) : true;
     const isSelectedTaskValid = selectedTask ? taskNamesRef.current.some((n) => n.toLowerCase() === selectedTask.name.toLowerCase().trim()) : true;
-    const validPersonaSet = new Set(allPersonaNames.map((n) => n.toLowerCase().trim()));
-    const isSelectedLaneValid = selectedLane ? validPersonaSet.has(selectedLane.name.toLowerCase().trim()) : true;
+    const validActorSet = new Set(allActorNames.map((n) => n.toLowerCase().trim()));
+    const isSelectedLaneValid = selectedLane ? validActorSet.has(selectedLane.name.toLowerCase().trim()) : true;
 
     return (
       <div className="flex h-full w-full overflow-hidden relative">
@@ -1108,7 +1108,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                       // Gather extra context from the BPMN element
                       const m = modelerRef.current;
                       let apps: string[] = [];
-                      let persona: string | undefined;
+                      let actor: string | undefined;
                       if (m) {
                         const elementRegistry = m.get('elementRegistry');
                         const el = elementRegistry.get(selectedTask.id);
@@ -1121,14 +1121,14 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                             if (bo?.$type === 'bpmn:Lane' || bo?.$type === 'bpmn2:Lane') {
                               const flowRefs = bo.flowNodeRef || [];
                               if (flowRefs.some((ref: any) => ref.id === el.businessObject.id || ref === el.businessObject)) {
-                                persona = bo.name;
+                                actor = bo.name;
                                 break;
                               }
                             }
                           }
                         }
                       }
-                      onNavigateToFactory?.('tasks', selectedTask.name, 'add', { applications: apps.length ? apps : undefined, persona });
+                      onNavigateToFactory?.('tasks', selectedTask.name, 'add', { applications: apps.length ? apps : undefined, actor });
                     }
                   }}
                   title={isSelectedTaskValid ? 'Open in Business Task Factory' : 'Add to Business Task Factory'}
@@ -1158,7 +1158,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isSelectedLaneValid ? '#1677ff' : '#cc7000'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500 uppercase tracking-wide">Persona / Lane</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Actor / Lane</div>
                   <div className="font-semibold text-sm" style={{ color: isSelectedLaneValid ? '#333' : '#cc7000' }}>{selectedLane.name}</div>
                 </div>
               </div>
@@ -1173,14 +1173,14 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               <div className="border-t border-gray-100 mt-3 pt-3 flex flex-col gap-1.5">
                 <button
                   className={`w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 ${isSelectedLaneValid ? 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700' : 'border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700'}`}
-                  onClick={() => onNavigateToFactory?.('personas', selectedLane.name, isSelectedLaneValid ? 'view' : 'add')}
-                  title={isSelectedLaneValid ? 'Open in Persona Factory' : 'Add to Persona Factory'}
+                  onClick={() => onNavigateToFactory?.('actors', selectedLane.name, isSelectedLaneValid ? 'view' : 'add')}
+                  title={isSelectedLaneValid ? 'Open in Actor Factory' : 'Add to Actor Factory'}
                 >
                   {isSelectedLaneValid
                     ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
                     : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
                   }
-                  {isSelectedLaneValid ? 'View in Persona Factory →' : 'Add to Persona Factory →'}
+                  {isSelectedLaneValid ? 'View in Actor Factory →' : 'Add to Actor Factory →'}
                 </button>
               </div>
               <button

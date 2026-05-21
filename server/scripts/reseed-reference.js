@@ -9,12 +9,12 @@ const path = require('path');
 const mongoose = require('mongoose');
 const XLSX = require('xlsx');
 const Task = require('../models/Task');
-const { BusinessFlow, Product, Persona, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
+const { BusinessFlow, Product, Actor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
 
 const EXCEL_PATH = path.resolve(__dirname, '../../data/E2EUX Journey Data Loader.xlsx');
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/bpmn_iq';
 
-const PERSONAS = ['Customer', 'Call Center Agent', 'Scheduler', 'Technician'];
+const ACTORS = ['Customer', 'Call Center Agent', 'Scheduler', 'Technician'];
 
 async function reseed() {
   await mongoose.connect(MONGO_URI);
@@ -83,7 +83,7 @@ async function reseed() {
   await Domain.deleteMany({});
   await Subdomain.deleteMany({});
   await BusinessFlow.deleteMany({});
-  await Persona.deleteMany({});
+  await Actor.deleteMany({});
   await Task.deleteMany({});
   console.log('Dropped.');
 
@@ -100,7 +100,7 @@ async function reseed() {
   await insertRef(Domain, domains, 'Domains');
   await insertRef(Subdomain, subdomains, 'Subdomains');
   await insertRef(BusinessFlow, businessFlows, 'Business Flows');
-  await insertRef(Persona, PERSONAS, 'Personas');
+  await insertRef(Actor, ACTORS, 'Actors');
   console.log('Reference data seeded.');
 
   // Insert tasks

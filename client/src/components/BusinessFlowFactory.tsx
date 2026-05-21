@@ -7,9 +7,10 @@ interface BusinessFlowFactoryProps {
   defaultSearch?: string;
   onItemAdded?: () => void;
   onOpenDiagram?: (diagramId: string) => void;
+  readOnly?: boolean;
 }
 
-export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpenDiagram }: BusinessFlowFactoryProps) {
+export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpenDiagram, readOnly }: BusinessFlowFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<RefItem[]>([]);
   const [flowMap, setFlowMap] = useState<Record<string, string>>({});
@@ -49,7 +50,7 @@ export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpen
 
   const handleEdit = (item: RefItem) => {
     setEditingItem(item);
-    form.setFieldsValue({ name: item.name });
+    form.setFieldsValue({ name: item.name, owner: item.owner || '' });
     setShowForm(true);
   };
 
@@ -67,13 +68,13 @@ export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpen
     });
   };
 
-  const handleFormSubmit = async (values: { name: string }) => {
+  const handleFormSubmit = async (values: { name: string; owner?: string }) => {
     try {
       if (editingItem) {
-        await updateRefItem('businessFlows', editingItem._id, values.name);
+        await updateRefItem('businessFlows', editingItem._id, values.name, values.owner);
         message.success('Updated');
       } else {
-        await createRefItem('businessFlows', values.name);
+        await createRefItem('businessFlows', values.name, values.owner);
         message.success('Created');
         onItemAdded?.();
       }
@@ -90,6 +91,8 @@ export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpen
 
   const columns = [
     { title: 'Name', dataIndex: 'name', key: 'name', sorter: (a: RefItem, b: RefItem) => a.name.localeCompare(b.name) },
+    { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 150, ellipsis: true,
+      render: (v: string) => v || '—' },
     { title: 'BPMN Diagram', key: 'diagram', width: 160,
       render: (_: unknown, record: RefItem) => {
         const diagramId = flowMap[record.name];
@@ -103,7 +106,7 @@ export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpen
     },
     { title: 'Created', dataIndex: 'createdAt', key: 'createdAt', width: 120,
       render: (v: string) => v ? new Date(v).toLocaleDateString() : '—' },
-    { title: '', key: 'actions', width: 80, render: (_: unknown, record: RefItem) => (
+    { title: '', key: 'actions', width: 80, render: (_: unknown, record: RefItem) => readOnly ? null : (
       <Space size="small">
         <Tooltip title="Edit"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} /></Tooltip>
         <Tooltip title="Delete"><Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} /></Tooltip>
@@ -125,9 +128,9 @@ export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpen
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Business Flow
-        </Button>
+        </Button>}
       </div>
 
       <Table
@@ -154,6 +157,9 @@ export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpen
         <Form form={form} layout="vertical" onFinish={handleFormSubmit} className="mt-4">
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
             <Input autoFocus />
+          </Form.Item>
+          <Form.Item name="owner" label="Owner">
+            <Input placeholder="Owner name or ID" />
           </Form.Item>
         </Form>
       </Modal>

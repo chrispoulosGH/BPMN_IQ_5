@@ -7,16 +7,17 @@ import { getDiagrams, deleteDiagram, updateDiagram, batchImportDiagrams } from '
 interface BpmnFactoryProps {
   onOpenDiagram?: (id: string) => void;
   onNavigateToFactory?: (tab: string, search: string) => void;
+  readOnly?: boolean;
 }
 
-export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory }: BpmnFactoryProps) {
+export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOnly }: BpmnFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [diagrams, setDiagrams] = useState<DiagramMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const batchInputRef = useRef<HTMLInputElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editFields, setEditFields] = useState<{ description?: string; status?: string; sourcedFrom?: string }>({});
+  const [editFields, setEditFields] = useState<{ description?: string; status?: string; sourcedFrom?: string; owner?: string }>({});
 
   const loadDiagrams = useCallback(async () => {
     setLoading(true);
@@ -52,6 +53,7 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory }: Bpmn
       description: diagram.description || '',
       status: diagram.status || 'Draft',
       sourcedFrom: diagram.sourcedFrom || '',
+      owner: diagram.owner || '',
     });
   };
 
@@ -325,6 +327,18 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory }: Bpmn
       render: (val: string) => val || '—',
     },
     {
+      title: 'Owner',
+      dataIndex: 'owner',
+      key: 'owner',
+      width: 120,
+      render: (val: string, record: DiagramMeta) => {
+        if (editingId === record._id) {
+          return <Input size="small" value={editFields.owner || ''} onChange={(e) => setEditFields((f) => ({ ...f, owner: e.target.value }))} />;
+        }
+        return val || '—';
+      },
+    },
+    {
       title: '',
       key: 'actions',
       width: 120,
@@ -340,12 +354,12 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory }: Bpmn
               <Tooltip title="Open in Canvas">
                 <Button size="small" icon={<FolderOpenOutlined />} onClick={() => onOpenDiagram?.(record._id)} />
               </Tooltip>
-              <Tooltip title="Edit">
+              {!readOnly && <Tooltip title="Edit">
                 <Button size="small" icon={<EditOutlined />} onClick={() => handleInlineEdit(record)} />
-              </Tooltip>
-              <Tooltip title="Delete">
+              </Tooltip>}
+              {!readOnly && <Tooltip title="Delete">
                 <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} />
-              </Tooltip>
+              </Tooltip>}
             </>
           )}
         </Space>
@@ -372,7 +386,7 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory }: Bpmn
           allowClear
           style={{ width: 300 }}
         />
-        <Button icon={<UploadOutlined />} onClick={handleBatchImport}>
+        <Button icon={<UploadOutlined />} onClick={handleBatchImport} disabled={readOnly}>
           Batch Import
         </Button>
       </div>

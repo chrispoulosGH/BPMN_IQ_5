@@ -9,9 +9,10 @@ interface TaskFactoryProps {
   defaultAddData?: TaskAddData;
   onItemAdded?: () => void;
   onNavigateToFactory?: (tab: string, search: string) => void;
+  readOnly?: boolean;
 }
 
-export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded, onNavigateToFactory }: TaskFactoryProps = {}) {
+export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded, onNavigateToFactory, readOnly }: TaskFactoryProps = {}) {
   const { message, modal } = AntApp.useApp();
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [refData, setRefData] = useState<ReferenceData | null>(null);
@@ -38,7 +39,7 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
       form.resetFields();
       const formValues: Record<string, unknown> = { name: defaultAddData.name };
       if (defaultAddData.applications?.length) formValues.applications = defaultAddData.applications;
-      if (defaultAddData.persona) formValues.persona = defaultAddData.persona;
+      if (defaultAddData.actor) formValues.actor = defaultAddData.actor;
       if (defaultAddData.businessFlow) formValues.businessFlow = defaultAddData.businessFlow;
       if (defaultAddData.product) formValues.product = defaultAddData.product;
       if (defaultAddData.channel) formValues.channel = defaultAddData.channel;
@@ -116,8 +117,8 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
       render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('products', v)}>{v}</Typography.Link> : '—' },
     { title: 'Channel', dataIndex: 'channel', key: 'channel', width: 90,
       render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('channels', v)}>{v}</Typography.Link> : '—' },
-    { title: 'Persona', dataIndex: 'persona', key: 'persona', width: 130,
-      render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('personas', v)}>{v}</Typography.Link> : <Tag>—</Tag>,
+    { title: 'Actor', dataIndex: 'actor', key: 'actor', width: 130,
+      render: (v: string) => v ? <Typography.Link onClick={() => onNavigateToFactory?.('actors', v)}>{v}</Typography.Link> : <Tag>—</Tag>,
     },
     { title: 'Applications', dataIndex: 'applications', key: 'applications', ellipsis: true,
       render: (apps: string[]) => apps?.length
@@ -126,7 +127,9 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
           )).concat(apps.length > 2 ? [<span key="more"> +{apps.length - 2}</span>] : [])
         : '—',
     },
-    { title: '', key: 'actions', width: 80, render: (_: unknown, record: TaskRecord) => (
+    { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 130, ellipsis: true,
+      render: (v: string) => v || '—' },
+    { title: '', key: 'actions', width: 80, render: (_: unknown, record: TaskRecord) => readOnly ? null : (
       <Space size="small">
         <Tooltip title="Edit"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} /></Tooltip>
         <Tooltip title="Delete"><Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} /></Tooltip>
@@ -155,7 +158,7 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
           <>
             {filterSelect('Business Flow', 'businessFlow', refData.businessFlows)}
             {filterSelect('Product', 'product', refData.products)}
-            {filterSelect('Persona', 'persona', refData.personas)}
+            {filterSelect('Actor', 'actor', refData.actors)}
             {filterSelect('Channel', 'channel', refData.channels)}
           </>
         )}
@@ -168,9 +171,9 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
           onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
         />
         <div className="flex-1" />
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Task
-        </Button>
+        </Button>}
       </div>
 
       {/* Table */}
@@ -207,8 +210,8 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
             <Form.Item name="product" label="Product" rules={[{ required: true }]}>
               <Select showSearch options={refData?.products.map((p) => ({ label: p.name, value: p.name }))} />
             </Form.Item>
-            <Form.Item name="persona" label="Persona">
-              <Select allowClear showSearch options={refData?.personas.map((p) => ({ label: p.name, value: p.name }))} />
+            <Form.Item name="actor" label="Actor">
+              <Select allowClear showSearch options={refData?.actors.map((p) => ({ label: p.name, value: p.name }))} />
             </Form.Item>
             <Form.Item name="channel" label="Channel">
               <Select allowClear showSearch options={refData?.channels.map((c) => ({ label: c.name, value: c.name }))} />
@@ -222,6 +225,9 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
           </div>
           <Form.Item name="applications" label="Applications">
             <Select mode="multiple" allowClear showSearch options={refData?.applications.map((a) => ({ label: a.name, value: a.name }))} />
+          </Form.Item>
+          <Form.Item name="owner" label="Owner">
+            <Input placeholder="Owner name or ID" />
           </Form.Item>
         </Form>
       </Modal>

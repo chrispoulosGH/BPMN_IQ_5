@@ -22,6 +22,7 @@ const capabilitySchema = new mongoose.Schema(
     references: { type: String, default: '' },
     tmfStatus: { type: String, default: '' },
     tmfVersion: { type: String, default: '' },
+    owner: { type: String, trim: true, default: null },
   },
   { timestamps: true }
 );

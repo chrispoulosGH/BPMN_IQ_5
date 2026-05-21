@@ -1,0 +1,117 @@
+const express = require('express');
+const crypto = require('crypto');
+const mongoose = require('mongoose');
+const router = express.Router();
+const User = require('../models/User');
+const Session = require('../models/Session');
+
+const SESSION_DURATION_MS = 1000 * 60 * 60 * 8; // 8 hours
+
+// POST /api/auth/login — authenticate user
+router.post('/login', async (req, res) => {
+  try {
+    const { userId, password } = req.body;
+    if (!userId || !userId.trim()) {
+      return res.status(400).json({ error: 'User ID is required.' });
+    }
+
+    let user = await User.findOne({ userId: userId.trim() });
+
+    if (!user) {
+      // Auto-register on first login (password optional)
+      user = await User.create({
+        userId: userId.trim(),
+        password: password || null,
+        displayName: userId.trim(),
+      });
+    } else {
+      // Validate password if user has one set
+      const valid = await user.comparePassword(password || '');
+      if (!valid) {
+        return res.status(401).json({ error: 'Invalid password.' });
+      }
+    }
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Create session token
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+    await Session.create({
+      token,
+      userId: user.userId,
+      displayName: user.displayName,
+      userObjId: user._id,
+      expiresAt,
+    });
+
+    // Set cookie
+    res.cookie('bpmn_iq_sid', token, {
+      httpOnly: true,
+      secure: false,
+      maxAge: SESSION_DURATION_MS,
+      sameSite: 'lax',
+    });
+
+    // Look up role capabilities
+    const roleDoc = user.role ? await mongoose.connection.collection('roles').findOne({ name: user.role }) : null;
+    const capabilities = roleDoc ? roleDoc.capabilities : [];
+
+    res.json({ user: { _id: user._id.toString(), userId: user.userId, displayName: user.displayName, role: user.role || null, capabilities } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/auth/logout — destroy session
+router.post('/logout', async (req, res) => {
+  const token = req.cookies?.bpmn_iq_sid;
+  if (token) {
+    await Session.deleteOne({ token }).catch(() => {});
+  }
+  res.clearCookie('bpmn_iq_sid');
+  res.json({ success: true });
+});
+
+// GET /api/auth/session — check current session
+router.get('/session', async (req, res) => {
+  const token = req.cookies?.bpmn_iq_sid;
+  if (!token) return res.json({ authenticated: false });
+
+  const sess = await Session.findOne({ token, expiresAt: { $gt: new Date() } });
+  if (!sess) {
+    res.clearCookie('bpmn_iq_sid');
+    return res.json({ authenticated: false });
+  }
+
+  // Look up role capabilities
+  const userDoc = await User.findOne({ userId: sess.userId }).lean();
+  const roleDoc = userDoc?.role ? await mongoose.connection.collection('roles').findOne({ name: userDoc.role }) : null;
+  const capabilities = roleDoc ? roleDoc.capabilities : [];
+
+  res.json({ authenticated: true, user: { _id: sess.userObjId?.toString() || '', userId: sess.userId, displayName: sess.displayName, role: userDoc?.role || null, capabilities } });
+});
+
+// PUT /api/auth/password — update password for current user
+router.put('/password', async (req, res) => {
+  const token = req.cookies?.bpmn_iq_sid;
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+
+  const sess = await Session.findOne({ token, expiresAt: { $gt: new Date() } });
+  if (!sess) return res.status(401).json({ error: 'Not authenticated' });
+
+  try {
+    const { newPassword } = req.body;
+    const user = await User.findOne({ userId: sess.userId });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    user.password = newPassword || null;
+    await user.save();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;

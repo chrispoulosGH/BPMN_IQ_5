@@ -11,6 +11,7 @@ import {
   Modal,
   Select,
   App as AntApp,
+  Spin,
 } from 'antd';
 import {
   PlusOutlined,
@@ -38,6 +39,8 @@ import {
   BranchesOutlined,
   RightOutlined,
   LeftOutlined,
+  LogoutOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import BpmnEditor, { EMPTY_DIAGRAM, type BpmnEditorHandle } from './components/BpmnEditor';
 import DiagramList from './components/DiagramList';
@@ -49,15 +52,15 @@ import ReferenceFactory from './components/ReferenceFactory';
 import ApplicationFactory from './components/ApplicationFactory';
 import BusinessFlowFactory from './components/BusinessFlowFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
-import PersonaFactory from './components/PersonaFactory';
+import ActorFactory from './components/ActorFactory';
 import BpmnFactory from './components/BpmnFactory';
-import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getPersonas } from './api';
+import Login from './components/Login';
+import AdminPanel from './components/AdminPanel';
+import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler } from './api';
 import type { CapabilityMatch, TaskAddData, DiagramMetadata } from './types';
 
 const { Header, Sider, Content } = Layout;
 const { Text, Title } = Typography;
-
-const CURRENT_USER = 'cp1853';
 
 interface ActiveDiagram {
   _id: string;
@@ -147,6 +150,60 @@ function generateChangeNote(
 export default function App() {
   const { message } = AntApp.useApp();
 
+  // Auth state
+  const [authUser, setAuthUser] = useState<{ _id: string; userId: string; displayName: string; role?: string | null; capabilities?: { function: string; permission: string }[] } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Check session on mount
+  useEffect(() => {
+    checkSession()
+      .then((data) => {
+        if (data.authenticated && data.user) setAuthUser(data.user);
+      })
+      .catch(() => {})
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  // Register session expired handler
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setAuthUser(null);
+    });
+  }, []);
+
+  const handleLogin = (user: { _id: string; userId: string; displayName: string; role?: string | null; capabilities?: { function: string; permission: string }[] }) => {
+    setAuthUser(user);
+  };
+
+  const handleLogout = async () => {
+    await logout().catch(() => {});
+    setAuthUser(null);
+  };
+
+  // Show loading while checking session
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spin size="large" tip="Loading..." />
+      </div>
+    );
+  }
+
+  // Show login when not authenticated
+  if (!authUser) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  return <AuthenticatedApp user={authUser} onLogout={handleLogout} />;
+}
+
+function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: string; displayName: string; role?: string | null; capabilities?: { function: string; permission: string }[] }; onLogout: () => void }) {
+  const { message } = AntApp.useApp();
+  const CURRENT_USER = user.userId;
+  const hasAdminAccess = user.capabilities?.some(c => c.function === 'Admin') ?? false;
+  const readOnly = !(user.capabilities?.some(c => c.permission !== 'Read'));
+  const [showAdmin, setShowAdmin] = useState(false);
+
   // Tab state
   const [activeTab, setActiveTab] = useState<string>('bpmn');
 
@@ -187,8 +244,8 @@ export default function App() {
   const [allAppNames, setAllAppNames] = useState<string[]>([]);
   // Task names for validity checks
   const [allTaskNames, setAllTaskNames] = useState<string[]>([]);
-  // Persona names for lane validation
-  const [allPersonaNames, setAllPersonaNames] = useState<string[]>([]);
+  // Actor names for lane validation
+  const [allActorNames, setAllActorNames] = useState<string[]>([]);
   // Diagram metadata (parsed from BPMNDiagram name attribute)
   const [diagramMeta, setDiagramMeta] = useState<DiagramMetadata>({});
 
@@ -231,8 +288,8 @@ export default function App() {
     getTaskNames().then((names) => {
       setAllTaskNames(names);
     }).catch(() => {});
-    getPersonas().then((personas) => {
-      setAllPersonaNames(personas.map((p) => p.name));
+    getActors().then((actors) => {
+      setAllActorNames(actors.map((p) => p.name));
     }).catch(() => {});
   }, []);
 
@@ -241,7 +298,7 @@ export default function App() {
   }, [refreshReferenceData]);
 
   // Navigate from diagram panel to a factory tab
-  const handleNavigateToFactory = useCallback((tab: string, searchTerm: string, mode: 'view' | 'add' = 'view', extra?: { applications?: string[]; persona?: string }) => {
+  const handleNavigateToFactory = useCallback((tab: string, searchTerm: string, mode: 'view' | 'add' = 'view', extra?: { applications?: string[]; actor?: string }) => {
     if (mode === 'add') {
       if (tab === 'tasks') {
         setFactoryAdd((prev) => ({ ...prev, [tab]: { name: searchTerm, ...diagramMeta, ...extra } }));
@@ -601,7 +658,7 @@ export default function App() {
         {/* Toolbar */}
         <Space size={4} className="toolbar-actions">
           <Tooltip title="New Diagram">
-            <Button type="text" icon={<PlusOutlined />} onClick={handleNew} className="toolbar-btn" />
+            <Button type="text" icon={<PlusOutlined />} onClick={handleNew} className="toolbar-btn" disabled={readOnly} />
           </Tooltip>
 
           <div className="toolbar-divider" />
@@ -613,7 +670,7 @@ export default function App() {
             <Button type="text" icon={<DownloadOutlined />} onClick={handleDownloadLocal} className="toolbar-btn" />
           </Tooltip>
           <Tooltip title="Save .bpmn to server directory">
-            <Button type="text" icon={<SaveOutlined />} onClick={handleSaveToServer} className="toolbar-btn" />
+            <Button type="text" icon={<SaveOutlined />} onClick={handleSaveToServer} className="toolbar-btn" disabled={readOnly} />
           </Tooltip>
 
           <div className="toolbar-divider" />
@@ -624,6 +681,7 @@ export default function App() {
               icon={<CloudUploadOutlined />}
               onClick={handleQuickSaveDb}
               className="toolbar-btn"
+              disabled={readOnly}
             />
           </Tooltip>
           <Tooltip title="Save as new to MongoDB…">
@@ -632,6 +690,7 @@ export default function App() {
               icon={<DatabaseOutlined />}
               onClick={() => setShowSaveDb(true)}
               className="toolbar-btn"
+              disabled={readOnly}
             />
           </Tooltip>
 
@@ -654,6 +713,20 @@ export default function App() {
           </Tooltip>
           <Tooltip title="Match Task Names to Reference Data">
             <Button type="text" icon={<AppstoreOutlined />} onClick={runTaskFuzzyMatch} className="toolbar-btn" />
+          </Tooltip>
+
+          <div className="toolbar-divider" />
+
+          <Tooltip title={`Signed in as ${user.userId}`}>
+            <span className="text-gray-400 text-xs mr-1"><UserOutlined /> {user.userId}</span>
+          </Tooltip>
+          {hasAdminAccess && (
+            <Tooltip title="User Administration">
+              <Button type="text" icon={<SettingOutlined />} onClick={() => setShowAdmin(true)} className="toolbar-btn" size="small" />
+            </Tooltip>
+          )}
+          <Tooltip title="Sign out">
+            <Button type="text" icon={<LogoutOutlined />} onClick={onLogout} className="toolbar-btn" size="small" />
           </Tooltip>
         </Space>
       </Header>
@@ -682,7 +755,7 @@ export default function App() {
                         onXmlChange={handleXmlChange}
                         allApplicationNames={allAppNames}
                         allTaskNames={allTaskNames}
-                        allPersonaNames={allPersonaNames}
+                        allActorNames={allActorNames}
                         diagramName={diagramMeta.businessFlow || undefined}
                         onNavigateToFactory={handleNavigateToFactory}
                         onTaskSelect={setSelectedDiagramTask}
@@ -694,12 +767,12 @@ export default function App() {
               {
                 key: 'diagramFactory',
                 label: <span><DatabaseOutlined /> BPMN Factory</span>,
-                children: <BpmnFactory onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
+                children: <BpmnFactory onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} />,
               },
               {
                 key: 'tasks',
                 label: <span><AppstoreOutlined /> Task Factory</span>,
-                children: <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
+                children: <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} />,
               },
               {
                 key: 'applications',
@@ -709,42 +782,42 @@ export default function App() {
               {
                 key: 'capabilities',
                 label: <span><ClusterOutlined /> Capability Factory</span>,
-                children: <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
+                children: <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} />,
               },
               {
-                key: 'personas',
-                label: <span><UserOutlined /> Persona Factory</span>,
-                children: <PersonaFactory defaultAdd={typeof factoryAdd.personas === 'string' ? factoryAdd.personas : ''} onItemAdded={refreshReferenceData} />,
+                key: 'actors',
+                label: <span><UserOutlined /> Actor Factory</span>,
+                children: <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
               },
               {
                 key: 'businessFlows',
                 label: <span><BranchesOutlined /> Business Flow Factory</span>,
-                children: <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} />,
+                children: <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} readOnly={readOnly} />,
               },
               {
                 key: 'products',
                 label: <span><ShoppingOutlined /> Product Factory</span>,
-                children: <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} />,
+                children: <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
               },
               {
                 key: 'linesOfBusiness',
                 label: <span><BankOutlined /> LOB Factory</span>,
-                children: <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} />,
+                children: <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
               },
               {
                 key: 'channels',
                 label: <span><PhoneOutlined /> Channel Factory</span>,
-                children: <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} />,
+                children: <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
               },
               {
                 key: 'domains',
                 label: <span><GlobalOutlined /> Domain Factory</span>,
-                children: <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} />,
+                children: <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
               },
               {
                 key: 'subdomains',
                 label: <span><ApartmentOutlined /> Subdomain Factory</span>,
-                children: <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} />,
+                children: <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
               },
             ]}
           />
@@ -842,6 +915,7 @@ export default function App() {
                   type="primary"
                   icon={<CloudUploadOutlined />}
                   onClick={() => setShowSaveDb(true)}
+                  disabled={readOnly}
                 >
                   Save
                 </Button>
@@ -865,6 +939,7 @@ export default function App() {
                     onRefresh={refresh}
                     refreshTick={refreshTick}
                     searchQuery={searchQuery}
+                    readOnly={readOnly}
                   />
                 </div>
               </div>
@@ -909,6 +984,8 @@ export default function App() {
         onApprove={handleTaskMatchApprove}
         onClose={() => setShowTaskMatch(false)}
       />
+
+      {hasAdminAccess && <AdminPanel open={showAdmin} onClose={() => setShowAdmin(false)} />}
     </Layout>
   );
 }

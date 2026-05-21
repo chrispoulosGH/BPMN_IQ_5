@@ -5,9 +5,10 @@ import { getCapabilities, createCapability, updateCapability, deleteCapability, 
 
 interface CapabilitiesFactoryProps {
   onNavigateToFactory?: (tab: string, search: string) => void;
+  readOnly?: boolean;
 }
 
-export default function CapabilitiesFactory({ onNavigateToFactory }: CapabilitiesFactoryProps = {}) {
+export default function CapabilitiesFactory({ onNavigateToFactory, readOnly }: CapabilitiesFactoryProps = {}) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<CapabilityItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -44,6 +45,7 @@ export default function CapabilitiesFactory({ onNavigateToFactory }: Capabilitie
       aspect: item.aspect,
       briefDescription: item.briefDescription,
       tmfVersion: item.tmfVersion,
+      owner: item.owner || '',
     });
     setShowForm(true);
   };
@@ -62,7 +64,7 @@ export default function CapabilitiesFactory({ onNavigateToFactory }: Capabilitie
     });
   };
 
-  const handleFormSubmit = async (values: { name: string; domainName?: string; aspect?: string; briefDescription?: string; tmfVersion?: string }) => {
+  const handleFormSubmit = async (values: { name: string; domainName?: string; aspect?: string; briefDescription?: string; tmfVersion?: string; owner?: string }) => {
     try {
       const payload = {
         name: values.name,
@@ -70,6 +72,7 @@ export default function CapabilitiesFactory({ onNavigateToFactory }: Capabilitie
         aspect: values.aspect || '',
         briefDescription: values.briefDescription || '',
         tmfVersion: values.tmfVersion || 'GB1029C',
+        owner: values.owner || '',
       };
       if (editingItem) {
         await updateCapability(editingItem._id, payload);
@@ -100,7 +103,9 @@ export default function CapabilitiesFactory({ onNavigateToFactory }: Capabilitie
     { title: 'Aspect', dataIndex: 'aspect', key: 'aspect', width: 180, sorter: (a: CapabilityItem, b: CapabilityItem) => (a.aspect || '').localeCompare(b.aspect || '') },
     { title: 'Description', dataIndex: 'briefDescription', key: 'briefDescription', ellipsis: true },
     { title: 'TMF Version', dataIndex: 'tmfVersion', key: 'tmfVersion', width: 110 },
-    { title: '', key: 'actions', width: 80, render: (_: unknown, record: CapabilityItem) => (
+    { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 130, ellipsis: true,
+      render: (v: string) => v || '—' },
+    { title: '', key: 'actions', width: 80, render: (_: unknown, record: CapabilityItem) => readOnly ? null : (
       <Space size="small">
         <Tooltip title="Edit"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} /></Tooltip>
         <Tooltip title="Delete"><Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} /></Tooltip>
@@ -121,9 +126,9 @@ export default function CapabilitiesFactory({ onNavigateToFactory }: Capabilitie
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
-        <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Capability
-        </Button>
+        </Button>}
       </div>
 
       <Table
@@ -162,6 +167,9 @@ export default function CapabilitiesFactory({ onNavigateToFactory }: Capabilitie
           </Form.Item>
           <Form.Item name="tmfVersion" label="TMF Version" initialValue="GB1029C">
             <Input placeholder="GB1029C" />
+          </Form.Item>
+          <Form.Item name="owner" label="Owner">
+            <Input placeholder="Owner name or ID" />
           </Form.Item>
         </Form>
       </Modal>
