@@ -10,9 +10,10 @@ interface ReferenceFactoryProps {
   defaultAdd?: string;
   onItemAdded?: () => void;
   readOnly?: boolean;
+  userRole?: string | null;
 }
 
-export default function ReferenceFactory({ collection, title, defaultSearch, defaultAdd, onItemAdded, readOnly }: ReferenceFactoryProps) {
+export default function ReferenceFactory({ collection, title, defaultSearch, defaultAdd, onItemAdded, readOnly, userRole }: ReferenceFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<RefItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,7 +126,7 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
-        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+        {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New {title}
         </Button>}
       </div>

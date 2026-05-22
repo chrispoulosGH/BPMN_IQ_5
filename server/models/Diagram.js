@@ -6,6 +6,7 @@ const diagramSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      unique: true,
     },
     description: {
       type: String,
@@ -71,7 +72,7 @@ const diagramSchema = new mongoose.Schema(
     subdomain: { type: String, default: null },
     product: { type: String, default: null },
     businessFlow: { type: String, default: null },
-    status: { type: String, default: 'Draft', trim: true },
+    status: { type: String, default: 'draft', trim: true },
     sourcedFrom: { type: String, default: null, trim: true },
     owner: { type: String, default: null, trim: true },
     createdBy: { type: String, default: null, trim: true },

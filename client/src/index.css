@@ -151,15 +151,24 @@ html, body, #root {
 /* Make the MongoDB card fill remaining space */
 .sidebar-panel .ant-card:last-child {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .sidebar-panel .ant-card:last-child .ant-card-body {
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* Force the diagram list scroll container to fill and scroll */
+.sidebar-panel .ant-card:last-child .ant-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 /* ─── Diagram List Items ──────────────────────────────────── */

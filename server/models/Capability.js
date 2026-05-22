@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { VALID_STATES } = require('../services/stateTransitions');
 
 const capabilitySchema = new mongoose.Schema(
   {
@@ -23,6 +24,7 @@ const capabilitySchema = new mongoose.Schema(
     tmfStatus: { type: String, default: '' },
     tmfVersion: { type: String, default: '' },
     owner: { type: String, trim: true, default: null },
+    state: { type: String, enum: VALID_STATES, default: 'draft' },
   },
   { timestamps: true }
 );

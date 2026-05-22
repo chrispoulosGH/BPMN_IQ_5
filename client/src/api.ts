@@ -136,4 +136,8 @@ export const updateActor = (id: string, data: Partial<ActorItem>): Promise<Actor
 export const deleteActor = (id: string): Promise<{ success: boolean }> =>
   api.delete(`/actors/${id}`).then((r) => r.data);
 
+// ── State Transitions ───────────────────────────────────────
+export const transitionState = (collection: string, id: string, action: string, role: string): Promise<{ previousState: string; newState: string; record: any }> =>
+  api.post('/states/transition', { collection, id, action, role }).then((r) => r.data);
+
 export default api;

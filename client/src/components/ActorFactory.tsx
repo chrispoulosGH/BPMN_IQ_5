@@ -7,9 +7,10 @@ interface ActorFactoryProps {
   defaultAdd?: string;
   onItemAdded?: () => void;
   readOnly?: boolean;
+  userRole?: string | null;
 }
 
-export default function ActorFactory({ defaultAdd, onItemAdded, readOnly }: ActorFactoryProps) {
+export default function ActorFactory({ defaultAdd, onItemAdded, readOnly, userRole }: ActorFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ActorItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -132,7 +133,7 @@ export default function ActorFactory({ defaultAdd, onItemAdded, readOnly }: Acto
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
-        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+        {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Actor
         </Button>}
       </div>

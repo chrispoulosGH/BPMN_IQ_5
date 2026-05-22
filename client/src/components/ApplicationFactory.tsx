@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button } from 'antd';
-import { SearchOutlined, SettingOutlined } from '@ant-design/icons';
+import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form } from 'antd';
+import { SearchOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ApplicationItem } from '../types';
-import { getRefItems } from '../api';
+import { getRefItems, createRefItem } from '../api';
 import type { ColumnsType } from 'antd/es/table';
 
 interface ApplicationFactoryProps {
   defaultSearch?: string;
+  userRole?: string | null;
 }
 
 /** All possible columns with their keys, labels, and default visibility */
@@ -35,12 +36,14 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'owner', title: 'Owner', defaultVisible: true },
 ];
 
-export default function ApplicationFactory({ defaultSearch }: ApplicationFactoryProps) {
+export default function ApplicationFactory({ defaultSearch, userRole }: ApplicationFactoryProps) {
   const { message } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [detail, setDetail] = useState<ApplicationItem | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addForm] = Form.useForm();
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
     () => new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
   );
@@ -74,6 +77,18 @@ export default function ApplicationFactory({ defaultSearch }: ApplicationFactory
         );
       })
     : items;
+
+  const handleAddApplication = async (values: { name: string }) => {
+    try {
+      await createRefItem('applications', values.name);
+      message.success('Application created');
+      setShowAddForm(false);
+      addForm.resetFields();
+      loadItems();
+    } catch (e: any) {
+      message.error(e.response?.data?.error || e.message);
+    }
+  };
 
   const toggleColumn = (key: string) => {
     setVisibleKeys(prev => {
@@ -172,6 +187,9 @@ export default function ApplicationFactory({ defaultSearch }: ApplicationFactory
         </Popover>
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} of {items.length} applications</span>
+        {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { addForm.resetFields(); setShowAddForm(true); }}>
+          New Application
+        </Button>}
       </div>
 
       <Table
@@ -217,6 +235,21 @@ export default function ApplicationFactory({ defaultSearch }: ApplicationFactory
           </Descriptions>
         )}
       </Drawer>
+
+      <Modal
+        title="New Application"
+        open={showAddForm}
+        onCancel={() => setShowAddForm(false)}
+        onOk={() => addForm.submit()}
+        okText="Create"
+        width={400}
+      >
+        <Form form={addForm} layout="vertical" onFinish={handleAddApplication}>
+          <Form.Item name="name" label="Application Name" rules={[{ required: true, message: 'Name is required' }]}>
+            <Input autoFocus />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

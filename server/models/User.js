@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, default: null }, // scrypt-hashed when present
     salt: { type: String, default: null },
     displayName: { type: String, trim: true, default: '' },
+    role: { type: String, default: null },
     lastLogin: { type: Date, default: null },
   },
   { timestamps: true }

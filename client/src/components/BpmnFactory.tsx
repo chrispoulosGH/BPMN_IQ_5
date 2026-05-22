@@ -1,23 +1,84 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Table, Input, Button, App as AntApp, Space, Tooltip, Tag, Select, Typography } from 'antd';
-import { EditOutlined, DeleteOutlined, SearchOutlined, FolderOpenOutlined, UploadOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, SearchOutlined, FolderOpenOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { DiagramMeta } from '../types';
-import { getDiagrams, deleteDiagram, updateDiagram, batchImportDiagrams } from '../api';
+import { getDiagrams, getDiagram, deleteDiagram, updateDiagram, batchImportDiagrams, transitionState } from '../api';
+
+// State transition rules (mirrors server/services/stateTransitions.js)
+const STATE_TRANSITIONS = [
+  { role: 'Editor', action: 'submit', from: 'draft', to: 'submitted' },
+  { role: 'Editor', action: 'delete', from: 'draft', to: 'deleted' },
+  { role: 'Approver', action: 'approve', from: 'submitted', to: 'approved' },
+  { role: 'Approver', action: 'reject', from: 'approved', to: 'draft' },
+  { role: 'Publisher', action: 'publish', from: 'approved', to: 'published' },
+  { role: 'Administrator', action: 'draft', from: 'staged', to: 'draft' },
+];
+
+function getAllowedActions(role: string | null | undefined, currentState: string) {
+  const state = (currentState || 'draft').toLowerCase();
+  if (role === 'Super') {
+    return STATE_TRANSITIONS.filter(t => t.from === state);
+  }
+  return STATE_TRANSITIONS.filter(t => t.role === role && t.from === state);
+}
+
+// Resizable header cell
+function ResizableHeaderCell({ width, onResize, ...restProps }: any) {
+  const startX = useRef(0);
+  const startW = useRef(0);
+
+  if (!width || !onResize) return <th {...restProps} />;
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    startX.current = e.clientX;
+    startW.current = width;
+    const onMouseMove = (ev: MouseEvent) => {
+      const newWidth = Math.max(startW.current + ev.clientX - startX.current, 60);
+      onResize(newWidth);
+    };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
+  return (
+    <th {...restProps} style={{ ...restProps.style, position: 'relative' }}>
+      {restProps.children}
+      <span
+        style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 5, cursor: 'col-resize' }}
+        onMouseDown={handleMouseDown}
+      />
+    </th>
+  );
+}
 
 interface BpmnFactoryProps {
   onOpenDiagram?: (id: string) => void;
   onNavigateToFactory?: (tab: string, search: string) => void;
   readOnly?: boolean;
+  refreshTick?: number;
+  userRole?: string | null;
 }
 
-export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOnly }: BpmnFactoryProps) {
+export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOnly, refreshTick, userRole }: BpmnFactoryProps) {
   const { message, modal } = AntApp.useApp();
+  const canImportExport = userRole === 'Administrator' || userRole === 'Super';
   const [diagrams, setDiagrams] = useState<DiagramMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const batchInputRef = useRef<HTMLInputElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editFields, setEditFields] = useState<{ description?: string; status?: string; sourcedFrom?: string; owner?: string }>({});
+  const [editFields, setEditFields] = useState<{ name?: string; description?: string; sourcedFrom?: string; owner?: string }>({});
+  const [pendingStateAction, setPendingStateAction] = useState<{ action: string; to: string } | null>(null);
+  const [tableFilteredCount, setTableFilteredCount] = useState<number | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [colWidths, setColWidths] = useState<Record<string, number>>({ name: 300 });
 
   const loadDiagrams = useCallback(async () => {
     setLoading(true);
@@ -31,7 +92,10 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
     }
   }, [message]);
 
-  useEffect(() => { loadDiagrams(); }, [loadDiagrams]);
+  useEffect(() => { loadDiagrams(); }, [loadDiagrams, refreshTick]);
+
+  // Reset table filter count when search or data changes
+  useEffect(() => { setTableFilteredCount(null); }, [search, diagrams]);
 
   const handleDelete = (diagram: DiagramMeta) => {
     modal.confirm({
@@ -50,19 +114,28 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
   const handleInlineEdit = (diagram: DiagramMeta) => {
     setEditingId(diagram._id);
     setEditFields({
+      name: diagram.name || '',
       description: diagram.description || '',
-      status: diagram.status || 'Draft',
       sourcedFrom: diagram.sourcedFrom || '',
       owner: diagram.owner || '',
     });
+    setPendingStateAction(null);
   };
 
   const handleInlineSave = async (id: string) => {
     try {
+      // If there's a pending state transition, execute it first
+      if (pendingStateAction) {
+        await transitionState('diagrams', id, pendingStateAction.action, userRole || '');
+      }
       await updateDiagram(id, editFields as any);
       message.success('Updated');
       setEditingId(null);
-      loadDiagrams();
+      // Update in-place to preserve scroll/sort position
+      const updates: any = { ...editFields };
+      if (pendingStateAction) updates.status = pendingStateAction.to;
+      setDiagrams(prev => prev.map(d => d._id === id ? { ...d, ...updates } : d));
+      setPendingStateAction(null);
     } catch (e: any) {
       message.error(e.response?.data?.error || e.message);
     }
@@ -110,6 +183,41 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
     });
   };
 
+  // ─── Batch Export ──────────────────────────────────────────
+  const handleBatchExport = async () => {
+    if (!selectedRowKeys.length) {
+      message.warning('Select at least one diagram to export');
+      return;
+    }
+    try {
+      // Use File System Access API directory picker
+      const dirHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+      setExporting(true);
+      let exported = 0;
+      for (const id of selectedRowKeys) {
+        try {
+          const diagram = await getDiagram(id as string);
+          const fileName = `${(diagram.name || 'diagram').replace(/[<>:"/\\|?*]/g, '_')}.bpmn`;
+          const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(diagram.xml);
+          await writable.close();
+          exported++;
+        } catch (err: any) {
+          console.error(`Failed to export ${id}:`, err);
+        }
+      }
+      message.success(`Exported ${exported} of ${selectedRowKeys.length} diagrams`);
+      setSelectedRowKeys([]);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        message.error(`Export failed: ${err.message}`);
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const filtered = search
     ? diagrams.filter((d) => {
         const s = search.toLowerCase();
@@ -133,11 +241,16 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
       })
     : diagrams;
 
-  const statusOptions = ['Draft', 'In Progress', 'Review', 'Approved', 'Published'];
+  const handleStateTransition = async (record: DiagramMeta, action: string) => {
+    const rule = STATE_TRANSITIONS.find(t => t.action === action && t.from === (record.status || 'draft').toLowerCase());
+    if (rule) {
+      setPendingStateAction({ action, to: rule.to });
+    }
+  };
 
   // Compute unique filter values for column filters
   const nameFilters = useMemo(() => {
-    const names = [...new Set(diagrams.map((d) => d.businessFlow || d.name).filter(Boolean))].sort();
+    const names = [...new Set(diagrams.map((d) => d.name).filter(Boolean))].sort();
     return names.map((n) => ({ text: n, value: n }));
   }, [diagrams]);
   const statusFilters = useMemo(() => {
@@ -178,15 +291,24 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
       title: 'Diagram Name',
       dataIndex: 'name',
       key: 'name',
+      width: 300,
+      ellipsis: true,
       sorter: (a: DiagramMeta, b: DiagramMeta) => a.name.localeCompare(b.name),
       filters: nameFilters,
-      onFilter: (value: any, record: DiagramMeta) => (record.businessFlow || record.name) === value,
+      onFilter: (value: any, record: DiagramMeta) => record.name === value,
       filterSearch: true,
-      render: (name: string, record: DiagramMeta) => (
-        <Button type="link" size="small" onClick={() => onOpenDiagram?.(record._id)}>
-          {record.businessFlow || name}
-        </Button>
-      ),
+      render: (name: string, record: DiagramMeta) =>
+        editingId === record._id ? (
+          <Input
+            size="small"
+            value={editFields.name}
+            onChange={(e) => setEditFields((f) => ({ ...f, name: e.target.value }))}
+          />
+        ) : (
+          <Button type="link" size="small" onClick={() => onOpenDiagram?.(record._id)}>
+            {name}
+          </Button>
+        ),
     },
     {
       title: 'Description',
@@ -208,23 +330,30 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 130,
+      width: 160,
       filters: statusFilters,
       onFilter: (value: any, record: DiagramMeta) => (record.status || 'Draft') === value,
-      render: (val: string, record: DiagramMeta) =>
-        editingId === record._id ? (
+      render: (val: string, record: DiagramMeta) => {
+        const currentState = (val || 'draft').toLowerCase();
+        const actions = getAllowedActions(userRole, currentState);
+        const displayState = (editingId === record._id && pendingStateAction) ? pendingStateAction.to : (val || 'draft');
+        const tagColor = displayState === 'published' ? 'green' : displayState === 'approved' ? 'blue' : displayState === 'submitted' ? 'orange' : displayState === 'staged' ? 'purple' : displayState === 'deleted' ? 'red' : 'default';
+        if (!actions.length || readOnly || editingId !== record._id) {
+          return <Tag color={tagColor}>{displayState}</Tag>;
+        }
+        return (
           <Select
             size="small"
-            value={editFields.status}
-            onChange={(v) => setEditFields((f) => ({ ...f, status: v }))}
-            options={statusOptions.map((s) => ({ label: s, value: s }))}
+            value={pendingStateAction ? pendingStateAction.action : '__current__'}
             style={{ width: '100%' }}
+            onChange={(action) => handleStateTransition(record, action)}
+            options={[
+              { label: <Tag color={tagColor}>{val || 'draft'}</Tag>, value: '__current__', disabled: true },
+              ...actions.map(a => ({ label: `${a.action} → ${a.to}`, value: a.action })),
+            ]}
           />
-        ) : (
-          <Tag color={val === 'Published' ? 'green' : val === 'Approved' ? 'blue' : val === 'Review' ? 'orange' : 'default'}>
-            {val || 'Draft'}
-          </Tag>
-        ),
+        );
+      },
     },
     {
       title: 'Line of Business',
@@ -347,7 +476,7 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
           {editingId === record._id ? (
             <>
               <Button size="small" type="primary" onClick={() => handleInlineSave(record._id)}>Save</Button>
-              <Button size="small" onClick={() => setEditingId(null)}>Cancel</Button>
+              <Button size="small" onClick={() => { setEditingId(null); setPendingStateAction(null); }}>Cancel</Button>
             </>
           ) : (
             <>
@@ -378,26 +507,56 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
         onChange={handleBatchFilesSelected}
       />
       <div className="flex items-center justify-between mb-3">
-        <Input
-          placeholder="Search diagrams..."
-          prefix={<SearchOutlined />}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          allowClear
-          style={{ width: 300 }}
-        />
-        <Button icon={<UploadOutlined />} onClick={handleBatchImport} disabled={readOnly}>
-          Batch Import
-        </Button>
+        <div className="flex items-center gap-3">
+          <Input
+            placeholder="Search diagrams..."
+            prefix={<SearchOutlined />}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            allowClear
+            style={{ width: 300 }}
+          />
+          <Typography.Text type="secondary" className="text-xs whitespace-nowrap">
+            {tableFilteredCount !== null ? tableFilteredCount : filtered.length} of {diagrams.length} diagrams
+          </Typography.Text>
+        </div>
+        <Space>
+          {canImportExport && <Button
+            icon={<DownloadOutlined />}
+            onClick={handleBatchExport}
+            disabled={!selectedRowKeys.length || exporting}
+            loading={exporting}
+          >
+            Export ({selectedRowKeys.length})
+          </Button>}
+          {canImportExport && <Button icon={<UploadOutlined />} onClick={handleBatchImport} disabled={readOnly}>
+            Batch Import
+          </Button>}
+        </Space>
       </div>
       <Table
         dataSource={filtered}
-        columns={columns}
+        columns={columns.map((col: any) => ({
+          ...col,
+          width: colWidths[col.key] || col.width,
+          onHeaderCell: (column: any) => ({
+            width: colWidths[column.key] || column.width,
+            onResize: (w: number) => setColWidths((prev) => ({ ...prev, [column.key]: w })),
+          }),
+        }))}
+        components={{ header: { cell: ResizableHeaderCell } }}
         rowKey="_id"
         size="small"
         loading={loading}
         pagination={{ pageSize: 20, showSizeChanger: true }}
         scroll={{ y: 'calc(100vh - 260px)' }}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys),
+        }}
+        onChange={(_pagination, _filters, _sorter, extra) => {
+          setTableFilteredCount(extra.currentDataSource.length);
+        }}
       />
     </div>
   );

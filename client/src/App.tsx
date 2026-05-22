@@ -212,6 +212,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [activeDiagram, setActiveDiagram] = useState<ActiveDiagram | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   // Sidebar
   const [refreshTick, setRefreshTick] = useState(0);
@@ -620,6 +622,23 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     setSelectedCaps([]);
   }, []);
 
+  // Rename diagram
+  const handleRenameDiagram = useCallback(async (newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed) { setEditingName(false); return; }
+    if (activeDiagram?._id) {
+      try {
+        await updateDiagram(activeDiagram._id, { name: trimmed });
+        setActiveDiagram((prev) => prev ? { ...prev, name: trimmed } : prev);
+        refresh();
+        message.success('Diagram renamed');
+      } catch (e: any) {
+        message.error(e.response?.data?.error || e.message);
+      }
+    }
+    setEditingName(false);
+  }, [activeDiagram, message, refresh]);
+
   return (
     <Layout className="h-screen overflow-hidden">
       {/* Hidden file input for local upload */}
@@ -647,9 +666,31 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               ) : (
                 <FolderOpenOutlined className="text-green-400 text-xs" />
               )}
-              <Text className="!text-gray-300 text-sm">
-                {activeDiagram?.name || diagramMeta.businessFlow || activeFileName}
-              </Text>
+              {editingName && activeDiagram ? (
+                <Input
+                  size="small"
+                  autoFocus
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  onPressEnter={() => handleRenameDiagram(nameInput)}
+                  onBlur={() => handleRenameDiagram(nameInput)}
+                  style={{ width: 200 }}
+                  className="!bg-gray-700 !text-white !border-blue-400"
+                />
+              ) : (
+                <Text
+                  className="!text-gray-300 text-sm cursor-pointer hover:!text-white"
+                  onClick={() => {
+                    if (activeDiagram && !readOnly) {
+                      setNameInput(activeDiagram.name);
+                      setEditingName(true);
+                    }
+                  }}
+                  title={activeDiagram && !readOnly ? 'Click to rename' : undefined}
+                >
+                  {activeDiagram?.name || activeFileName}
+                </Text>
+              )}
               {isDirty && <span className="dirty-indicator" />}
             </div>
           )}
@@ -756,7 +797,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         allApplicationNames={allAppNames}
                         allTaskNames={allTaskNames}
                         allActorNames={allActorNames}
-                        diagramName={diagramMeta.businessFlow || undefined}
+                        diagramName={activeDiagram?.name || undefined}
                         onNavigateToFactory={handleNavigateToFactory}
                         onTaskSelect={setSelectedDiagramTask}
                       />
@@ -767,57 +808,57 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               {
                 key: 'diagramFactory',
                 label: <span><DatabaseOutlined /> BPMN Factory</span>,
-                children: <BpmnFactory onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} />,
+                children: <BpmnFactory onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} refreshTick={refreshTick} userRole={user.role} />,
               },
               {
                 key: 'tasks',
                 label: <span><AppstoreOutlined /> Task Factory</span>,
-                children: <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} />,
+                children: <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} />,
               },
               {
                 key: 'applications',
                 label: <span><LaptopOutlined /> Application Factory</span>,
-                children: <ApplicationFactory defaultSearch={factorySearch.applications} />,
+                children: <ApplicationFactory defaultSearch={factorySearch.applications} userRole={user.role} />,
               },
               {
                 key: 'capabilities',
                 label: <span><ClusterOutlined /> Capability Factory</span>,
-                children: <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} />,
+                children: <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} />,
               },
               {
                 key: 'actors',
                 label: <span><UserOutlined /> Actor Factory</span>,
-                children: <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
+                children: <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
               },
               {
                 key: 'businessFlows',
                 label: <span><BranchesOutlined /> Business Flow Factory</span>,
-                children: <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} readOnly={readOnly} />,
+                children: <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} readOnly={readOnly} userRole={user.role} />,
               },
               {
                 key: 'products',
                 label: <span><ShoppingOutlined /> Product Factory</span>,
-                children: <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
+                children: <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
               },
               {
                 key: 'linesOfBusiness',
                 label: <span><BankOutlined /> LOB Factory</span>,
-                children: <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
+                children: <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
               },
               {
                 key: 'channels',
                 label: <span><PhoneOutlined /> Channel Factory</span>,
-                children: <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
+                children: <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
               },
               {
                 key: 'domains',
                 label: <span><GlobalOutlined /> Domain Factory</span>,
-                children: <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
+                children: <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
               },
               {
                 key: 'subdomains',
                 label: <span><ApartmentOutlined /> Subdomain Factory</span>,
-                children: <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} />,
+                children: <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
               },
             ]}
           />
@@ -935,7 +976,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 <div className="flex-1 overflow-y-auto min-h-0">
                   <DiagramList
                     selectedId={activeDiagram?._id ?? null}
-                    onSelect={handleSelectDiagram}
+                    onSelect={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }}
                     onRefresh={refresh}
                     refreshTick={refreshTick}
                     searchQuery={searchQuery}

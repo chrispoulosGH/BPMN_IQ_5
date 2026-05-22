@@ -10,9 +10,10 @@ interface TaskFactoryProps {
   onItemAdded?: () => void;
   onNavigateToFactory?: (tab: string, search: string) => void;
   readOnly?: boolean;
+  userRole?: string | null;
 }
 
-export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded, onNavigateToFactory, readOnly }: TaskFactoryProps = {}) {
+export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded, onNavigateToFactory, readOnly, userRole }: TaskFactoryProps = {}) {
   const { message, modal } = AntApp.useApp();
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [refData, setRefData] = useState<ReferenceData | null>(null);
@@ -171,7 +172,7 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
           onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
         />
         <div className="flex-1" />
-        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+        {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Task
         </Button>}
       </div>

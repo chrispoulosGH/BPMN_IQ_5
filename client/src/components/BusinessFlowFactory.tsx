@@ -8,9 +8,10 @@ interface BusinessFlowFactoryProps {
   onItemAdded?: () => void;
   onOpenDiagram?: (diagramId: string) => void;
   readOnly?: boolean;
+  userRole?: string | null;
 }
 
-export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpenDiagram, readOnly }: BusinessFlowFactoryProps) {
+export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpenDiagram, readOnly, userRole }: BusinessFlowFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<RefItem[]>([]);
   const [flowMap, setFlowMap] = useState<Record<string, string>>({});
@@ -128,7 +129,7 @@ export default function BusinessFlowFactory({ defaultSearch, onItemAdded, onOpen
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
-        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+        {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Business Flow
         </Button>}
       </div>

@@ -6,9 +6,10 @@ import { getCapabilities, createCapability, updateCapability, deleteCapability, 
 interface CapabilitiesFactoryProps {
   onNavigateToFactory?: (tab: string, search: string) => void;
   readOnly?: boolean;
+  userRole?: string | null;
 }
 
-export default function CapabilitiesFactory({ onNavigateToFactory, readOnly }: CapabilitiesFactoryProps = {}) {
+export default function CapabilitiesFactory({ onNavigateToFactory, readOnly, userRole }: CapabilitiesFactoryProps = {}) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<CapabilityItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -126,7 +127,7 @@ export default function CapabilitiesFactory({ onNavigateToFactory, readOnly }: C
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
-        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
+        {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Capability
         </Button>}
       </div>

@@ -767,7 +767,6 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       modeler.importXML(source).then(async () => {
         // Abort if a newer import was started while this one was in progress
         if (importVersionRef.current !== version) return;
-        importingRef.current = false;
         // Guard: ensure modeler is still alive
         if (!modelerRef.current) return;
         try {
@@ -785,6 +784,8 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         validateLaneActors(modeler);
         // Render application overlays
         renderAppOverlaysRef.current();
+        // Only now allow commandStack changes to propagate to parent
+        importingRef.current = false;
       }).catch((err: Error) => {
         if (importVersionRef.current !== version) return;
         importingRef.current = false;

@@ -1,9 +1,11 @@
 const mongoose = require('mongoose');
+const { VALID_STATES } = require('../services/stateTransitions');
 
 // Shared schema for simple name-only reference collections
 const refSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
   owner: { type: String, trim: true, default: null },
+  state: { type: String, enum: VALID_STATES, default: 'draft' },
 }, { timestamps: true });
 
 // Richer schema for Application (ITAP data)
@@ -30,6 +32,7 @@ const applicationSchema = new mongoose.Schema({
   pciDataStored: { type: String, default: null },
   userInterface: { type: String, default: null },
   owner: { type: String, trim: true, default: null },
+  state: { type: String, enum: VALID_STATES, default: 'draft' },
 }, { timestamps: true });
 
 const BusinessFlow = mongoose.model('BusinessFlow', refSchema);

@@ -159,10 +159,12 @@ function parseDiagramMetadata(xml) {
   return meta;
 }
 
-// GET /api/diagrams — list all (optionally filter by name)
+// GET /api/diagrams — list all (Viewers only see published)
 router.get('/', async (req, res) => {
   try {
-    const diagrams = await Diagram.find({}, '-xml').sort({ updatedAt: -1 });
+    const role = req.currentUser?.role;
+    const filter = (!role || role === 'Viewer') ? { status: 'published' } : {};
+    const diagrams = await Diagram.find(filter, '-xml').sort({ updatedAt: -1 });
     res.json(diagrams);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -189,20 +191,22 @@ router.get('/search', async (req, res) => {
   if (!q || !q.trim()) {
     return res.status(400).json({ error: 'Query parameter "q" is required.' });
   }
+  const role = req.currentUser?.role;
+  const isViewer = !role || role === 'Viewer';
   try {
     // Try full-text search first
+    const textFilter = isViewer ? { $text: { $search: q.trim() }, status: 'published' } : { $text: { $search: q.trim() } };
     let results = await Diagram.find(
-      { $text: { $search: q.trim() } },
+      textFilter,
       { score: { $meta: 'textScore' }, xml: 0 }
     ).sort({ score: { $meta: 'textScore' } });
     // Fallback to regex (partial/prefix match) if text search yields nothing
     if (!results.length) {
       const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(escaped, 'i');
-      results = await Diagram.find(
-        { $or: [{ name: regex }, { businessFlow: regex }, { lineOfBusiness: regex }, { domain: regex }, { subdomain: regex }, { product: regex }, { channel: regex }, { status: regex }, { createdBy: regex }, { 'tasks.name': regex }] },
-        { xml: 0 }
-      ).limit(50);
+      const orConditions = [{ name: regex }, { businessFlow: regex }, { lineOfBusiness: regex }, { domain: regex }, { subdomain: regex }, { product: regex }, { channel: regex }, { status: regex }, { createdBy: regex }, { 'tasks.name': regex }];
+      const regexFilter = isViewer ? { $and: [{ $or: orConditions }, { status: 'published' }] } : { $or: orConditions };
+      results = await Diagram.find(regexFilter, { xml: 0 }).limit(50);
     }
     res.json(results);
   } catch (err) {
@@ -329,7 +333,7 @@ router.post('/batch', async (req, res) => {
         name,
         xml: cleanXml,
         tasks,
-        status: 'Staged',
+        status: 'staged',
         sourcedFrom: fileName || null,
         createdBy: createdBy || null,
         updatedBy: createdBy || null,

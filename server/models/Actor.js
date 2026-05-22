@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { VALID_STATES } = require('../services/stateTransitions');
 
 const actorSchema = new mongoose.Schema(
   {
@@ -6,6 +7,7 @@ const actorSchema = new mongoose.Schema(
     role: { type: String, trim: true, default: '' },
     description: { type: String, default: '' },
     owner: { type: String, trim: true, default: null },
+    state: { type: String, enum: VALID_STATES, default: 'draft' },
   },
   { timestamps: true }
 );

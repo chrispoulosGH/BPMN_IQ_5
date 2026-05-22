@@ -11,7 +11,9 @@ const tasksRouter = require('./routes/tasks');
 const actorsRouter = require('./routes/actors');
 const authRouter = require('./routes/auth');
 const adminRouter = require('./routes/admin');
+const statesRouter = require('./routes/states');
 const Session = require('./models/Session');
+const User = require('./models/User');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -49,7 +51,9 @@ app.use('/api', async (req, res, next) => {
     res.clearCookie('bpmn_iq_sid');
     return res.status(401).json({ error: 'Session expired. Please log in again.' });
   }
-  req.currentUser = { userId: sess.userId, displayName: sess.displayName };
+  // Resolve user role
+  const userDoc = await User.findOne({ userId: sess.userId }).lean();
+  req.currentUser = { userId: sess.userId, displayName: sess.displayName, role: userDoc?.role || null };
   next();
 });
 
@@ -60,6 +64,7 @@ app.use('/api/capabilities', capabilitiesRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/actors', actorsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/states', statesRouter);
 
 // Connect to MongoDB then start server
 mongoose

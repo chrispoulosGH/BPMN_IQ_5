@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { VALID_STATES } = require('../services/stateTransitions');
 
 const taskSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
@@ -11,6 +12,7 @@ const taskSchema = new mongoose.Schema({
   applications: [{ type: String, trim: true }],
   sequence: { type: Number },
   owner: { type: String, trim: true, default: null },
+  state: { type: String, enum: VALID_STATES, default: 'draft' },
 }, { timestamps: true });
 
 // A task is unique by name + businessFlow + product

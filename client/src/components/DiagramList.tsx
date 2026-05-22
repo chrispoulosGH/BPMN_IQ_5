@@ -80,9 +80,11 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
           onClose={() => setError(null)}
         />
       )}
+      <Text type="secondary" className="text-xs px-2 mb-1 block">{diagrams.length} diagrams</Text>
       <List
         loading={loading}
         dataSource={diagrams}
+        pagination={false}
         locale={{
           emptyText: (
             <Empty
