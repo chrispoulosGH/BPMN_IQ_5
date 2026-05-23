@@ -101,8 +101,8 @@ export const getBusinessFlowMap = (): Promise<Record<string, string>> =>
 export const getRefItems = (collection: string): Promise<RefItem[]> =>
   api.get(`/tasks/reference/${collection}`).then((r) => r.data);
 
-export const createRefItem = (collection: string, name: string, owner?: string): Promise<RefItem> =>
-  api.post(`/tasks/reference/${collection}`, { name, owner }).then((r) => r.data);
+export const createRefItem = (collection: string, name: string, owner?: string, state?: string): Promise<RefItem> =>
+  api.post(`/tasks/reference/${collection}`, { name, owner, state }).then((r) => r.data);
 
 export const updateRefItem = (collection: string, id: string, name: string, owner?: string): Promise<RefItem> =>
   api.put(`/tasks/reference/${collection}/${id}`, { name, owner }).then((r) => r.data);
@@ -139,5 +139,12 @@ export const deleteActor = (id: string): Promise<{ success: boolean }> =>
 // ── State Transitions ───────────────────────────────────────
 export const transitionState = (collection: string, id: string, action: string, role: string): Promise<{ previousState: string; newState: string; record: any }> =>
   api.post('/states/transition', { collection, id, action, role }).then((r) => r.data);
+
+// ── Dashboard ───────────────────────────────────────────────
+export const getDashboardTaskRisk = (): Promise<any[]> =>
+  api.get('/dashboard/task-risk').then((r) => r.data);
+
+export const getDashboardFlowRisk = (): Promise<any[]> =>
+  api.get('/dashboard/flow-risk').then((r) => r.data);
 
 export default api;

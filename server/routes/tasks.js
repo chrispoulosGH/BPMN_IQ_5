@@ -34,6 +34,7 @@ router.post('/reference/:collection', async (req, res) => {
   try {
     const data = { name: req.body.name };
     if (req.body.owner !== undefined) data.owner = req.body.owner;
+    if (req.body.state !== undefined) data.state = req.body.state;
     const item = await Model.create(data);
     res.status(201).json(item);
   } catch (err) {

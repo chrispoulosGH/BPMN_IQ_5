@@ -14,7 +14,6 @@ import {
   Spin,
 } from 'antd';
 import {
-  PlusOutlined,
   SaveOutlined,
   UploadOutlined,
   DownloadOutlined,
@@ -37,6 +36,7 @@ import {
   GlobalOutlined,
   ApartmentOutlined,
   BranchesOutlined,
+  DashboardOutlined,
   RightOutlined,
   LeftOutlined,
   LogoutOutlined,
@@ -54,6 +54,8 @@ import BusinessFlowFactory from './components/BusinessFlowFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
 import ActorFactory from './components/ActorFactory';
 import BpmnFactory from './components/BpmnFactory';
+import Dashboard from './components/Dashboard';
+import AddToFactoryModal from './components/AddToFactoryModal';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
 import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler } from './api';
@@ -209,11 +211,14 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
   // Editor state
   const [currentXml, setCurrentXml] = useState<string>(EMPTY_DIAGRAM);
+  const [importTrigger, setImportTrigger] = useState(0);
   const [activeDiagram, setActiveDiagram] = useState<ActiveDiagram | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [canvasDiagramName, setCanvasDiagramName] = useState<string | null>(null);
+  const [showNewDiagramPrompt, setShowNewDiagramPrompt] = useState(false);
 
   // Sidebar
   const [refreshTick, setRefreshTick] = useState(0);
@@ -230,6 +235,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
   // Modals
   const [showSaveDb, setShowSaveDb] = useState(false);
+  const [showAddToFactory, setShowAddToFactory] = useState(false);
 
   // Capability matching
   const [capMatches, setCapMatches] = useState<CapabilityMatch[]>([]);
@@ -316,15 +322,22 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   }, [diagramMeta]);
 
   const handleXmlChange = useCallback((xml: string) => {
-    setCurrentXml(xml);
+    currentXmlRef.current = xml;
+    setIsDirty(true);
+  }, []);
+
+  // Lightweight dirty signal from canvas edits (drag, property changes, etc.)
+  // Does NOT export XML — avoids React re-render interfering with bpmn-js rendering
+  const handleEditorDirty = useCallback(() => {
     setIsDirty(true);
   }, []);
 
   // ─── Fuzzy Matching ─────────────────────────────────────────
 
   /** Trigger fuzzy match on current diagram's applications */
-  const runAppFuzzyMatch = useCallback(() => {
-    const apps = extractApplicationsFromXml(currentXml);
+  const runAppFuzzyMatch = useCallback(async () => {
+    const xml = await editorRef.current?.getXml() || currentXmlRef.current;
+    const apps = extractApplicationsFromXml(xml);
     if (!apps.length) {
       message.info('No applications found in the current diagram');
       return;
@@ -341,7 +354,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     }
     setAppMatchResults(fuzzy);
     setShowAppMatch(true);
-  }, [currentXml, allAppNames, message]);
+  }, [allAppNames, message]);
 
   /** Handle approved application matches */
   const handleAppMatchApprove = useCallback(async (approved: AppMatchResult[]) => {
@@ -353,8 +366,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   }, [message]);
 
   /** Trigger fuzzy match on current diagram's task names */
-  const runTaskFuzzyMatch = useCallback(() => {
-    const tasks = extractTaskNames(currentXml);
+  const runTaskFuzzyMatch = useCallback(async () => {
+    const xml = await editorRef.current?.getXml() || currentXmlRef.current;
+    const tasks = extractTaskNames(xml);
     if (!tasks.length) {
       message.info('No tasks found in the current diagram');
       return;
@@ -371,7 +385,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     }
     setTaskMatchResults(fuzzy);
     setShowTaskMatch(true);
-  }, [currentXml, allTaskNames, message]);
+  }, [allTaskNames, message]);
 
   /** Handle approved task matches */
   const handleTaskMatchApprove = useCallback(async (approved: AppMatchResult[]) => {
@@ -422,10 +436,13 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       const reader = new FileReader();
       reader.onload = (ev) => {
         const xml = ev.target?.result as string;
+        const meta = extractDiagramMetadata(xml);
         setCurrentXml(xml);
-        setDiagramMeta(extractDiagramMetadata(xml));
+        setImportTrigger(t => t + 1);
+        setDiagramMeta(meta);
         setActiveDiagram(null);
         setActiveFileName(file.name);
+        setCanvasDiagramName(null); // will use meta.businessFlow via diagramName prop
         setIsDirty(false);
         message.success(`Opened: ${file.name}`);
       };
@@ -435,8 +452,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     [message],
   );
 
-  const handleDownloadLocal = useCallback(() => {
-    const blob = new Blob([currentXml], { type: 'application/xml' });
+  const handleDownloadLocal = useCallback(async () => {
+    const xml = await editorRef.current?.getXml() || currentXmlRef.current;
+    const blob = new Blob([xml], { type: 'application/xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -444,19 +462,20 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     a.click();
     URL.revokeObjectURL(url);
     message.success('Downloaded to your computer');
-  }, [currentXml, activeFileName, activeDiagram, message]);
+  }, [activeFileName, activeDiagram, message]);
 
   const handleSaveToServer = useCallback(async () => {
     const filename = activeFileName || `${activeDiagram?.name || 'diagram'}.bpmn`;
     try {
-      const result = await saveFile(filename.replace('.bpmn', ''), currentXml);
+      const xml = await editorRef.current?.getXml() || currentXmlRef.current;
+      const result = await saveFile(filename.replace('.bpmn', ''), xml);
       message.success(`Saved to server: ${result.filename}`);
       setActiveFileName(result.filename);
       refresh();
     } catch (err: any) {
       message.error(err.message);
     }
-  }, [currentXml, activeFileName, activeDiagram, message, refresh]);
+  }, [activeFileName, activeDiagram, message, refresh]);
 
   // ─── MongoDB Operations ─────────────────────────────────────
   const handleSelectDiagram = useCallback(
@@ -470,9 +489,11 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
           tags: diagram.tags,
         });
         setCurrentXml(diagram.xml);
+        setImportTrigger(t => t + 1);
         setDiagramMeta(extractDiagramMetadata(diagram.xml));
         savedXmlRef.current = diagram.xml;
         setActiveFileName(null);
+        setCanvasDiagramName(null);
         setIsDirty(false);
         message.success(`Loaded from DB: ${diagram.name}`);
         // Show previously assigned capabilities (not as matches)
@@ -541,13 +562,15 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const handleSaveDb = useCallback(
     async ({ name, description, tags, changeNote }: { name: string; description: string; tags: string[]; changeNote?: string }) => {
       try {
+        const latestXml = await editorRef.current?.getXml() || currentXmlRef.current;
+        currentXmlRef.current = latestXml;
         if (activeDiagram?._id) {
-          const autoNote = changeNote || generateChangeNote(savedXmlRef.current, currentXmlRef.current, savedCapsRef.current, selectedCapsRef.current);
+          const autoNote = changeNote || generateChangeNote(savedXmlRef.current, latestXml, savedCapsRef.current, selectedCapsRef.current);
           const updated = await updateDiagram(activeDiagram._id, {
             name,
             description,
             tags,
-            xml: currentXmlRef.current,
+            xml: latestXml,
             capabilities: selectedCapsRef.current,
             changeNote: { userId: CURRENT_USER, note: autoNote },
             updatedBy: CURRENT_USER,
@@ -561,7 +584,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
           setSavedCaps(selectedCapsRef.current);
           message.success(`Updated in DB: ${updated.name}`);
         } else {
-          const created = await createDiagram({ name, description, tags, xml: currentXmlRef.current, capabilities: selectedCapsRef.current, createdBy: CURRENT_USER, sourcedFrom: activeFileName || undefined });
+          const created = await createDiagram({ name, description, tags, xml: latestXml, capabilities: selectedCapsRef.current, createdBy: CURRENT_USER, sourcedFrom: activeFileName || undefined });
           setActiveDiagram({
             _id: created._id,
             name: created.name,
@@ -573,7 +596,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         }
         setIsDirty(false);
         setCapMatches([]);
-        savedXmlRef.current = currentXmlRef.current;
+        savedXmlRef.current = latestXml;
         editorRef.current?.validateTasks();
         refresh();
         setShowSaveDb(false);
@@ -584,13 +607,42 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     [activeDiagram, message, refresh],
   );
 
+  const handleAddToFactory = useCallback(
+    async ({ name, description, tags }: { name: string; description: string; tags: string[] }) => {
+      try {
+        const latestXml = await editorRef.current?.getXml() || currentXmlRef.current;
+        currentXmlRef.current = latestXml;
+        const created = await createDiagram({ name, description, tags, xml: latestXml, capabilities: selectedCapsRef.current, createdBy: CURRENT_USER, sourcedFrom: activeFileName || undefined });
+        setActiveDiagram({
+          _id: created._id,
+          name: created.name,
+          description: created.description,
+          tags: created.tags,
+        });
+        setSavedCaps(selectedCapsRef.current);
+        savedXmlRef.current = latestXml;
+        setIsDirty(false);
+        setShowAddToFactory(false);
+        message.success(`Added to BPMN Factory: ${created.name}`);
+        refresh();
+        setActiveTab('diagramFactory');
+      } catch (err: any) {
+        message.error(err.response?.data?.error || err.message);
+      }
+    },
+    [message, refresh, activeFileName],
+  );
+
   const handleQuickSaveDb = useCallback(async () => {
     if (!activeDiagram?._id) {
       setShowSaveDb(true);
       return;
     }
+    // Get latest XML from the editor
+    const latestXml = await editorRef.current?.getXml() || currentXmlRef.current;
+    currentXmlRef.current = latestXml;
     // Auto-generate change note from diffs (use refs for always-current values)
-    let noteValue = generateChangeNote(savedXmlRef.current, currentXmlRef.current, savedCapsRef.current, selectedCapsRef.current);
+    let noteValue = generateChangeNote(savedXmlRef.current, latestXml, savedCapsRef.current, selectedCapsRef.current);
     Modal.confirm({
       title: 'Change Note',
       content: (
@@ -611,15 +663,22 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     });
   }, [activeDiagram, handleSaveDb]);
 
-  // New diagram
+  // New diagram — show name prompt
   const handleNew = useCallback(() => {
+    setShowNewDiagramPrompt(true);
+  }, []);
+
+  const handleNewDiagramConfirm = useCallback((name: string) => {
     setActiveDiagram(null);
     setActiveFileName(null);
+    setCanvasDiagramName(name);
     setCurrentXml(EMPTY_DIAGRAM);
+    setImportTrigger(t => t + 1);
     setDiagramMeta({});
     setIsDirty(false);
     setCapMatches([]);
     setSelectedCaps([]);
+    setShowNewDiagramPrompt(false);
   }, []);
 
   // Rename diagram
@@ -698,10 +757,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
         {/* Toolbar */}
         <Space size={4} className="toolbar-actions">
-          <Tooltip title="New Diagram">
-            <Button type="text" icon={<PlusOutlined />} onClick={handleNew} className="toolbar-btn" disabled={readOnly} />
-          </Tooltip>
-
           <div className="toolbar-divider" />
 
           <Tooltip title="Open .bpmn from computer">
@@ -793,13 +848,20 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                       <BpmnEditor
                         ref={editorRef}
                         xml={currentXml}
+                        importTrigger={importTrigger}
                         onXmlChange={handleXmlChange}
+                        onDirty={handleEditorDirty}
                         allApplicationNames={allAppNames}
                         allTaskNames={allTaskNames}
                         allActorNames={allActorNames}
-                        diagramName={activeDiagram?.name || undefined}
+                        diagramName={activeDiagram?.name || diagramMeta.businessFlow || activeFileName?.replace(/\.bpmn$/i, '') || canvasDiagramName || undefined}
+                        isInFactory={!!activeDiagram?._id}
+                        readOnly={readOnly}
                         onNavigateToFactory={handleNavigateToFactory}
                         onTaskSelect={setSelectedDiagramTask}
+                        onAddToFactory={() => setShowAddToFactory(true)}
+                        onNewDiagram={handleNew}
+                        onDiagramNameChange={(name) => setCanvasDiagramName(name)}
                       />
                     </div>
                   </div>
@@ -818,7 +880,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               {
                 key: 'applications',
                 label: <span><LaptopOutlined /> Application Factory</span>,
-                children: <ApplicationFactory defaultSearch={factorySearch.applications} userRole={user.role} />,
+                children: <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} />,
               },
               {
                 key: 'capabilities',
@@ -859,6 +921,11 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 key: 'subdomains',
                 label: <span><ApartmentOutlined /> Subdomain Factory</span>,
                 children: <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+              },
+              {
+                key: 'dashboard',
+                label: <span><DashboardOutlined /> Dashboards</span>,
+                children: <Dashboard />,
               },
             ]}
           />
@@ -940,6 +1007,21 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 savedCaps={savedCaps}
               />
             </Card>
+
+            {/* ─ Add to BPMN Factory (visible when diagram not in factory) ─ */}
+            {!activeDiagram && currentXml !== EMPTY_DIAGRAM && (
+              <div className="!mx-3 !mb-3">
+                <Button
+                  type="primary"
+                  block
+                  icon={<DatabaseOutlined />}
+                  onClick={() => setShowAddToFactory(true)}
+                  disabled={readOnly}
+                >
+                  Add to BPMN Factory
+                </Button>
+              </div>
+            )}
 
             {/* ─ MongoDB Card ─ */}
             <Card
@@ -1025,6 +1107,40 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         onApprove={handleTaskMatchApprove}
         onClose={() => setShowTaskMatch(false)}
       />
+
+      <AddToFactoryModal
+        open={showAddToFactory}
+        initialName={canvasDiagramName || activeFileName?.replace(/\.bpmn$/i, '') || diagramMeta.businessFlow || ''}
+        onSave={handleAddToFactory}
+        onClose={() => setShowAddToFactory(false)}
+      />
+
+      {/* New Diagram Name Prompt */}
+      <Modal
+        title="New Diagram"
+        open={showNewDiagramPrompt}
+        onOk={() => {
+          const val = (document.getElementById('new-diagram-name-input') as HTMLInputElement)?.value?.trim();
+          if (val) handleNewDiagramConfirm(val);
+        }}
+        onCancel={() => setShowNewDiagramPrompt(false)}
+        okText="Create"
+        destroyOnClose
+      >
+        <div className="mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Diagram Name <span className="text-red-500">*</span></label>
+          <Input
+            id="new-diagram-name-input"
+            placeholder="Enter diagram name"
+            autoFocus
+            onPressEnter={(e) => {
+              const val = (e.target as HTMLInputElement).value.trim();
+              if (val) handleNewDiagramConfirm(val);
+            }}
+          />
+          <div className="text-xs text-gray-500 mt-1">This name will appear as the diagram title on the canvas.</div>
+        </div>
+      </Modal>
 
       {hasAdminAccess && <AdminPanel open={showAdmin} onClose={() => setShowAdmin(false)} />}
     </Layout>

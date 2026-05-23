@@ -12,6 +12,7 @@ const actorsRouter = require('./routes/actors');
 const authRouter = require('./routes/auth');
 const adminRouter = require('./routes/admin');
 const statesRouter = require('./routes/states');
+const dashboardRouter = require('./routes/dashboard');
 const Session = require('./models/Session');
 const User = require('./models/User');
 
@@ -65,6 +66,7 @@ app.use('/api/tasks', tasksRouter);
 app.use('/api/actors', actorsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/states', statesRouter);
+app.use('/api/dashboard', dashboardRouter);
 
 // Connect to MongoDB then start server
 mongoose

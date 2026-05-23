@@ -38,14 +38,22 @@ export interface BpmnEditorHandle {
 
 interface BpmnEditorProps {
   xml: string;
+  importTrigger?: number;
   onXmlChange?: (xml: string) => void;
+  onDirty?: () => void;
   showProperties?: boolean;
   allApplicationNames?: string[];
   allTaskNames?: string[];
   allActorNames?: string[];
   diagramName?: string;
+  isInFactory?: boolean;
+  readOnly?: boolean;
   onNavigateToFactory?: (tab: string, searchTerm: string, mode?: 'view' | 'add', extra?: { applications?: string[]; actor?: string }) => void;
   onTaskSelect?: (task: { name: string; id: string } | null) => void;
+  onAddToFactory?: () => void;
+  onDiagramNameClick?: () => void;
+  onNewDiagram?: () => void;
+  onDiagramNameChange?: (name: string) => void;
 }
 
 const DARK_ORANGE = '#cc7000';
@@ -58,7 +66,7 @@ function isActivityType(type?: string): boolean {
 }
 
 const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
-  ({ xml, onXmlChange, showProperties = true, allApplicationNames = [], allTaskNames = [], allActorNames = [], diagramName, onNavigateToFactory, onTaskSelect }, ref) => {
+  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allTaskNames = [], allActorNames = [], diagramName, isInFactory, readOnly, onNavigateToFactory, onTaskSelect, onAddToFactory, onDiagramNameClick, onNewDiagram, onDiagramNameChange }, ref) => {
     const canvasRef = useRef<HTMLDivElement>(null);
     const propertiesRef = useRef<HTMLDivElement>(null);
     const modelerRef = useRef<any>(null);
@@ -82,6 +90,9 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     const [selectedApp, setSelectedApp] = useState<{ name: string; taskName: string; taskId: string } | null>(null);
     const [selectedTask, setSelectedTask] = useState<{ name: string; id: string } | null>(null);
     const [selectedLane, setSelectedLane] = useState<{ name: string; id: string } | null>(null);
+    const [diagramSelected, setDiagramSelected] = useState(false);
+    const [editingDiagramName, setEditingDiagramName] = useState(false);
+    const [editNameValue, setEditNameValue] = useState('');
 
     // Keep the latest values in refs to avoid stale closures
     xmlRef.current = xml;
@@ -232,12 +243,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
 
       modeler.on('commandStack.changed', async () => {
         if (importingRef.current) return;
-        try {
-          const { xml: updated } = await modeler.saveXML({ format: true });
-          onXmlChange?.(updated);
-        } catch {
-          // ignore save errors during rapid edits
-        }
+        onDirty?.();
       });
 
       // Load valid task names for autocomplete
@@ -542,6 +548,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       // Track element selection – show task link when a task/activity is clicked
       modeler.on('element.click', (event: any) => {
         setSelectedApp(null);
+        setDiagramSelected(false);
         const el = event.element;
         const boType = el?.businessObject?.$type || '';
         if (el && isActivityType(boType)) {
@@ -756,11 +763,11 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Import XML when it changes from outside
+    // Import XML only when a new diagram is loaded (triggered by importTrigger)
     useEffect(() => {
       const modeler = modelerRef.current;
       if (!modeler) return;
-      const source = xml || EMPTY_DIAGRAM;
+      const source = xmlRef.current || EMPTY_DIAGRAM;
       // Increment version to detect stale imports (prevents race condition)
       const version = ++importVersionRef.current;
       importingRef.current = true;
@@ -791,7 +798,8 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         importingRef.current = false;
         console.error('[BpmnEditor] Import error:', err.message);
       });
-    }, [xml]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [importTrigger]);
 
     // Re-render overlays when application reference data loads/changes
     useEffect(() => {
@@ -910,11 +918,9 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
 
       // Remove old text annotations and associations from the diagram
       if (toRemove.length) {
-        importingRef.current = true;
         for (const el of toRemove) {
           try { modeling.removeElements([el]); } catch { /* ignore */ }
         }
-        importingRef.current = false;
       }
 
       if (migrated > 0) {
@@ -926,7 +932,6 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     async function validateAndColorTasks(modeler: any) {
       try {
         const elementRegistry = modeler.get('elementRegistry');
-        const modeling = modeler.get('modeling');
 
         // Find all task-type elements (Task, UserTask, ServiceTask, etc.)
         const taskElements = elementRegistry.filter((el: any) => {
@@ -940,36 +945,36 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         const { invalid } = await validateTasks(taskNames);
         const invalidSet = new Set(invalid.map((n: string) => n.toLowerCase().trim()));
 
-        // Apply colors — blue outline for all, orange text for invalid
-        importingRef.current = true;
+        // Apply colors via SVG — does NOT touch commandStack, no undo history, no re-render
         for (const el of taskElements) {
           const name = el.businessObject.name.toLowerCase().trim();
-          // All tasks get blue outline
-          modeling.setColor([el], { stroke: DEFAULT_STROKE });
-          // Color the text label orange for invalid tasks
           const gfx = elementRegistry.getGraphics(el);
-          if (gfx) {
-            const textGroup = gfx.querySelector('.djs-label') || gfx.querySelector('text');
-            if (textGroup) {
-              const texts = textGroup.tagName === 'text' ? [textGroup] : textGroup.querySelectorAll('text');
-              texts.forEach((t: SVGElement) => {
-                t.style.fill = invalidSet.has(name) ? DARK_ORANGE : '';
-              });
-            }
+          if (!gfx) continue;
+          // Blue outline for all tasks (directly on SVG rect, not via modeling.setColor)
+          const rect = gfx.querySelector('.djs-visual rect, .djs-visual path');
+          if (rect) (rect as SVGElement).style.stroke = DEFAULT_STROKE;
+          // Color the text label orange for invalid tasks
+          const textGroup = gfx.querySelector('.djs-label') || gfx.querySelector('text');
+          if (textGroup) {
+            const texts = (textGroup as Element).tagName === 'text' ? [textGroup as SVGElement] : Array.from((textGroup as Element).querySelectorAll('text')) as SVGElement[];
+            texts.forEach((t) => {
+              t.style.fill = invalidSet.has(name) ? DARK_ORANGE : '';
+            });
           }
         }
-        // Color all sequence flows, gateways, and events blue to match
+        // Color sequence flows, gateways, and events blue via SVG
         const flowElements = elementRegistry.filter((el: any) => {
           const t = el.businessObject?.$type;
           return t && (t.includes('Flow') || t.includes('Gateway') || t.includes('Event'));
         });
-        if (flowElements.length) {
-          modeling.setColor(flowElements, { stroke: DEFAULT_STROKE });
+        for (const el of flowElements) {
+          const gfx = elementRegistry.getGraphics(el);
+          if (!gfx) continue;
+          const shape = gfx.querySelector('.djs-visual rect, .djs-visual path, .djs-visual circle, .djs-visual polygon, .djs-visual polyline');
+          if (shape) (shape as SVGElement).style.stroke = DEFAULT_STROKE;
         }
-        importingRef.current = false;
       } catch {
         // Validation is best-effort; don't break the editor
-        importingRef.current = false;
       }
     }
 
@@ -1013,14 +1018,69 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
 
     return (
       <div className="flex h-full w-full overflow-hidden relative">
-        {diagramName && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-            <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-md px-5 py-2 shadow-sm">
-              <span className="text-xl font-bold text-gray-700">{diagramName}</span>
+        {diagramName && !editingDiagramName && (
+          <div
+            className="absolute top-2 left-1/2 -translate-x-1/2 z-20"
+            style={{ cursor: 'pointer' }}
+            onClick={() => {
+              setDiagramSelected(true);
+              setSelectedTask(null);
+              setSelectedLane(null);
+              setSelectedApp(null);
+              onDiagramNameClick?.();
+            }}
+            onDoubleClick={() => {
+              if (!isInFactory && onDiagramNameChange) {
+                setEditNameValue(diagramName);
+                setEditingDiagramName(true);
+              }
+            }}
+            title={!isInFactory ? 'Click for properties, double-click to edit name' : 'Click to view diagram properties'}
+          >
+            <div className={`bg-white/90 backdrop-blur-sm border rounded-md px-5 py-2 shadow-sm ${isInFactory ? 'border-gray-200' : 'border-orange-300'}`}>
+              <span className="text-xl font-bold" style={{ color: isInFactory ? '#374151' : '#cc7000' }}>{diagramName}</span>
+            </div>
+          </div>
+        )}
+        {editingDiagramName && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20">
+            <div className="bg-white border border-blue-400 rounded-md px-3 py-1.5 shadow-md flex items-center gap-2">
+              <input
+                className="text-xl font-bold text-gray-700 border-none outline-none bg-transparent min-w-[200px]"
+                value={editNameValue}
+                onChange={(e) => setEditNameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const trimmed = editNameValue.trim();
+                    if (trimmed) onDiagramNameChange?.(trimmed);
+                    setEditingDiagramName(false);
+                  } else if (e.key === 'Escape') {
+                    setEditingDiagramName(false);
+                  }
+                }}
+                onBlur={() => {
+                  const trimmed = editNameValue.trim();
+                  if (trimmed) onDiagramNameChange?.(trimmed);
+                  setEditingDiagramName(false);
+                }}
+                autoFocus
+              />
+              <span className="text-xs text-gray-400">Enter to save</span>
             </div>
           </div>
         )}
         <div ref={canvasRef} className="bpmn-canvas absolute inset-0" />
+        {/* New Diagram button on canvas */}
+        {!readOnly && onNewDiagram && (
+          <button
+            className="absolute bottom-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium shadow-md transition-colors"
+            onClick={onNewDiagram}
+            title="New Diagram"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            New Diagram
+          </button>
+        )}
         {/* Collapse toggle when properties hidden */}
         {showProperties && propsCollapsed && (
           <button
@@ -1037,7 +1097,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
             className="properties-panel-container border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-10 overflow-hidden"
             style={{
               width: propsCollapsed ? 0 : propsWidth,
-              display: (selectedApp || selectedTask?.name || selectedLane) ? 'none' : undefined,
+              display: (selectedApp || selectedTask?.name || selectedLane || diagramSelected) ? 'none' : undefined,
               transition: propsResizing.current ? 'none' : 'width 0.2s',
               borderLeftWidth: propsCollapsed ? 0 : undefined,
             }}
@@ -1068,7 +1128,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
           </div>
         )}
         {/* Collapse button — rendered outside propertiesRef so bpmn-js content doesn't cover it */}
-        {showProperties && !propsCollapsed && !selectedApp && !selectedTask?.name && !selectedLane && (
+        {showProperties && !propsCollapsed && !selectedApp && !selectedTask?.name && !selectedLane && !diagramSelected && (
           <button
             className="absolute top-1 bg-white border border-gray-300 rounded shadow-sm text-gray-500 hover:text-gray-800 hover:bg-gray-50 text-xs px-1.5 py-0.5"
             style={{ right: propsWidth + 4, zIndex: 20 }}
@@ -1077,6 +1137,60 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
           >
             ▶
           </button>
+        )}
+        {/* ─── Diagram Properties Panel ─── */}
+        {showProperties && !propsCollapsed && diagramSelected && !selectedApp && !selectedTask?.name && !selectedLane && (
+          <div className="border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"
+            style={{ width: propsWidth, fontFamily: '"IBM Plex Sans", Arial, sans-serif' }}>
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className={`w-8 h-8 rounded ${isInFactory ? 'bg-blue-50 border border-blue-200' : 'bg-orange-50 border border-orange-200'} flex items-center justify-center`}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isInFactory ? '#1677ff' : '#cc7000'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 7h10"/><path d="M7 12h10"/><path d="M7 17h6"/></svg>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Diagram</div>
+                  <div className="font-semibold text-sm" style={{ color: isInFactory ? '#333' : '#cc7000' }}>{diagramName || 'Untitled'}</div>
+                </div>
+              </div>
+              <div className="border-t border-gray-100 pt-3">
+                <table className="w-full text-xs">
+                  <tbody>
+                    <tr><td className="text-gray-500 py-1 pr-2 align-top">Factory Status</td><td className="py-1"><span className={`px-1.5 py-0.5 rounded text-xs ${isInFactory ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-300'}`}>{isInFactory ? 'In Factory' : 'Not in Factory'}</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              {!isInFactory && (
+                <div className="border-t border-gray-100 mt-3 pt-3 flex flex-col gap-1.5">
+                  <button
+                    className="w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700"
+                    onClick={() => onAddToFactory?.()}
+                    title="Add this diagram to the BPMN Factory"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                    Add to BPMN Factory →
+                  </button>
+                </div>
+              )}
+              {isInFactory && (
+                <div className="border-t border-gray-100 mt-3 pt-3 flex flex-col gap-1.5">
+                  <button
+                    className="w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700"
+                    onClick={() => onNavigateToFactory?.('diagramFactory', diagramName || '', 'view')}
+                    title="View in BPMN Factory"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 7h10"/><path d="M7 12h10"/><path d="M7 17h6"/></svg>
+                    View in BPMN Factory →
+                  </button>
+                </div>
+              )}
+              <button
+                className="mt-4 w-full text-xs py-1.5 px-3 rounded border border-gray-200 hover:bg-gray-50 text-gray-600"
+                onClick={() => setDiagramSelected(false)}
+              >
+                ← Back to Properties
+              </button>
+            </div>
+          </div>
         )}
         {showProperties && !propsCollapsed && !selectedApp && !selectedLane && selectedTask && selectedTask.name && (
           <div className="border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"

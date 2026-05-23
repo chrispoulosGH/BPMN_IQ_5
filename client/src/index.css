@@ -51,6 +51,15 @@ html, body, #root {
   50% { opacity: 0.4; }
 }
 
+@keyframes row-highlight {
+  0% { background-color: #bae7ff; }
+  100% { background-color: transparent; }
+}
+
+.row-just-created td {
+  animation: row-highlight 2.5s ease-out;
+}
+
 .toolbar-btn {
   color: #94a3b8 !important;
   transition: all 0.15s;

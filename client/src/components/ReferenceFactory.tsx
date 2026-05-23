@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form } from 'antd';
+import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form, Tag, Select } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { getRefItems, createRefItem, updateRefItem, deleteRefItem, type RefItem } from '../api';
+import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 
 interface ReferenceFactoryProps {
   collection: string;
@@ -20,6 +21,7 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<RefItem | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   const loadItems = useCallback(async () => {
@@ -83,9 +85,11 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
         await updateRefItem(collection, editingItem._id, values.name, values.owner);
         message.success('Updated');
       } else {
-        await createRefItem(collection, values.name, values.owner);
+        const created = await createRefItem(collection, values.name, values.owner, 'draft');
         message.success('Created');
         onItemAdded?.();
+        setHighlightId(created._id);
+        setTimeout(() => setHighlightId(null), 3000);
       }
       setShowForm(false);
       loadItems();
@@ -104,6 +108,38 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
       render: (v: string) => v || '—' },
     { title: 'Created', dataIndex: 'createdAt', key: 'createdAt', width: 160,
       render: (v: string) => v ? new Date(v).toLocaleDateString() : '—' },
+    { title: 'Status', dataIndex: 'state', key: 'state', width: 140,
+      filters: [...new Set(items.map(i => (i as any).state || 'published'))].sort().map(v => ({ text: v, value: v })),
+      onFilter: (value: any, record: RefItem) => ((record as any).state || 'published') === value,
+      render: (val: string, record: RefItem) => {
+        const currentState = (val || 'published').toLowerCase();
+        const actions = getAllowedActions(userRole, currentState);
+        const tagColor = stateTagColor(currentState);
+        if (!actions.length || readOnly) {
+          return <Tag color={tagColor}>{currentState}</Tag>;
+        }
+        return (
+          <Select
+            size="small"
+            value="__current__"
+            style={{ width: '100%' }}
+            onChange={async (action) => {
+              const rule = STATE_TRANSITIONS.find(t => t.action === action && t.from === currentState);
+              if (rule) {
+                try {
+                  await transitionState(collection, record._id, action, userRole || '');
+                  loadItems();
+                } catch (e: any) { message.error(e.response?.data?.error || e.message); }
+              }
+            }}
+            options={[
+              { label: <Tag color={tagColor}>{currentState}</Tag>, value: '__current__', disabled: true },
+              ...actions.map(a => ({ label: `${a.action} → ${a.to}`, value: a.action })),
+            ]}
+          />
+        );
+      },
+    },
     { title: '', key: 'actions', width: 80, render: (_: unknown, record: RefItem) => readOnly ? null : (
       <Space size="small">
         <Tooltip title="Edit"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} /></Tooltip>
@@ -140,6 +176,7 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
         pagination={{ pageSize: 25, showSizeChanger: true, showTotal: (t) => `${t} items` }}
         className="flex-1"
         scroll={{ y: 'calc(100vh - 220px)' }}
+        rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
       />
 
       <Modal

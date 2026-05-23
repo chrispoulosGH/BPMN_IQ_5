@@ -12,7 +12,7 @@ const taskSchema = new mongoose.Schema({
   applications: [{ type: String, trim: true }],
   sequence: { type: Number },
   owner: { type: String, trim: true, default: null },
-  state: { type: String, enum: VALID_STATES, default: 'draft' },
+  state: { type: String, enum: VALID_STATES, default: 'published' },
 }, { timestamps: true });
 
 // A task is unique by name + businessFlow + product

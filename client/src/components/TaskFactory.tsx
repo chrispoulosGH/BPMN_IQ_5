@@ -3,6 +3,7 @@ import { Table, Select, Input, Button, Modal, Form, Tag, App as AntApp, Space, T
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import type { TaskRecord, TaskCreatePayload, ReferenceData, TaskAddData } from '../types';
 import { getTasks, getTaskReference, createTask, updateTask, deleteTask } from '../api';
+import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 
 interface TaskFactoryProps {
   defaultSearch?: string;
@@ -21,6 +22,7 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskRecord | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   // Load reference data once
@@ -99,9 +101,11 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
         await updateTask(editingTask._id, values);
         message.success('Task updated');
       } else {
-        await createTask(values);
+        const created = await createTask({ ...values, state: 'draft' } as any);
         message.success('Task created');
         onItemAdded?.();
+        setHighlightId(created._id);
+        setTimeout(() => setHighlightId(null), 3000);
       }
       setShowForm(false);
       loadTasks();
@@ -130,6 +134,38 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
     },
     { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 130, ellipsis: true,
       render: (v: string) => v || '—' },
+    { title: 'Status', dataIndex: 'state', key: 'state', width: 140,
+      filters: [...new Set(tasks.map(t => (t as any).state || 'published'))].sort().map(v => ({ text: v, value: v })),
+      onFilter: (value: any, record: TaskRecord) => ((record as any).state || 'published') === value,
+      render: (val: string, record: TaskRecord) => {
+        const currentState = (val || 'published').toLowerCase();
+        const actions = getAllowedActions(userRole, currentState);
+        const tagColor = stateTagColor(currentState);
+        if (!actions.length || readOnly) {
+          return <Tag color={tagColor}>{currentState}</Tag>;
+        }
+        return (
+          <Select
+            size="small"
+            value="__current__"
+            style={{ width: '100%' }}
+            onChange={async (action) => {
+              const rule = STATE_TRANSITIONS.find(t => t.action === action && t.from === currentState);
+              if (rule) {
+                try {
+                  await transitionState('tasks', record._id, action, userRole || '');
+                  loadTasks();
+                } catch (e: any) { message.error(e.response?.data?.error || e.message); }
+              }
+            }}
+            options={[
+              { label: <Tag color={tagColor}>{currentState}</Tag>, value: '__current__', disabled: true },
+              ...actions.map(a => ({ label: `${a.action} → ${a.to}`, value: a.action })),
+            ]}
+          />
+        );
+      },
+    },
     { title: '', key: 'actions', width: 80, render: (_: unknown, record: TaskRecord) => readOnly ? null : (
       <Space size="small">
         <Tooltip title="Edit"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} /></Tooltip>
@@ -187,6 +223,7 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
         pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} tasks` }}
         className="flex-1"
         scroll={{ y: 'calc(100vh - 220px)' }}
+        rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
       />
 
       {/* Create/Edit Modal */}

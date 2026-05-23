@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form } from 'antd';
+import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select } from 'antd';
 import { SearchOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ApplicationItem } from '../types';
 import { getRefItems, createRefItem } from '../api';
 import type { ColumnsType } from 'antd/es/table';
+import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 
 interface ApplicationFactoryProps {
   defaultSearch?: string;
+  defaultAdd?: string;
   userRole?: string | null;
 }
 
@@ -33,10 +35,11 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'applPurpose', title: 'App Purpose', defaultVisible: false },
   { key: 'businessPurpose', title: 'Business Purpose', defaultVisible: false },
   { key: 'userInterface', title: 'User Interface', defaultVisible: false },
+  { key: 'state', title: 'Status', defaultVisible: true },
   { key: 'owner', title: 'Owner', defaultVisible: true },
 ];
 
-export default function ApplicationFactory({ defaultSearch, userRole }: ApplicationFactoryProps) {
+export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole }: ApplicationFactoryProps) {
   const { message } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -44,6 +47,7 @@ export default function ApplicationFactory({ defaultSearch, userRole }: Applicat
   const [detail, setDetail] = useState<ApplicationItem | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm] = Form.useForm();
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
     () => new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
   );
@@ -66,6 +70,14 @@ export default function ApplicationFactory({ defaultSearch, userRole }: Applicat
     if (defaultSearch !== undefined) setSearch(defaultSearch);
   }, [defaultSearch]);
 
+  useEffect(() => {
+    if (defaultAdd) {
+      addForm.resetFields();
+      addForm.setFieldsValue({ name: defaultAdd });
+      setShowAddForm(true);
+    }
+  }, [defaultAdd, addForm]);
+
   const filtered = search
     ? items.filter((i) => {
         const s = search.toLowerCase();
@@ -80,10 +92,12 @@ export default function ApplicationFactory({ defaultSearch, userRole }: Applicat
 
   const handleAddApplication = async (values: { name: string }) => {
     try {
-      await createRefItem('applications', values.name);
+      const created = await createRefItem('applications', values.name, undefined, 'draft');
       message.success('Application created');
       setShowAddForm(false);
       addForm.resetFields();
+      setHighlightId(created._id);
+      setTimeout(() => setHighlightId(null), 3000);
       loadItems();
     } catch (e: any) {
       message.error(e.response?.data?.error || e.message);
@@ -144,6 +158,38 @@ export default function ApplicationFactory({ defaultSearch, userRole }: Applicat
     { title: 'App Purpose', dataIndex: 'applPurpose', key: 'applPurpose', width: 200, ellipsis: true },
     { title: 'Business Purpose', dataIndex: 'businessPurpose', key: 'businessPurpose', width: 250, ellipsis: true },
     { title: 'User Interface', dataIndex: 'userInterface', key: 'userInterface', width: 130, ...filterCol('userInterface') },
+    { title: 'Status', dataIndex: 'state', key: 'state', width: 140,
+      filters: [...new Set(items.map(i => (i as any).state || 'published'))].sort().map(v => ({ text: v, value: v })),
+      onFilter: (value: any, record: ApplicationItem) => ((record as any).state || 'published') === value,
+      render: (val: string, record: ApplicationItem) => {
+        const currentState = (val || 'published').toLowerCase();
+        const actions = getAllowedActions(userRole, currentState);
+        const tagColor = stateTagColor(currentState);
+        if (!actions.length) {
+          return <Tag color={tagColor}>{currentState}</Tag>;
+        }
+        return (
+          <Select
+            size="small"
+            value="__current__"
+            style={{ width: '100%' }}
+            onChange={async (action) => {
+              const rule = STATE_TRANSITIONS.find(t => t.action === action && t.from === currentState);
+              if (rule) {
+                try {
+                  await transitionState('applications', record._id, action, userRole || '');
+                  loadItems();
+                } catch (e: any) { message.error(e.response?.data?.error || e.message); }
+              }
+            }}
+            options={[
+              { label: <Tag color={tagColor}>{currentState}</Tag>, value: '__current__', disabled: true },
+              ...actions.map(a => ({ label: `${a.action} → ${a.to}`, value: a.action })),
+            ]}
+          />
+        );
+      },
+    },
     { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 130, ellipsis: true, render: (v: string) => v || '—' },
   ], [items]);
 
@@ -201,6 +247,7 @@ export default function ApplicationFactory({ defaultSearch, userRole }: Applicat
         pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (t) => `${t} items` }}
         className="flex-1"
         scroll={{ x: scrollX, y: 'calc(100vh - 220px)' }}
+        rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
       />
 
       <Drawer
