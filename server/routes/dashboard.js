@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
 const { Application, BusinessFlow } = require('../models/ReferenceData');
+const Diagram = require('../models/Diagram');
 
 /**
  * GET /api/dashboard/task-risk
@@ -168,5 +169,122 @@ function computeRiskScore(apps) {
   }
   return score;
 }
+
+/**
+ * GET /api/dashboard/flow-3d
+ * Returns data for the 3D visualization driven by the Diagram collection:
+ * - businessFlows: list of diagram names (used as selectable items)
+ * - points: array of { appName, businessCriticality, lifecycleStatus, task, businessFlow, taskOrder }
+ * - taskOrders: { [diagramName]: string[] } — tasks in execution order per diagram
+ */
+router.get('/flow-3d', async (_req, res) => {
+  try {
+    const [apps, diagrams] = await Promise.all([
+      Application.find().lean(),
+      Diagram.find({}, { name: 1, tasks: 1 }).lean(),
+    ]);
+
+    // App lookup by lowercase name
+    const appMap = new Map();
+    for (const app of apps) {
+      appMap.set(app.name.toLowerCase().trim(), app);
+    }
+
+    const diagramNames = [];
+    const points = [];
+    const taskOrders = {};
+
+    for (const diagram of diagrams) {
+      if (!diagram.tasks || !diagram.tasks.length) continue;
+      const diagramName = diagram.name;
+      diagramNames.push(diagramName);
+
+      const diagramTasks = diagram.tasks;
+
+      // Build adjacency for topological sort
+      const next = new Map();
+      const prev = new Map();
+      const allNames = new Set();
+
+      for (const dt of diagramTasks) {
+        allNames.add(dt.name);
+        if (!next.has(dt.name)) next.set(dt.name, []);
+        if (!prev.has(dt.name)) prev.set(dt.name, []);
+
+        if (dt.target) {
+          const targets = dt.target.split(',').map(s => s.trim()).filter(Boolean);
+          next.set(dt.name, (next.get(dt.name) || []).concat(targets));
+          for (const t of targets) {
+            if (!prev.has(t)) prev.set(t, []);
+            prev.get(t).push(dt.name);
+          }
+        }
+      }
+
+      // Topological sort (Kahn's algorithm)
+      const inDegree = new Map();
+      for (const name of allNames) inDegree.set(name, (prev.get(name) || []).filter(p => allNames.has(p)).length);
+      const queue = [];
+      for (const [name, deg] of inDegree) { if (deg === 0) queue.push(name); }
+      const sorted = [];
+      while (queue.length) {
+        const current = queue.shift();
+        sorted.push(current);
+        for (const nxt of (next.get(current) || [])) {
+          if (!allNames.has(nxt)) continue;
+          inDegree.set(nxt, inDegree.get(nxt) - 1);
+          if (inDegree.get(nxt) === 0) queue.push(nxt);
+        }
+      }
+      // Append any remaining (cycles)
+      for (const name of allNames) {
+        if (!sorted.includes(name)) sorted.push(name);
+      }
+
+      taskOrders[diagramName] = sorted;
+
+      // Build order index map
+      const orderMap = {};
+      sorted.forEach((name, idx) => { orderMap[name.toLowerCase().trim()] = idx; });
+
+      // For each task in this diagram, use applications embedded directly on the diagram task
+      // Build a lookup of diagram task objects by name for quick access
+      const diagramTaskMap = new Map();
+      for (const dt of diagramTasks) {
+        diagramTaskMap.set(dt.name.toLowerCase().trim(), dt);
+      }
+
+      for (const dtName of sorted) {
+        const dt = diagramTaskMap.get(dtName.toLowerCase().trim());
+        if (!dt) continue;
+        const taskOrder = orderMap[dtName.toLowerCase().trim()] ?? -1;
+
+        // applications is an array of { name } objects on the diagram task
+        for (const appRef of (dt.applications || [])) {
+          const appName = typeof appRef === 'string' ? appRef : appRef.name;
+          if (!appName) continue;
+          const app = appMap.get(appName.toLowerCase().trim());
+          if (!app) continue;
+          points.push({
+            appName: app.name,
+            businessCriticality: app.businessCriticality || 'Unknown',
+            lifecycleStatus: app.lifecycleStatus || 'Unknown',
+            task: dt.name,
+            businessFlow: diagramName,
+            taskOrder,
+          });
+        }
+      }
+    }
+
+    res.json({
+      businessFlows: diagramNames.sort(),
+      points,
+      taskOrders,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = router;

@@ -147,4 +147,7 @@ export const getDashboardTaskRisk = (): Promise<any[]> =>
 export const getDashboardFlowRisk = (): Promise<any[]> =>
   api.get('/dashboard/flow-risk').then((r) => r.data);
 
+export const getDashboardFlow3D = (): Promise<{ businessFlows: string[]; points: Array<{ appName: string; businessCriticality: string; lifecycleStatus: string; task: string; businessFlow: string; taskOrder: number }>; taskOrders: Record<string, string[]> }> =>
+  api.get('/dashboard/flow-3d').then((r) => r.data);
+
 export default api;

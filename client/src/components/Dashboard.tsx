@@ -19,6 +19,7 @@ import {
   Cell,
 } from 'recharts';
 import { getDashboardTaskRisk, getDashboardFlowRisk } from '../api';
+import Flow3DChart from './Flow3DChart';
 
 // ─── Types ──────────────────────────────────────────────────
 interface YNCount { yes: number; no: number; unknown: number }
@@ -93,7 +94,7 @@ export default function Dashboard() {
   const [taskData, setTaskData] = useState<TaskProfile[]>([]);
   const [flowData, setFlowData] = useState<FlowProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'tasks' | 'flows'>('tasks');
+  const [view, setView] = useState<'tasks' | 'flows' | '3d'>('tasks');
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
 
   useEffect(() => {
@@ -117,10 +118,11 @@ export default function Dashboard() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <Segmented
           value={view}
-          onChange={(v) => setView(v as 'tasks' | 'flows')}
+          onChange={(v) => setView(v as 'tasks' | 'flows' | '3d')}
           options={[
             { label: 'Task Comparison', value: 'tasks' },
             { label: 'Business Flow Comparison', value: 'flows' },
+            { label: '3D Flow Explorer', value: '3d' },
           ]}
         />
         {view === 'tasks' && (
@@ -137,8 +139,10 @@ export default function Dashboard() {
 
       {view === 'tasks' ? (
         <TaskDashboard tasks={filteredTasks} />
-      ) : (
+      ) : view === 'flows' ? (
         <FlowDashboard flows={flowData} />
+      ) : (
+        <Flow3DChart />
       )}
     </div>
   );
