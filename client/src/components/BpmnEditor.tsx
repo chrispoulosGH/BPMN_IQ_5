@@ -47,10 +47,13 @@ interface BpmnEditorProps {
   allActorNames?: string[];
   diagramName?: string;
   isInFactory?: boolean;
+  isAlreadyLoaded?: boolean;
   readOnly?: boolean;
   onNavigateToFactory?: (tab: string, searchTerm: string, mode?: 'view' | 'add', extra?: { applications?: string[]; actor?: string }) => void;
   onTaskSelect?: (task: { name: string; id: string } | null) => void;
   onAddToFactory?: () => void;
+  onDeleteAndReload?: () => void;
+  onSaveAsNew?: (newName: string) => void;
   onDiagramNameClick?: () => void;
   onNewDiagram?: () => void;
   onDiagramNameChange?: (name: string) => void;
@@ -66,7 +69,7 @@ function isActivityType(type?: string): boolean {
 }
 
 const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
-  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allTaskNames = [], allActorNames = [], diagramName, isInFactory, readOnly, onNavigateToFactory, onTaskSelect, onAddToFactory, onDiagramNameClick, onNewDiagram, onDiagramNameChange }, ref) => {
+  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allTaskNames = [], allActorNames = [], diagramName, isInFactory, isAlreadyLoaded, readOnly, onNavigateToFactory, onTaskSelect, onAddToFactory, onDeleteAndReload, onSaveAsNew, onDiagramNameClick, onNewDiagram, onDiagramNameChange }, ref) => {
     const canvasRef = useRef<HTMLDivElement>(null);
     const propertiesRef = useRef<HTMLDivElement>(null);
     const modelerRef = useRef<any>(null);
@@ -74,6 +77,9 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     const importingRef = useRef(false);
     const importVersionRef = useRef(0);
     const taskNamesRef = useRef<string[]>([]);
+    const diagramNameRef = useRef(diagramName);
+    diagramNameRef.current = diagramName;
+    const invalidTaskNamesRef = useRef<Set<string>>(new Set());
     const autocompleteRef = useRef<HTMLDivElement | null>(null);
     const appPopoverRef = useRef<HTMLDivElement | null>(null);
     const popoverDirtyRef = useRef(false);
@@ -93,6 +99,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     const [diagramSelected, setDiagramSelected] = useState(false);
     const [editingDiagramName, setEditingDiagramName] = useState(false);
     const [editNameValue, setEditNameValue] = useState('');
+    const [newDiagramName, setNewDiagramName] = useState('');
 
     // Keep the latest values in refs to avoid stale closures
     xmlRef.current = xml;
@@ -942,8 +949,9 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         if (!taskElements.length) return;
 
         const taskNames = taskElements.map((el: any) => el.businessObject.name);
-        const { invalid } = await validateTasks(taskNames);
+        const { invalid } = await validateTasks(taskNames, diagramNameRef.current || undefined);
         const invalidSet = new Set(invalid.map((n: string) => n.toLowerCase().trim()));
+        invalidTaskNamesRef.current = invalidSet;
 
         // Apply colors via SVG — does NOT touch commandStack, no undo history, no re-render
         for (const el of taskElements) {
@@ -1012,7 +1020,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
 
     const validAppSet = new Set(allApplicationNames.map((n) => n.toLowerCase().trim()));
     const isSelectedAppValid = selectedApp ? validAppSet.has(selectedApp.name.toLowerCase().trim()) : true;
-    const isSelectedTaskValid = selectedTask ? taskNamesRef.current.some((n) => n.toLowerCase() === selectedTask.name.toLowerCase().trim()) : true;
+    const isSelectedTaskValid = selectedTask ? !invalidTaskNamesRef.current.has(selectedTask.name.toLowerCase().trim()) : true;
     const validActorSet = new Set(allActorNames.map((n) => n.toLowerCase().trim()));
     const isSelectedLaneValid = selectedLane ? validActorSet.has(selectedLane.name.toLowerCase().trim()) : true;
 
@@ -1030,12 +1038,12 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               onDiagramNameClick?.();
             }}
             onDoubleClick={() => {
-              if (!isInFactory && onDiagramNameChange) {
+              if ((!isInFactory || isAlreadyLoaded) && onDiagramNameChange) {
                 setEditNameValue(diagramName);
                 setEditingDiagramName(true);
               }
             }}
-            title={!isInFactory ? 'Click for properties, double-click to edit name' : 'Click to view diagram properties'}
+            title={isInFactory ? 'Click to view diagram properties' : 'Click for properties, double-click to edit name'}
           >
             <div className={`bg-white/90 backdrop-blur-sm border rounded-md px-5 py-2 shadow-sm ${isInFactory ? 'border-gray-200' : 'border-orange-300'}`}>
               <span className="text-xl font-bold" style={{ color: isInFactory ? '#374151' : '#cc7000' }}>{diagramName}</span>
@@ -1155,11 +1163,40 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               <div className="border-t border-gray-100 pt-3">
                 <table className="w-full text-xs">
                   <tbody>
-                    <tr><td className="text-gray-500 py-1 pr-2 align-top">Factory Status</td><td className="py-1"><span className={`px-1.5 py-0.5 rounded text-xs ${isInFactory ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-300'}`}>{isInFactory ? 'In Factory' : 'Not in Factory'}</span></td></tr>
+                    <tr><td className="text-gray-500 py-1 pr-2 align-top">Factory Status</td><td className="py-1"><span className={`px-1.5 py-0.5 rounded text-xs ${isInFactory ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-300'}`}>{isInFactory ? 'In Factory' : isAlreadyLoaded ? 'Already Loaded' : 'Not in Factory'}</span></td></tr>
                   </tbody>
                 </table>
               </div>
-              {!isInFactory && (
+              {isAlreadyLoaded && (
+                <div className="border-t border-gray-100 mt-3 pt-3 flex flex-col gap-1.5">
+                  <p className="text-xs text-orange-600 mb-1">This diagram already exists in the factory. Choose an action:</p>
+                  <button
+                    className="w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700"
+                    onClick={() => onDeleteAndReload?.()}
+                    title="Delete the existing factory entry and reload from this file"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                    Delete &amp; Reload →
+                  </button>
+                  <div className="flex gap-1 mt-1">
+                    <input
+                      className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-orange-400"
+                      placeholder="New name…"
+                      value={newDiagramName}
+                      onChange={e => setNewDiagramName(e.target.value)}
+                    />
+                    <button
+                      className="text-xs py-1 px-2 rounded border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 whitespace-nowrap"
+                      onClick={() => { if (newDiagramName.trim()) { onSaveAsNew?.(newDiagramName.trim()); setNewDiagramName(''); } }}
+                      disabled={!newDiagramName.trim()}
+                      title="Save a renamed copy in draft state"
+                    >
+                      Save as New →
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!isInFactory && !isAlreadyLoaded && (
                 <div className="border-t border-gray-100 mt-3 pt-3 flex flex-col gap-1.5">
                   <button
                     className="w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700"

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Diagram = require('../models/Diagram');
+const { BusinessFlow } = require('../models/ReferenceData');
 
 /** Strip the DiagramTitle and LastUpdated text annotations from the XML (they clutter the canvas) */
 function stripTitleAnnotations(xml) {
@@ -136,13 +137,28 @@ function extractTasks(xml) {
   return tasks;
 }
 
-/** Parse metadata from <bpmndi:BPMNDiagram name="..."> attribute */
+/** Parse metadata from TextAnnotation_DiagramTitle text content (primary),
+ *  falling back to <bpmndi:BPMNDiagram name="..."> attribute.
+ *  Format: "Line of Business: X | Channel: Y | ... | Business Flow: Z"
+ */
 function parseDiagramMetadata(xml) {
   const meta = {};
   if (!xml) return meta;
-  const match = xml.match(/<bpmndi:BPMNDiagram[^>]+name="([^"]+)"/i);
-  if (!match) return meta;
-  const pairs = match[1].split('|').map(s => s.trim());
+
+  // 1. Prefer TextAnnotation_DiagramTitle (standard for BPMN Bender exports)
+  let metaString = null;
+  const annMatch = xml.match(/<bpmn:textAnnotation\s+id="TextAnnotation_DiagramTitle"[^>]*>[\s\S]*?<bpmn:text>([\s\S]*?)<\/bpmn:text>/i);
+  if (annMatch) metaString = annMatch[1].trim();
+
+  // 2. Fall back to BPMNDiagram name attribute
+  if (!metaString) {
+    const diagMatch = xml.match(/<bpmndi:BPMNDiagram[^>]+name="([^"]+)"/i);
+    if (diagMatch) metaString = diagMatch[1];
+  }
+
+  if (!metaString) return meta;
+
+  const pairs = metaString.split('|').map(s => s.trim());
   for (const pair of pairs) {
     const idx = pair.indexOf(':');
     if (idx < 0) continue;
@@ -233,16 +249,24 @@ router.post('/', async (req, res) => {
   }
   try {
     const meta = parseDiagramMetadata(xml);
+    // Use the caller-supplied name; meta.businessFlow is informational metadata only
+    const diagramName = name;
     const cleanXml = stripTitleAnnotations(xml);
     const tasks = extractTasks(xml);
     const diagram = await Diagram.create({
-      name, description, xml: cleanXml, tags, capabilities, tasks,
+      name: diagramName, description, xml: cleanXml, tags, capabilities, tasks,
       status: status || 'Draft',
       sourcedFrom: sourcedFrom || null,
       createdBy: createdBy || null,
       updatedBy: createdBy || null,
       ...meta,
     });
+    // Ensure a matching BusinessFlow document exists (1:1 with diagram)
+    await BusinessFlow.findOneAndUpdate(
+      { name: diagramName },
+      { $setOnInsert: { name: diagramName, state: 'staged' } },
+      { upsert: true, new: true }
+    );
     res.status(201).json(diagram);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -294,17 +318,30 @@ router.put('/:id', async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });
+    // Keep BusinessFlow in sync if diagram name changed
+    const bfName = diagram.name;
+    if (bfName) {
+      await BusinessFlow.findOneAndUpdate(
+        { name: bfName },
+        { $setOnInsert: { name: bfName, state: 'staged' } },
+        { upsert: true, new: true }
+      );
+    }
     res.json(diagram);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE /api/diagrams/:id — delete diagram
+// DELETE /api/diagrams/:id — delete diagram and its corresponding BusinessFlow
 router.delete('/:id', async (req, res) => {
   try {
     const diagram = await Diagram.findByIdAndDelete(req.params.id);
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });
+    // Cascade: remove the 1:1 BusinessFlow document (if it exists)
+    if (diagram.name) {
+      await BusinessFlow.deleteOne({ name: diagram.name });
+    }
     res.json({ message: 'Diagram deleted.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -339,6 +376,12 @@ router.post('/batch', async (req, res) => {
         updatedBy: createdBy || null,
         ...meta,
       });
+      // Ensure a matching BusinessFlow document exists (1:1 with diagram)
+      await BusinessFlow.findOneAndUpdate(
+        { name },
+        { $setOnInsert: { name, state: 'staged' } },
+        { upsert: true, new: true }
+      );
       results.success.push({ _id: diagram._id, name: diagram.name, fileName });
     } catch (err) {
       results.failed.push({ fileName: file.fileName, error: err.message });

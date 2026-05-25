@@ -69,8 +69,10 @@ router.delete('/reference/:collection/:id', async (req, res) => {
 // ─── Tasks CRUD ──────────────────────────────────────────────
 
 // GET /api/tasks/names — distinct task names for autocomplete (must be before /:id)
-router.get('/names', async (_req, res) => {
-  const names = await Task.distinct('name');
+// Optional ?businessFlow=X to scope to a specific business flow
+router.get('/names', async (req, res) => {
+  const filter = req.query.businessFlow ? { businessFlow: req.query.businessFlow } : {};
+  const names = await Task.distinct('name', filter);
   res.json(names.sort());
 });
 
@@ -133,11 +135,12 @@ router.delete('/:id', async (req, res) => {
 // POST /api/tasks/validate  { taskNames: string[] }
 // Returns { valid: string[], invalid: string[] }
 router.post('/validate', async (req, res) => {
-  const { taskNames } = req.body;
+  const { taskNames, businessFlow } = req.body;
   if (!Array.isArray(taskNames)) return res.status(400).json({ error: 'taskNames must be an array' });
 
-  // Get all distinct task names from the factory
-  const knownNames = await Task.distinct('name');
+  // Get distinct task names scoped to the businessFlow if provided, otherwise all
+  const filter = businessFlow ? { businessFlow } : {};
+  const knownNames = await Task.distinct('name', filter);
   const knownSet = new Set(knownNames.map((n) => n.toLowerCase().trim()));
 
   const valid = [];

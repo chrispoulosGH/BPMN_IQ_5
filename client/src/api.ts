@@ -88,11 +88,11 @@ export const updateTask = (id: string, data: Partial<TaskCreatePayload>): Promis
 export const deleteTask = (id: string): Promise<{ success: boolean }> =>
   api.delete(`/tasks/${id}`).then((r) => r.data);
 
-export const validateTasks = (taskNames: string[]): Promise<{ valid: string[]; invalid: string[] }> =>
-  api.post('/tasks/validate', { taskNames }).then((r) => r.data);
+export const validateTasks = (taskNames: string[], businessFlow?: string): Promise<{ valid: string[]; invalid: string[] }> =>
+  api.post('/tasks/validate', { taskNames, ...(businessFlow ? { businessFlow } : {}) }).then((r) => r.data);
 
-export const getTaskNames = (): Promise<string[]> =>
-  api.get('/tasks/names').then((r) => r.data);
+export const getTaskNames = (businessFlow?: string): Promise<string[]> =>
+  api.get('/tasks/names', { params: businessFlow ? { businessFlow } : undefined }).then((r) => r.data);
 
 export const getBusinessFlowMap = (): Promise<Record<string, string>> =>
   api.get('/diagrams/business-flow-map').then((r) => r.data);
@@ -149,5 +149,8 @@ export const getDashboardFlowRisk = (): Promise<any[]> =>
 
 export const getDashboardFlow3D = (): Promise<{ businessFlows: string[]; points: Array<{ appName: string; businessCriticality: string; lifecycleStatus: string; task: string; businessFlow: string; taskOrder: number }>; taskOrders: Record<string, string[]> }> =>
   api.get('/dashboard/flow-3d').then((r) => r.data);
+
+export const getDashboardFlowCost3D = (): Promise<{ businessFlows: string[]; points: Array<{ businessFlow: string; task: string; taskOrder: number; year: number; totalCost: number; opCost: number; devCost: number }>; taskOrders: Record<string, string[]> }> =>
+  api.get('/dashboard/flow-cost-3d').then((r) => r.data);
 
 export default api;

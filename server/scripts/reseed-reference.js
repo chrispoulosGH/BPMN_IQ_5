@@ -1,7 +1,8 @@
 /**
- * Reseed reference data (EXCEPT Application) from "E2EUX Journey Data Loader.xlsx".
- * Drops and rebuilds: LineOfBusiness, Channel, Product, Domain, Subdomain, BusinessFlow.
+ * Reseed reference data (EXCEPT Application and BusinessFlow) from "E2EUX Journey Data Loader.xlsx".
+ * Drops and rebuilds: LineOfBusiness, Channel, Product, Domain, Subdomain.
  * Also reseeds Tasks.
+ * NOTE: BusinessFlow is now driven by diagram XML import (1:1 with diagrams collection).
  *
  * Usage: node scripts/reseed-reference.js
  */
@@ -9,7 +10,7 @@ const path = require('path');
 const mongoose = require('mongoose');
 const XLSX = require('xlsx');
 const Task = require('../models/Task');
-const { BusinessFlow, Product, Actor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
+const { Product, Actor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
 
 const EXCEL_PATH = path.resolve(__dirname, '../../data/E2EUX Journey Data Loader.xlsx');
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/bpmn_iq';
@@ -31,7 +32,6 @@ async function reseed() {
   const products = new Set();
   const domains = new Set();
   const subdomains = new Set();
-  const businessFlows = new Set();
 
   // Build task map: key = name|businessFlow|product -> aggregated applications
   const taskMap = new Map();
@@ -54,7 +54,6 @@ async function reseed() {
     if (product) products.add(product);
     if (domain) domains.add(domain);
     if (subdomain) subdomains.add(subdomain);
-    if (businessFlow) businessFlows.add(businessFlow);
 
     const key = `${taskName}|${businessFlow}|${product}`;
     if (!taskMap.has(key)) {
@@ -73,7 +72,7 @@ async function reseed() {
     if (application) taskMap.get(key).applications.add(application);
   }
 
-  console.log(`Parsed: ${taskMap.size} tasks, ${linesOfBusiness.size} LOBs, ${channels.size} channels, ${products.size} products, ${domains.size} domains, ${subdomains.size} subdomains, ${businessFlows.size} flows`);
+  console.log(`Parsed: ${taskMap.size} tasks, ${linesOfBusiness.size} LOBs, ${channels.size} channels, ${products.size} products, ${domains.size} domains, ${subdomains.size} subdomains`);
 
   // Drop collections (except Application)
   console.log('Dropping reference collections (except Application)...');
@@ -82,7 +81,6 @@ async function reseed() {
   await Product.deleteMany({});
   await Domain.deleteMany({});
   await Subdomain.deleteMany({});
-  await BusinessFlow.deleteMany({});
   await Actor.deleteMany({});
   await Task.deleteMany({});
   console.log('Dropped.');
@@ -99,7 +97,6 @@ async function reseed() {
   await insertRef(Product, products, 'Products');
   await insertRef(Domain, domains, 'Domains');
   await insertRef(Subdomain, subdomains, 'Subdomains');
-  await insertRef(BusinessFlow, businessFlows, 'Business Flows');
   await insertRef(Actor, ACTORS, 'Actors');
   console.log('Reference data seeded.');
 

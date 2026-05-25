@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Select, Spin, Empty, Button } from 'antd';
+import { Select, Spin, Empty, Button, Segmented } from 'antd';
 import Plot from 'react-plotly.js';
-import { getDashboardFlow3D } from '../api';
+import { getDashboardFlow3D, getDashboardFlowCost3D } from '../api';
+
+type ChartMode = 'criticality' | 'cost';
 
 interface Point3D {
   appName: string;
@@ -15,6 +17,22 @@ interface Point3D {
 interface Flow3DData {
   businessFlows: string[];
   points: Point3D[];
+  taskOrders: Record<string, string[]>;
+}
+
+interface CostPoint {
+  businessFlow: string;
+  task: string;
+  taskOrder: number;
+  year: number;
+  totalCost: number;
+  opCost: number;
+  devCost: number;
+}
+
+interface FlowCost3DData {
+  businessFlows: string[];
+  points: CostPoint[];
   taskOrders: Record<string, string[]>;
 }
 
@@ -77,7 +95,9 @@ function cameraStorageKey(flows: string[]) {
 }
 
 export default function Flow3DChart() {
+  const [mode, setMode] = useState<ChartMode>('criticality');
   const [data, setData] = useState<Flow3DData | null>(null);
+  const [costData, setCostData] = useState<FlowCost3DData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedFlows, setSelectedFlows] = useState<string[]>([]);
   const [cameraReset, setCameraReset] = useState(0);
@@ -116,16 +136,139 @@ export default function Flow3DChart() {
   }, []);
 
   useEffect(() => {
-    getDashboardFlow3D()
-      .then(setData)
-      .finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    if (mode === 'criticality') {
+      getDashboardFlow3D()
+        .then(setData)
+        .finally(() => setLoading(false));
+    } else {
+      getDashboardFlowCost3D()
+        .then(setCostData)
+        .finally(() => setLoading(false));
+    }
+  }, [mode]);
+
+  // Active dataset switches by mode
+  const activeData = mode === 'criticality' ? data : costData;
 
   // Filter points to selected flows only
   const filteredPoints = useMemo(() => {
     if (!data || !selectedFlows.length) return [];
     return data.points.filter(p => selectedFlows.includes(p.businessFlow));
   }, [data, selectedFlows]);
+
+  // ── Cost traces ───────────────────────────────────────────
+  const costTraces = useMemo(() => {
+    if (mode !== 'cost' || !costData || !selectedFlows.length) return [];
+
+    const plotTraces: any[] = [];
+
+    // Two series definitions: operation cost (base) and development cost (stacked on top)
+    const SERIES = [
+      {
+        key: 'opCost' as const,
+        label: 'Operation Cost',
+        color: '#58a6ff',       // blue
+        lineColor: '#58a6ff',
+        colorscale: [[0,'#1c2128'],[0.3,'#1d4ed8'],[1,'#58a6ff']] as [number,string][],
+        stacked: false,
+      },
+      {
+        key: 'devCost' as const,
+        label: 'Development Cost',
+        color: '#3fb950',       // green
+        lineColor: '#3fb950',
+        colorscale: [[0,'#1c2128'],[0.3,'#175c2e'],[1,'#3fb950']] as [number,string][],
+        stacked: true,
+      },
+    ] as const;
+
+    selectedFlows.forEach((flowName, flowIdx) => {
+      const flowPoints = costData.points.filter(p => p.businessFlow === flowName);
+      const taskOrder = costData.taskOrders[flowName] || [];
+      if (!flowPoints.length) return;
+
+      const taskCount = taskOrder.length || 1;
+      const taskIndexMap: Record<string, number> = {};
+      taskOrder.forEach((name, idx) => {
+        taskIndexMap[name.toLowerCase().trim()] = taskCount - 1 - idx;
+      });
+
+      const shownLegendGroups = new Set<string>();
+
+      SERIES.forEach((series) => {
+        // Trend lines per task across years (lines only, no marker points)
+        const taskGroups = new Map<string, typeof flowPoints>();
+        flowPoints.forEach(p => {
+          if (!taskGroups.has(p.task)) taskGroups.set(p.task, []);
+          taskGroups.get(p.task)!.push(p);
+        });
+
+        for (const [, pts] of taskGroups) {
+          if (pts.length < 2) continue;
+          const sorted = [...pts].sort((a, b) => a.year - b.year);
+          const lx = sorted.map(p => taskIndexMap[p.task.toLowerCase().trim()] ?? p.taskOrder);
+          const ly = sorted.map(p => p.year);
+          // For stacked devCost: line sits at opCost + devCost height; curtain bottom = opCost
+          const lz = series.stacked
+            ? sorted.map(p => p.opCost + p.devCost)
+            : sorted.map(p => p[series.key]);
+          const lzBottom = series.stacked
+            ? sorted.map(p => p.opCost)
+            : Array(sorted.length).fill(0);
+          const n = sorted.length;
+
+          const legendKey = selectedFlows.length > 1 ? `${flowName}—${series.label}` : series.label;
+          const isFirstOfGroup = !shownLegendGroups.has(legendKey);
+          if (isFirstOfGroup) shownLegendGroups.add(legendKey);
+
+          // Line
+          plotTraces.push({
+            type: 'scatter3d',
+            mode: 'lines',
+            name: selectedFlows.length > 1
+              ? `${flowName} — ${series.label}`
+              : series.label,
+            legendgroup: legendKey,
+            showlegend: isFirstOfGroup,
+            x: lx,
+            y: ly,
+            z: lz,
+            hovertemplate: sorted.map(p =>
+              `<b>${p.task}</b><br>Year: ${p.year}<br>${series.label}: $${(p[series.key] / 1_000_000).toFixed(2)}M<extra></extra>`
+            ),
+            line: { color: series.lineColor, width: 3 },
+          });
+
+          // Translucent curtain/plane between top line and bottom baseline
+          const meshX = [...lx, ...lx];
+          const meshY = [...ly, ...ly];
+          const meshZ = [...lz, ...lzBottom];
+          const fi: number[] = [], fj: number[] = [], fk: number[] = [];
+          for (let s = 0; s < n - 1; s++) {
+            // Two triangles per segment forming a quad
+            fi.push(s,     s + 1);
+            fj.push(s + 1, n + s + 1);
+            fk.push(n + s, n + s);
+          }
+          plotTraces.push({
+            type: 'mesh3d',
+            x: meshX, y: meshY, z: meshZ,
+            i: fi, j: fj, k: fk,
+            color: series.lineColor,
+            opacity: 0.18,
+            showlegend: false,
+            hoverinfo: 'skip',
+            flatshading: true,
+            lighting: { ambient: 1, diffuse: 0 },
+            name: `${series.label} (plane)`,
+          });
+        }
+      });
+    });
+
+    return plotTraces;
+  }, [mode, costData, selectedFlows]);
 
   // Build Plotly traces
   const traces = useMemo(() => {
@@ -241,34 +384,40 @@ export default function Flow3DChart() {
 
   // Compute X-axis tick labels (task names in execution order for the first selected flow)
   const taskTickLabels = useMemo(() => {
-    if (!data || !selectedFlows.length) return { vals: [] as number[], labels: [] as string[] };
-    // Combine tasks from all selected flows
-    const allTasks: string[] = [];
-    for (const flow of selectedFlows) {
-      const order = data.taskOrders[flow] || [];
-      order.forEach((name, idx) => {
-        if (!allTasks[idx] || allTasks[idx] === name) allTasks[idx] = name;
-      });
-    }
-    // If only one flow, use its task order directly — reversed so first task = highest X position
+    const src = mode === 'cost' ? costData : data;
+    if (!src || !selectedFlows.length) return { vals: [] as number[], labels: [] as string[] };
     if (selectedFlows.length === 1) {
-      const order = data.taskOrders[selectedFlows[0]] || [];
+      const order = src.taskOrders[selectedFlows[0]] || [];
       const n = order.length;
       return { vals: order.map((_, i) => n - 1 - i), labels: order };
     }
-    // For multiple flows, show numeric indices (reversed)
-    const maxLen = Math.max(...selectedFlows.map(f => (data.taskOrders[f] || []).length));
+    const maxLen = Math.max(...selectedFlows.map(f => (src.taskOrders[f] || []).length));
     return {
       vals: Array.from({ length: maxLen }, (_, i) => maxLen - 1 - i),
       labels: Array.from({ length: maxLen }, (_, i) => `Step ${i + 1}`),
     };
-  }, [data, selectedFlows]);
+  }, [mode, data, costData, selectedFlows]);
 
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '48px auto' }} />;
-  if (!data) return <Empty description="Failed to load 3D data" />;
+  if (mode === 'criticality' && !data) return <Empty description="Failed to load 3D data" />;
+  if (mode === 'cost' && !costData) return <Empty description="Failed to load cost data" />;
+
+  const activeFlows = (activeData?.businessFlows ?? []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <Segmented
+          size="small"
+          value={mode}
+          onChange={v => { setMode(v as ChartMode); setSelectedFlows([]); setCameraReset(0); }}
+          options={[
+            { label: 'Lifecycle Criticality by Business Flow', value: 'criticality' },
+            { label: 'Cost by Business Flow', value: 'cost' },
+          ]}
+        />
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 500, fontSize: 13 }}>Business Flows:</span>
         <Select
@@ -278,7 +427,7 @@ export default function Flow3DChart() {
           size="small"
           value={selectedFlows}
           onChange={v => { setSelectedFlows(v); setCameraReset(0); }}
-          options={data.businessFlows.map(f => ({ label: f, value: f }))}
+          options={activeFlows.map(f => ({ label: f, value: f }))}
           allowClear
           maxTagCount={3}
           showSearch
@@ -289,16 +438,26 @@ export default function Flow3DChart() {
       </div>
 
       {!selectedFlows.length ? (
-        <Empty description="Select one or more business flows to see applications in 3D space" style={{ marginTop: 64 }} />
+        <Empty description="Select one or more business flows to see data in 3D space" style={{ marginTop: 64 }} />
       ) : (
         <div style={{ flex: 1, minHeight: 500 }}>
           <Plot
-            data={traces}
+            data={mode === 'cost' ? costTraces : traces}
             layout={{
               autosize: true,
-              uirevision: `${selectedFlows.join(',')}-${cameraReset}`,
-              margin: { l: 0, r: 0, t: 0, b: 80 },
+              uirevision: `${mode}-${selectedFlows.join(',')}-${cameraReset}`,
+              title: {
+                text: selectedFlows.join(' | '),
+                font: { size: 38, color: '#ffffff', family: 'Arial Black, sans-serif' },
+                x: 0.5,
+                xanchor: 'center',
+                y: 0.98,
+                yanchor: 'top',
+              },
+              margin: { l: 0, r: 0, t: 60, b: 80 },
               scene: {
+                aspectmode: 'manual',
+                aspectratio: { x: 3, y: 1, z: 1 },
                 xaxis: {
                   title: { text: 'Task (E2EUX)', font: { size: 14, color: '#52c41a' } },
                   tickvals: taskTickLabels.vals,
@@ -306,29 +465,31 @@ export default function Flow3DChart() {
                   tickangle: -45,
                   tickfont: { size: 11.5 },
                 },
-                yaxis: {
-                  title: { text: 'Criticality', font: { size: 14, color: '#52c41a' } },
-                  tickvals: CRITICALITY_LABELS.map((_, i) => i),
-                  ticktext: CRITICALITY_LABELS,
-                  tickfont: { size: 11.5 },
-                },
-                zaxis: {
-                  title: { text: 'Lifecycle', font: { size: 14, color: '#52c41a' } },
-                  tickvals: LIFECYCLE_LABELS.map((_, i) => i),
-                  ticktext: LIFECYCLE_LABELS,
-                  tickfont: { size: 11.5 },
-                },
-                camera: {
-                  eye: defaultCamera,
-                },
+                yaxis: mode === 'cost'
+                  ? { title: { text: 'Year', font: { size: 14, color: '#58a6ff' } }, tickfont: { size: 11.5 }, autorange: 'reversed' }
+                  : {
+                      title: { text: 'Criticality', font: { size: 14, color: '#52c41a' } },
+                      tickvals: CRITICALITY_LABELS.map((_, i) => i),
+                      ticktext: CRITICALITY_LABELS,
+                      tickfont: { size: 11.5 },
+                    },
+                zaxis: mode === 'cost'
+                  ? { title: { text: 'Cost ($)', font: { size: 14, color: '#58a6ff' } }, tickfont: { size: 11.5 } }
+                  : {
+                      title: { text: 'Lifecycle', font: { size: 14, color: '#52c41a' } },
+                      tickvals: LIFECYCLE_LABELS.map((_, i) => i),
+                      ticktext: LIFECYCLE_LABELS,
+                      tickfont: { size: 11.5 },
+                    },
+                camera: { eye: defaultCamera },
               },
-              legend: { orientation: 'h', y: -0.05 },
+              legend: mode === 'cost'
+                ? { orientation: 'v', x: 1, xanchor: 'right', y: 1, yanchor: 'top', bgcolor: 'rgba(22,27,34,0.75)', bordercolor: '#444', borderwidth: 1, font: { size: 11, color: '#e6edf3' } }
+                : { orientation: 'h', y: -0.05 },
+              showlegend: mode === 'cost',
               paper_bgcolor: 'transparent',
             }}
-            config={{
-              displayModeBar: false,
-              scrollZoom: true,
-            }}
+            config={{ displayModeBar: false, scrollZoom: true }}
             onRelayout={handleRelayout}
             onUpdate={handleUpdate}
             useResizeHandler

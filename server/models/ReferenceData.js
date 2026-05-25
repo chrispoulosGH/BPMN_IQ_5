@@ -8,6 +8,32 @@ const refSchema = new mongoose.Schema({
   state: { type: String, enum: VALID_STATES, default: 'published' },
 }, { timestamps: true });
 
+// Sub-schemas for BusinessFlow task→application cost embedding
+const annualCostSchema = new mongoose.Schema({
+  year: { type: Number },
+  operationCost: { type: Number, default: 0 },
+  developmentCost: { type: Number, default: 0 },
+  totalCost: { type: Number, default: 0 },
+}, { _id: false });
+
+const bfAppSchema = new mongoose.Schema({
+  name: { type: String },
+  annualCosts: [annualCostSchema],
+}, { _id: false });
+
+const bfTaskSchema = new mongoose.Schema({
+  name: { type: String },
+  applications: [bfAppSchema],
+}, { _id: false });
+
+// Richer schema for BusinessFlow (extends refSchema fields)
+const businessFlowSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true, trim: true },
+  owner: { type: String, trim: true, default: null },
+  state: { type: String, enum: VALID_STATES, default: 'published' },
+  tasks: [bfTaskSchema],
+}, { timestamps: true });
+
 // Richer schema for Application (ITAP data)
 const applicationSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
@@ -35,7 +61,7 @@ const applicationSchema = new mongoose.Schema({
   state: { type: String, enum: VALID_STATES, default: 'published' },
 }, { timestamps: true });
 
-const BusinessFlow = mongoose.model('BusinessFlow', refSchema);
+const BusinessFlow = mongoose.model('BusinessFlow', businessFlowSchema);
 const Product = mongoose.model('Product', refSchema);
 const Application = mongoose.model('Application', applicationSchema);
 const Actor = mongoose.model('Actor', refSchema);

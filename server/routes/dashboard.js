@@ -287,4 +287,58 @@ router.get('/flow-3d', async (_req, res) => {
   }
 });
 
+/**
+ * GET /api/dashboard/flow-cost-3d
+ * Returns cost data for the "Cost by Business Flow" 3D chart.
+ * Points: { businessFlow, task, taskOrder, year, totalCost, opCost, devCost }
+ * One point per task × year combination (summed across all apps in that task).
+ * Source: businessflows collection → tasks[].applications[].annualCosts[]
+ */
+router.get('/flow-cost-3d', async (_req, res) => {
+  try {
+    const db = require('mongoose').connection;
+    const bfDocs = await db.collection('businessflows')
+      .find({ 'tasks.0': { $exists: true } })
+      .toArray();
+
+    const businessFlows = [];
+    const points = [];
+    const taskOrders = {};
+
+    for (const bf of bfDocs) {
+      if (!bf.tasks || !bf.tasks.length) continue;
+      const flowName = bf.name;
+      businessFlows.push(flowName);
+
+      const ordered = bf.tasks.map(t => t.name);
+      taskOrders[flowName] = ordered;
+
+      bf.tasks.forEach((task, taskIdx) => {
+        if (!task.applications || !task.applications.length) return;
+
+        // Sum costs across all apps for each year index
+        const YEARS = Array.from({ length: 10 }, (_, i) => 2016 + i);
+        YEARS.forEach((year, yi) => {
+          let totalCost = 0, opCost = 0, devCost = 0;
+          task.applications.forEach(app => {
+            const entry = app.annualCosts?.[yi];
+            if (entry) {
+              totalCost += entry.totalCost       || 0;
+              opCost    += entry.operationCost   || 0;
+              devCost   += entry.developmentCost || 0;
+            }
+          });
+          if (totalCost > 0) {
+            points.push({ businessFlow: flowName, task: task.name, taskOrder: taskIdx, year, totalCost, opCost, devCost });
+          }
+        });
+      });
+    }
+
+    res.json({ businessFlows: businessFlows.sort(), points, taskOrders });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

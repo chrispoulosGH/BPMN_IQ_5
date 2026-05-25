@@ -37,6 +37,7 @@ import {
   ApartmentOutlined,
   BranchesOutlined,
   DashboardOutlined,
+  FileTextOutlined,
   RightOutlined,
   LeftOutlined,
   LogoutOutlined,
@@ -55,10 +56,11 @@ import CapabilitiesFactory from './components/CapabilitiesFactory';
 import ActorFactory from './components/ActorFactory';
 import BpmnFactory from './components/BpmnFactory';
 import Dashboard from './components/Dashboard';
+import ReportsPanel from './components/ReportsPanel';
 import AddToFactoryModal from './components/AddToFactoryModal';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
-import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler } from './api';
+import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap } from './api';
 import type { CapabilityMatch, TaskAddData, DiagramMetadata } from './types';
 
 const { Header, Sider, Content } = Layout;
@@ -69,6 +71,8 @@ interface ActiveDiagram {
   name: string;
   description: string;
   tags: string[];
+  /** 'db' = loaded from DB; 'local-match' = local file whose BF name already exists in DB */
+  source?: 'db' | 'local-match';
 }
 
 function extractTaskNames(xml: string): string[] {
@@ -309,7 +313,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const handleNavigateToFactory = useCallback((tab: string, searchTerm: string, mode: 'view' | 'add' = 'view', extra?: { applications?: string[]; actor?: string }) => {
     if (mode === 'add') {
       if (tab === 'tasks') {
-        setFactoryAdd((prev) => ({ ...prev, [tab]: { name: searchTerm, ...diagramMeta, ...extra } }));
+        // Use the current diagram name (renamed or DB name) as businessFlow, not the annotation value
+        const currentBusinessFlow = activeDiagram?.name || canvasDiagramName || diagramMeta.businessFlow;
+        setFactoryAdd((prev) => ({ ...prev, [tab]: { name: searchTerm, ...diagramMeta, ...extra, ...(currentBusinessFlow ? { businessFlow: currentBusinessFlow } : {}) } }));
       } else {
         setFactoryAdd((prev) => ({ ...prev, [tab]: searchTerm }));
       }
@@ -319,7 +325,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       setFactoryAdd((prev) => ({ ...prev, [tab]: '' }));
     }
     setActiveTab(tab);
-  }, [diagramMeta]);
+  }, [diagramMeta, activeDiagram, canvasDiagramName]);
 
   const handleXmlChange = useCallback((xml: string) => {
     currentXmlRef.current = xml;
@@ -373,11 +379,23 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       message.info('No tasks found in the current diagram');
       return;
     }
-    if (!allTaskNames.length) {
-      message.warning('Task reference data not loaded');
-      return;
+    // Resolve the current business flow name to scope the reference list
+    const currentFlow = activeDiagram?.name || canvasDiagramName || diagramMeta.businessFlow;
+    let refNames: string[];
+    if (currentFlow) {
+      refNames = await getTaskNames(currentFlow);
+      if (!refNames.length) {
+        message.warning(`No tasks in factory for business flow "${currentFlow}"`);
+        return;
+      }
+    } else {
+      refNames = allTaskNames;
+      if (!refNames.length) {
+        message.warning('Task reference data not loaded');
+        return;
+      }
     }
-    const results = computeAppMatches(tasks, allTaskNames);
+    const results = computeAppMatches(tasks, refNames);
     const fuzzy = results.filter((r) => !r.exact);
     if (!fuzzy.length) {
       message.success('All task names already match reference data');
@@ -385,7 +403,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     }
     setTaskMatchResults(fuzzy);
     setShowTaskMatch(true);
-  }, [allTaskNames, message]);
+  }, [activeDiagram, canvasDiagramName, diagramMeta.businessFlow, allTaskNames, message]);
 
   /** Handle approved task matches */
   const handleTaskMatchApprove = useCallback(async (approved: AppMatchResult[]) => {
@@ -434,16 +452,28 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       const file = e.target.files?.[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         const xml = ev.target?.result as string;
         const meta = extractDiagramMetadata(xml);
         setCurrentXml(xml);
         setImportTrigger(t => t + 1);
         setDiagramMeta(meta);
-        setActiveDiagram(null);
         setActiveFileName(file.name);
         setCanvasDiagramName(null); // will use meta.businessFlow via diagramName prop
         setIsDirty(false);
+        // Check if this diagram already exists in the factory (match by business flow name)
+        const bfName = meta.businessFlow || file.name.replace(/\.(bpmn|xml)$/i, '');
+        try {
+          const flowMap = await getBusinessFlowMap();
+          const existingId = flowMap[bfName];
+          if (existingId) {
+            setActiveDiagram({ _id: existingId, name: bfName, description: '', tags: [], source: 'local-match' });
+          } else {
+            setActiveDiagram(null);
+          }
+        } catch {
+          setActiveDiagram(null);
+        }
         message.success(`Opened: ${file.name}`);
       };
       reader.readAsText(file);
@@ -487,6 +517,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
           name: diagram.name,
           description: diagram.description,
           tags: diagram.tags,
+          source: 'db',
         });
         setCurrentXml(diagram.xml);
         setImportTrigger(t => t + 1);
@@ -580,6 +611,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
             name: updated.name,
             description: updated.description,
             tags: updated.tags,
+            source: 'db',
           });
           setSavedCaps(selectedCapsRef.current);
           message.success(`Updated in DB: ${updated.name}`);
@@ -590,6 +622,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
             name: created.name,
             description: created.description,
             tags: created.tags,
+            source: 'db',
           });
           setSavedCaps(selectedCapsRef.current);
           message.success(`Saved to DB: ${created.name}`);
@@ -618,6 +651,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
           name: created.name,
           description: created.description,
           tags: created.tags,
+          source: 'db',
         });
         setSavedCaps(selectedCapsRef.current);
         savedXmlRef.current = latestXml;
@@ -854,14 +888,50 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         allApplicationNames={allAppNames}
                         allTaskNames={allTaskNames}
                         allActorNames={allActorNames}
-                        diagramName={activeDiagram?.name || diagramMeta.businessFlow || activeFileName?.replace(/\.bpmn$/i, '') || canvasDiagramName || undefined}
-                        isInFactory={!!activeDiagram?._id}
+                        diagramName={activeDiagram?.name || canvasDiagramName || diagramMeta.businessFlow || activeFileName?.replace(/\.bpmn$/i, '') || undefined}
+                        isInFactory={activeDiagram?.source === 'db'}
+                        isAlreadyLoaded={activeDiagram?.source === 'local-match'}
                         readOnly={readOnly}
                         onNavigateToFactory={handleNavigateToFactory}
                         onTaskSelect={setSelectedDiagramTask}
                         onAddToFactory={() => setShowAddToFactory(true)}
+                        onDeleteAndReload={async () => {
+                          if (!activeDiagram?._id) return;
+                          try {
+                            await deleteDiagram(activeDiagram._id);
+                            const xml = await editorRef.current?.getXml() || currentXmlRef.current;
+                            const meta = extractDiagramMetadata(xml);
+                            const diagramName = meta.businessFlow || activeDiagram.name;
+                            const created = await createDiagram({ name: diagramName, xml, status: 'staged', createdBy: user.userId });
+                            setActiveDiagram({ _id: created._id, name: created.name, description: created.description || '', tags: created.tags || [], source: 'db' });
+                            refresh();
+                            message.success(`Replaced: ${created.name}`);
+                          } catch (err: any) { message.error(err.message); }
+                        }}
+                        onSaveAsNew={async (newName: string) => {
+                          try {
+                            const xml = await editorRef.current?.getXml() || currentXmlRef.current;
+                            const created = await createDiagram({ name: newName, xml, status: 'draft', createdBy: user.userId });
+                            setActiveDiagram({ _id: created._id, name: created.name, description: created.description || '', tags: created.tags || [], source: 'db' });
+                            refresh();
+                            message.success(`Saved as new: ${created.name}`);
+                          } catch (err: any) { message.error(err.message); }
+                        }}
                         onNewDiagram={handleNew}
-                        onDiagramNameChange={(name) => setCanvasDiagramName(name)}
+                        onDiagramNameChange={async (name) => {
+                          setCanvasDiagramName(name);
+                          try {
+                            const flowMap = await getBusinessFlowMap();
+                            const existingId = flowMap[name];
+                            if (existingId) {
+                              setActiveDiagram({ _id: existingId, name, description: '', tags: [], source: 'local-match' });
+                            } else {
+                              setActiveDiagram(null);
+                            }
+                          } catch {
+                            setActiveDiagram(null);
+                          }
+                        }}
                       />
                     </div>
                   </div>
@@ -926,6 +996,11 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 key: 'dashboard',
                 label: <span><DashboardOutlined /> Dashboards</span>,
                 children: <Dashboard />,
+              },
+              {
+                key: 'reports',
+                label: <span><FileTextOutlined /> Reports</span>,
+                children: <ReportsPanel />,
               },
             ]}
           />
@@ -1110,7 +1185,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
       <AddToFactoryModal
         open={showAddToFactory}
-        initialName={canvasDiagramName || activeFileName?.replace(/\.bpmn$/i, '') || diagramMeta.businessFlow || ''}
+        initialName={canvasDiagramName || diagramMeta.businessFlow || activeFileName?.replace(/\.(bpmn|xml)$/i, '') || ''}
         onSave={handleAddToFactory}
         onClose={() => setShowAddToFactory(false)}
       />
