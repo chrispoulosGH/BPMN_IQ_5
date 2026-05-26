@@ -28,10 +28,18 @@ router.post('/:collection', async (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
   try {
-    // For collections with extra fields, pass the whole body
-    const data = req.params.collection === 'businessCapabilities'
-      ? { name: name.trim(), domainName: req.body.domainName, aspect: req.body.aspect, briefDescription: req.body.briefDescription, tmfVersion: req.body.tmfVersion }
-      : { name: name.trim() };
+    let data;
+    if (req.params.collection === 'businessCapabilities') {
+      data = { name: name.trim(), domainName: req.body.domainName, aspect: req.body.aspect, briefDescription: req.body.briefDescription, tmfVersion: req.body.tmfVersion };
+    } else if (req.params.collection === 'applications') {
+      const APP_FIELDS = ['acronym','correlationId','shortDescription','applicationType','businessCriticality','discoverySource','installType','cpniIndicator','customerFacing','handleSpi','internetFacing','pciData','soxFsa','storeSpi','applPurpose','lifecycle','lifecycleStatus','businessPurpose','pciDataStored','userInterface','owner'];
+      data = { name: name.trim(), state: req.body.state || 'draft' };
+      for (const f of APP_FIELDS) {
+        if (f in req.body) data[f] = req.body[f] || null;
+      }
+    } else {
+      data = { name: name.trim() };
+    }
     const item = await Model.create(data);
     res.status(201).json(item);
   } catch (e) {
@@ -47,9 +55,18 @@ router.put('/:collection/:id', async (req, res) => {
   const { name } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
   try {
-    const update = req.params.collection === 'businessCapabilities'
-      ? { name: name.trim(), domainName: req.body.domainName, aspect: req.body.aspect, briefDescription: req.body.briefDescription, tmfVersion: req.body.tmfVersion }
-      : { name: name.trim() };
+    let update;
+    if (req.params.collection === 'businessCapabilities') {
+      update = { name: name.trim(), domainName: req.body.domainName, aspect: req.body.aspect, briefDescription: req.body.briefDescription, tmfVersion: req.body.tmfVersion };
+    } else if (req.params.collection === 'applications') {
+      const APP_FIELDS = ['acronym','shortDescription','applicationType','businessCriticality','discoverySource','installType','cpniIndicator','customerFacing','handleSpi','internetFacing','pciData','soxFsa','storeSpi','applPurpose','lifecycle','lifecycleStatus','businessPurpose','pciDataStored','userInterface','owner'];
+      update = { name: name.trim() };
+      for (const f of APP_FIELDS) {
+        if (f in req.body) update[f] = req.body[f] || null;
+      }
+    } else {
+      update = { name: name.trim() };
+    }
     const item = await Model.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);

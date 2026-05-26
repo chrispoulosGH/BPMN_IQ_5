@@ -341,4 +341,55 @@ router.get('/flow-cost-3d', async (_req, res) => {
   }
 });
 
+/**
+ * GET /api/dashboard/cost-by-year?year=2025
+ * Returns top-20 business flows and top-20 tasks ranked by total cost for the given year.
+ * Source: businessflows collection → tasks[].applications[].annualCosts[yearIdx]
+ */
+router.get('/cost-by-year', async (req, res) => {
+  const year = parseInt(req.query.year) || 2025;
+  const yearIdx = year - 2016;
+  if (yearIdx < 0 || yearIdx >= 10) {
+    return res.status(400).json({ error: 'Year must be between 2016 and 2025' });
+  }
+  try {
+    const db = require('mongoose').connection;
+    const bfDocs = await db.collection('businessflows')
+      .find({ 'tasks.0': { $exists: true } })
+      .toArray();
+
+    const flowMap = new Map();
+    const taskMap = new Map();
+
+    for (const bf of bfDocs) {
+      if (!flowMap.has(bf.name)) {
+        flowMap.set(bf.name, { name: bf.name, opCost: 0, devCost: 0, totalCost: 0 });
+      }
+      for (const task of (bf.tasks || [])) {
+        const taskKey = `${bf.name}::${task.name}`;
+        if (!taskMap.has(taskKey)) {
+          taskMap.set(taskKey, { name: task.name, businessFlow: bf.name, opCost: 0, devCost: 0, totalCost: 0 });
+        }
+        for (const app of (task.applications || [])) {
+          const entry = app.annualCosts?.[yearIdx];
+          if (!entry) continue;
+          flowMap.get(bf.name).opCost    += entry.operationCost   || 0;
+          flowMap.get(bf.name).devCost   += entry.developmentCost || 0;
+          flowMap.get(bf.name).totalCost += entry.totalCost       || 0;
+          taskMap.get(taskKey).opCost    += entry.operationCost   || 0;
+          taskMap.get(taskKey).devCost   += entry.developmentCost || 0;
+          taskMap.get(taskKey).totalCost += entry.totalCost       || 0;
+        }
+      }
+    }
+
+    const flows = [...flowMap.values()].sort((a, b) => b.totalCost - a.totalCost).slice(0, 20);
+    const tasks = [...taskMap.values()].sort((a, b) => b.totalCost - a.totalCost).slice(0, 20);
+
+    res.json({ flows, tasks, year });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

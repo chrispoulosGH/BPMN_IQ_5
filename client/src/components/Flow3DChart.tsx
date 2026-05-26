@@ -88,6 +88,21 @@ const FLOW_COLORS = [
   '#ff7a45', '#36cfc9', '#9254de', '#ffc53d', '#ff4d4f',
 ];
 
+// Per-flow color pairs: [operationCost color, developmentCost color]
+// Each pair uses a distinct hue family so multiple selected flows are clearly differentiated
+const FLOW_PALETTES: { op: string; dev: string }[] = [
+  { op: '#1890ff', dev: '#69c0ff' },  // blue
+  { op: '#ff7c00', dev: '#b84000' },  // orange / rust
+  { op: '#52c41a', dev: '#95de64' },  // green
+  { op: '#f5222d', dev: '#ff7875' },  // red
+  { op: '#722ed1', dev: '#b37feb' },  // purple
+  { op: '#13c2c2', dev: '#87e8de' },  // cyan
+  { op: '#eb2f96', dev: '#ff85c2' },  // pink
+  { op: '#2f54eb', dev: '#85a5ff' },  // deep blue
+  { op: '#a0d911', dev: '#d3f261' },  // lime
+  { op: '#fa541c', dev: '#ffbb96' },  // volcano
+];
+
 const HARDCODED_CAMERA = { x: -1.8, y: -1.8, z: 0.8 };
 
 function cameraStorageKey(flows: string[]) {
@@ -100,6 +115,7 @@ export default function Flow3DChart() {
   const [costData, setCostData] = useState<FlowCost3DData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedFlows, setSelectedFlows] = useState<string[]>([]);
+  const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [cameraReset, setCameraReset] = useState(0);
   const [defaultCamera, setDefaultCamera] = useState(HARDCODED_CAMERA);
   const liveCameraRef = useRef<{ x: number; y: number; z: number } | null>(null);
@@ -151,6 +167,17 @@ export default function Flow3DChart() {
   // Active dataset switches by mode
   const activeData = mode === 'criticality' ? data : costData;
 
+  // Derive sorted list of all years present in cost data
+  const allYears = useMemo(() => {
+    if (!costData) return [] as number[];
+    return [...new Set(costData.points.map(p => p.year))].sort((a, b) => a - b);
+  }, [costData]);
+
+  // Auto-select all years when cost data first loads
+  useEffect(() => {
+    if (allYears.length) setSelectedYears(allYears);
+  }, [allYears]);
+
   // Filter points to selected flows only
   const filteredPoints = useMemo(() => {
     if (!data || !selectedFlows.length) return [];
@@ -163,28 +190,17 @@ export default function Flow3DChart() {
 
     const plotTraces: any[] = [];
 
-    // Two series definitions: operation cost (base) and development cost (stacked on top)
-    const SERIES = [
-      {
-        key: 'opCost' as const,
-        label: 'Operation Cost',
-        color: '#58a6ff',       // blue
-        lineColor: '#58a6ff',
-        colorscale: [[0,'#1c2128'],[0.3,'#1d4ed8'],[1,'#58a6ff']] as [number,string][],
-        stacked: false,
-      },
-      {
-        key: 'devCost' as const,
-        label: 'Development Cost',
-        color: '#3fb950',       // green
-        lineColor: '#3fb950',
-        colorscale: [[0,'#1c2128'],[0.3,'#175c2e'],[1,'#3fb950']] as [number,string][],
-        stacked: true,
-      },
-    ] as const;
-
     selectedFlows.forEach((flowName, flowIdx) => {
-      const flowPoints = costData.points.filter(p => p.businessFlow === flowName);
+      // Each flow gets its own hue family so multi-flow views are clearly differentiated
+      const palette = FLOW_PALETTES[flowIdx % FLOW_PALETTES.length];
+      const SERIES = [
+        { key: 'opCost'  as const, label: 'Operation Cost',    lineColor: palette.op,  stacked: false },
+        { key: 'devCost' as const, label: 'Development Cost',  lineColor: palette.dev, stacked: true  },
+      ];
+      const flowPoints = costData.points.filter(p =>
+        p.businessFlow === flowName &&
+        (selectedYears.length === 0 || selectedYears.includes(p.year))
+      );
       const taskOrder = costData.taskOrders[flowName] || [];
       if (!flowPoints.length) return;
 
@@ -251,6 +267,15 @@ export default function Flow3DChart() {
             fj.push(s + 1, n + s + 1);
             fk.push(n + s, n + s);
           }
+          // Per-vertex hover data: [flowName, task, year, cost $M, seriesLabel]
+          // Actual series cost: devCost for stacked, opCost otherwise
+          const vertexData = sorted.map(p => [
+            flowName,
+            p.task,
+            p.year,
+            ((series.stacked ? p.devCost : p.opCost) / 1_000_000).toFixed(2),
+            series.label,
+          ]);
           plotTraces.push({
             type: 'mesh3d',
             x: meshX, y: meshY, z: meshZ,
@@ -258,17 +283,23 @@ export default function Flow3DChart() {
             color: series.lineColor,
             opacity: 0.18,
             showlegend: false,
-            hoverinfo: 'skip',
             flatshading: true,
             lighting: { ambient: 1, diffuse: 0 },
             name: `${series.label} (plane)`,
+            customdata: [...vertexData, ...vertexData],
+            hovertemplate:
+              '<b>%{customdata[0]}</b><br>' +
+              'Task: %{customdata[1]}<br>' +
+              'Year: %{customdata[2]}<br>' +
+              '%{customdata[4]}: $%{customdata[3]}M' +
+              '<extra></extra>',
           });
         }
       });
     });
 
     return plotTraces;
-  }, [mode, costData, selectedFlows]);
+  }, [mode, costData, selectedFlows, selectedYears]);
 
   // Build Plotly traces
   const traces = useMemo(() => {
@@ -410,7 +441,7 @@ export default function Flow3DChart() {
         <Segmented
           size="small"
           value={mode}
-          onChange={v => { setMode(v as ChartMode); setSelectedFlows([]); setCameraReset(0); }}
+          onChange={v => { setMode(v as ChartMode); setCameraReset(0); }}
           options={[
             { label: 'Lifecycle Criticality by Business Flow', value: 'criticality' },
             { label: 'Cost by Business Flow', value: 'cost' },
@@ -436,6 +467,26 @@ export default function Flow3DChart() {
         <Button size="small" onClick={resetView} title="Reset to default view">⟳ Reset View</Button>
         <Button size="small" onClick={saveDefaultView} title="Save current view as default for this diagram selection">📌 Set Default View</Button>
       </div>
+
+      {mode === 'cost' && allYears.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 500, fontSize: 13 }}>Years:</span>
+          <Select
+            mode="multiple"
+            size="small"
+            style={{ minWidth: 320, flex: 1, maxWidth: 560 }}
+            value={selectedYears}
+            onChange={setSelectedYears}
+            options={allYears.map(y => ({ label: String(y), value: y }))}
+            maxTagCount={12}
+            allowClear
+            placeholder="Select years to display…"
+          />
+          <Button size="small" onClick={() => setSelectedYears(allYears)}>All</Button>
+          <Button size="small" onClick={() => setSelectedYears(allYears.slice(-5))}>Last 5</Button>
+          <Button size="small" onClick={() => setSelectedYears(allYears.slice(-3))}>Last 3</Button>
+        </div>
+      )}
 
       {!selectedFlows.length ? (
         <Empty description="Select one or more business flows to see data in 3D space" style={{ marginTop: 64 }} />

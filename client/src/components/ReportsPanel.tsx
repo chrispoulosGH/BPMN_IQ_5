@@ -16,7 +16,7 @@ const ReportsPanel: React.FC = () => {
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState<string | null>(null);
 
-  // Fetch business flows when report type is set
+  // Fetch business flows when detailed-cost report type is set
   useEffect(() => {
     if (reportType !== 'detailed-cost') return;
     axios
@@ -25,7 +25,7 @@ const ReportsPanel: React.FC = () => {
       .catch(e => setError(e.response?.data?.error || e.message));
   }, [reportType]);
 
-  // Fetch report whenever selectedFlow changes
+  // Fetch detailed cost report when a flow is selected
   useEffect(() => {
     if (!selectedFlow || reportType !== 'detailed-cost') return;
     setLoading(true);
@@ -52,7 +52,7 @@ const ReportsPanel: React.FC = () => {
           <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>Report Type:</span>
           <Select
             placeholder="Choose a report"
-            style={{ width: 220 }}
+            style={{ width: 260 }}
             value={reportType}
             onChange={val => {
               setReportType(val);

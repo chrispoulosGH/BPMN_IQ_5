@@ -18,7 +18,8 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { getDashboardTaskRisk, getDashboardFlowRisk } from '../api';
+import { getDashboardTaskRisk, getDashboardFlowRisk, getDashboardCostByYear } from '../api';
+import type { CostByYearItem, TaskCostByYearItem } from '../api';
 import Flow3DChart from './Flow3DChart';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -91,15 +92,27 @@ function riskLevel(score: number): { label: string; color: string } {
 
 // ─── Component ──────────────────────────────────────────────
 export default function Dashboard() {
+  const COST_YEAR = 2025;
   const [taskData, setTaskData] = useState<TaskProfile[]>([]);
   const [flowData, setFlowData] = useState<FlowProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'tasks' | 'flows' | '3d'>('tasks');
+  const [view, setView] = useState<'tasks' | 'flows' | '3d'>('flows');
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
+  const [flowCostData, setFlowCostData] = useState<CostByYearItem[]>([]);
+  const [taskCostData, setTaskCostData] = useState<TaskCostByYearItem[]>([]);
 
   useEffect(() => {
-    Promise.all([getDashboardTaskRisk(), getDashboardFlowRisk()])
-      .then(([tasks, flows]) => { setTaskData(tasks); setFlowData(flows); })
+    Promise.all([
+      getDashboardTaskRisk(),
+      getDashboardFlowRisk(),
+      getDashboardCostByYear(COST_YEAR),
+    ])
+      .then(([tasks, flows, cost]) => {
+        setTaskData(tasks);
+        setFlowData(flows);
+        setFlowCostData(cost.flows);
+        setTaskCostData(cost.tasks);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -120,8 +133,8 @@ export default function Dashboard() {
           value={view}
           onChange={(v) => setView(v as 'tasks' | 'flows' | '3d')}
           options={[
-            { label: 'Task Comparison', value: 'tasks' },
             { label: 'Business Flow Comparison', value: 'flows' },
+            { label: 'Task Comparison', value: 'tasks' },
             { label: '3D Flow Explorer', value: '3d' },
           ]}
         />
@@ -138,9 +151,9 @@ export default function Dashboard() {
       </div>
 
       {view === 'tasks' ? (
-        <TaskDashboard tasks={filteredTasks} />
+        <TaskDashboard tasks={filteredTasks} allTasks={taskData} costData={taskCostData} costYear={COST_YEAR} />
       ) : view === 'flows' ? (
-        <FlowDashboard flows={flowData} />
+        <FlowDashboard flows={flowData} costData={flowCostData} costYear={COST_YEAR} />
       ) : (
         <Flow3DChart />
       )}
@@ -149,11 +162,22 @@ export default function Dashboard() {
 }
 
 // ─── Task Dashboard ─────────────────────────────────────────
-function TaskDashboard({ tasks }: { tasks: TaskProfile[] }) {
+function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskProfile[]; allTasks: TaskProfile[]; costData: TaskCostByYearItem[]; costYear: number }) {
   if (!tasks.length) return <Empty description="No tasks with applications found" />;
 
   // Top 20 tasks by risk for bar chart
   const topTasks = [...tasks].sort((a, b) => b.riskScore - a.riskScore).slice(0, 20);
+
+  // Cost bar chart data (already top-20 sorted by totalCost from server)
+  const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(1) + 'M';
+  const costBarData = costData.map((t) => ({
+    name: t.name.length > 25 ? t.name.slice(0, 22) + '...' : t.name,
+    fullName: t.name,
+    flow: t.businessFlow,
+    opCost: t.opCost,
+    devCost: t.devCost,
+    totalCost: t.totalCost,
+  }));
 
   // Risk score bar chart data
   const riskBarData = topTasks.map((t) => ({
@@ -174,9 +198,14 @@ function TaskDashboard({ tasks }: { tasks: TaskProfile[] }) {
 
   // Radar data for top 5 tasks
   const radarTasks = topTasks.slice(0, 5);
+  const [radarTaskSelected, setRadarTaskSelected] = useState<string[]>([]);
+  const radarTasksFiltered = radarTaskSelected.length > 0
+    ? allTasks.filter((t) => radarTaskSelected.includes(t.name)).slice(0, 5)
+    : radarTasks;
+  const radarTaskTitle = radarTaskSelected.length > 0 ? 'Compliance Radar — Selected Tasks' : 'Compliance Radar — Top 5 Riskiest Tasks';
   const radarData = COMPLIANCE_FIELDS.map((field) => {
     const point: any = { subject: COMPLIANCE_LABELS[field] };
-    radarTasks.forEach((t, i) => {
+    radarTasksFiltered.forEach((t, i) => {
       point[`task${i}`] = (t[field] as YNCount).yes;
     });
     return point;
@@ -188,8 +217,49 @@ function TaskDashboard({ tasks }: { tasks: TaskProfile[] }) {
   const maxRisk = tasks.length ? Math.max(...tasks.map((t) => t.riskScore)) : 0;
   const highRiskCount = tasks.filter((t) => t.riskScore > 15).length;
 
+  // Criticality pie — filterable by task (uses full allTasks list, independent of top flow filter)
+  const [critTasks, setCritTasks] = useState<string[]>([]);
+  const tasksForPie = critTasks.length > 0 ? allTasks.filter((t) => critTasks.includes(t.name)) : allTasks;
+  const taskCritAgg: Record<string, number> = {};
+  for (const t of tasksForPie) {
+    for (const [k, v] of Object.entries(t.criticality)) {
+      taskCritAgg[k] = (taskCritAgg[k] || 0) + v;
+    }
+  }
+  const taskCritPieData = Object.entries(taskCritAgg)
+    .filter(([k]) => k !== 'Unknown')
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
   return (
     <>
+      {/* Cost Bar Chart — first */}
+      {costBarData.length > 0 && (
+        <Card title={`Top 20 Tasks by Cost — ${costYear}`} size="small" style={{ marginBottom: 24 }}>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={costBarData} margin={{ top: 5, right: 30, left: 20, bottom: 80 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" interval={0} height={80} tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={(v) => fmtM(v)} width={70} />
+              <Tooltip content={({ payload }) => {
+                if (!payload?.length) return null;
+                const d = payload[0].payload;
+                return <div style={{ background: '#fff', border: '1px solid #ccc', padding: 8, borderRadius: 4, fontSize: 12 }}>
+                  <div style={{ fontWeight: 600 }}>{d.fullName}</div>
+                  <div style={{ color: '#6e7681', fontSize: 11 }}>{d.flow}</div>
+                  <div style={{ color: '#1890ff' }}>Operation: {fmtM(d.opCost)}</div>
+                  <div style={{ color: '#d29922' }}>Development: {fmtM(d.devCost)}</div>
+                  <div style={{ fontWeight: 600 }}>Total: {fmtM(d.totalCost)}</div>
+                </div>;
+              }} />
+              <Legend />
+              <Bar dataKey="opCost" name="Operation Cost" stackId="a" fill="#1890ff" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="devCost" name="Development Cost" stackId="a" fill="#d29922" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
       {/* Summary cards */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6}><Card size="small"><Statistic title="Tasks" value={tasks.length} /></Card></Col>
@@ -235,30 +305,85 @@ function TaskDashboard({ tasks }: { tasks: TaskProfile[] }) {
         </ResponsiveContainer>
       </Card>
 
-      {/* Radar Chart - Top 5 */}
-      {radarTasks.length > 1 && (
-        <Card title="Compliance Radar — Top 5 Riskiest Tasks" size="small" style={{ marginBottom: 24 }}>
-          <ResponsiveContainer width="100%" height={400}>
-            <RadarChart data={radarData}>
-              <PolarGrid />
-              <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11 }} />
-              <PolarRadiusAxis />
-              {radarTasks.map((t, i) => (
-                <Radar
-                  key={t._id}
-                  name={t.name.length > 20 ? t.name.slice(0, 17) + '...' : t.name}
-                  dataKey={`task${i}`}
-                  stroke={COLORS[i]}
-                  fill={COLORS[i]}
-                  fillOpacity={0.15}
-                />
-              ))}
-              <Legend />
-              <Tooltip />
-            </RadarChart>
-          </ResponsiveContainer>
-        </Card>
-      )}
+      {/* Criticality Pie + Radar Row */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} md={12}>
+          <Card
+            title="Application Criticality Distribution"
+            size="small"
+            extra={
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="All tasks"
+                style={{ minWidth: 200, maxWidth: 340 }}
+                maxTagCount={2}
+                value={critTasks}
+                onChange={setCritTasks}
+                showSearch
+                filterOption={(input, opt) => (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
+                options={[...new Set(allTasks.map((t) => t.name))].sort().map((name) => ({ label: name, value: name }))}
+              />
+            }
+          >
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie data={taskCritPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} labelLine>
+                  {taskCritPieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+
+        <Col xs={24} md={12}>
+          <Card
+            title={radarTaskTitle}
+            size="small"
+            extra={
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="Top 5 by risk"
+                style={{ minWidth: 200, maxWidth: 340 }}
+                maxTagCount={2}
+                value={radarTaskSelected}
+                onChange={(vals) => setRadarTaskSelected(vals.slice(0, 5))}
+                showSearch
+                filterOption={(input, opt) => (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
+                options={[...new Set(allTasks.map((t) => t.name))].sort().map((name) => ({ label: name, value: name }))}
+              />
+            }
+          >
+            {radarTasksFiltered.length < 2 ? (
+              <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b949e' }}>
+                Select at least 2 tasks to display the radar
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <RadarChart data={radarData}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11 }} />
+                  <PolarRadiusAxis />
+                  {radarTasksFiltered.map((t, i) => (
+                    <Radar
+                      key={t._id}
+                      name={t.name.length > 20 ? t.name.slice(0, 17) + '...' : t.name}
+                      dataKey={`task${i}`}
+                      stroke={COLORS[i]}
+                      fill={COLORS[i]}
+                      fillOpacity={0.15}
+                    />
+                  ))}
+                  <Legend />
+                  <Tooltip />
+                </RadarChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+        </Col>
+      </Row>
 
       {/* Task Risk Table */}
       <Card title="All Tasks — Risk & Compliance Summary" size="small">
@@ -292,10 +417,20 @@ function TaskDashboard({ tasks }: { tasks: TaskProfile[] }) {
 }
 
 // ─── Flow Dashboard ─────────────────────────────────────────
-function FlowDashboard({ flows }: { flows: FlowProfile[] }) {
+function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; costData: CostByYearItem[]; costYear: number }) {
   if (!flows.length) return <Empty description="No business flows with tasks/applications found" />;
 
   const top20 = flows.slice(0, 20); // already sorted by risk
+
+  // Cost bar chart data (top-20 by cost, sorted by server)
+  const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(1) + 'M';
+  const costBarData = costData.map((f) => ({
+    name: f.name.length > 25 ? f.name.slice(0, 22) + '...' : f.name,
+    fullName: f.name,
+    opCost: f.opCost,
+    devCost: f.devCost,
+    totalCost: f.totalCost,
+  }));
 
   // Risk bar data
   const riskBarData = top20.map((f) => ({
@@ -315,20 +450,25 @@ function FlowDashboard({ flows }: { flows: FlowProfile[] }) {
     return row;
   });
 
-  // Criticality pie for all flows combined
-  const allCriticality: Record<string, number> = {};
-  for (const f of flows) {
+  // Criticality pie — filterable by flow
+  const [critFlows, setCritFlows] = useState<string[]>([]);
+  const flowsForPie = critFlows.length > 0 ? flows.filter((f) => critFlows.includes(f.name)) : flows;
+  const critAgg: Record<string, number> = {};
+  for (const f of flowsForPie) {
     for (const [k, v] of Object.entries(f.criticality)) {
-      allCriticality[k] = (allCriticality[k] || 0) + v;
+      critAgg[k] = (critAgg[k] || 0) + v;
     }
   }
-  const critPieData = Object.entries(allCriticality)
+  const critPieData = Object.entries(critAgg)
     .filter(([k]) => k !== 'Unknown')
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
 
-  // Radar for top 5 flows
-  const radarFlows = top20.slice(0, 5);
+  // Radar — filterable by flow (max 5 for readability)
+  const [radarSelected, setRadarSelected] = useState<string[]>([]);
+  const radarFlows = radarSelected.length > 0
+    ? flows.filter((f) => radarSelected.includes(f.name)).slice(0, 5)
+    : top20.slice(0, 5);
   const radarData = COMPLIANCE_FIELDS.map((field) => {
     const point: any = { subject: COMPLIANCE_LABELS[field] };
     radarFlows.forEach((f, i) => {
@@ -336,6 +476,7 @@ function FlowDashboard({ flows }: { flows: FlowProfile[] }) {
     });
     return point;
   });
+  const radarTitle = radarSelected.length > 0 ? 'Compliance Radar — Selected Flows' : 'Compliance Radar — Top 5 Riskiest Flows';
 
   // Summary
   const avgRisk = flows.length ? Math.round(flows.reduce((s, f) => s + f.riskScore, 0) / flows.length) : 0;
@@ -344,6 +485,32 @@ function FlowDashboard({ flows }: { flows: FlowProfile[] }) {
 
   return (
     <>
+      {/* Cost Bar Chart — first */}
+      {costBarData.length > 0 && (
+        <Card title={`Top 20 Business Flows by Cost — ${costYear}`} size="small" style={{ marginBottom: 24 }}>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={costBarData} margin={{ top: 5, right: 30, left: 20, bottom: 80 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" interval={0} height={80} tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={(v) => fmtM(v)} width={70} />
+              <Tooltip content={({ payload }) => {
+                if (!payload?.length) return null;
+                const d = payload[0].payload;
+                return <div style={{ background: '#fff', border: '1px solid #ccc', padding: 8, borderRadius: 4, fontSize: 12 }}>
+                  <div style={{ fontWeight: 600 }}>{d.fullName}</div>
+                  <div style={{ color: '#1890ff' }}>Operation: {fmtM(d.opCost)}</div>
+                  <div style={{ color: '#d29922' }}>Development: {fmtM(d.devCost)}</div>
+                  <div style={{ fontWeight: 600 }}>Total: {fmtM(d.totalCost)}</div>
+                </div>;
+              }} />
+              <Legend />
+              <Bar dataKey="opCost" name="Operation Cost" stackId="a" fill="#1890ff" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="devCost" name="Development Cost" stackId="a" fill="#d29922" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6}><Card size="small"><Statistic title="Business Flows" value={flows.length} /></Card></Col>
         <Col xs={12} sm={6}><Card size="small"><Statistic title="Avg Risk Score" value={avgRisk} /></Card></Col>
@@ -392,7 +559,24 @@ function FlowDashboard({ flows }: { flows: FlowProfile[] }) {
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {/* Criticality Pie */}
         <Col xs={24} md={12}>
-          <Card title="Application Criticality Distribution" size="small">
+          <Card
+            title="Application Criticality Distribution"
+            size="small"
+            extra={
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="All flows"
+                style={{ minWidth: 200, maxWidth: 340 }}
+                maxTagCount={2}
+                value={critFlows}
+                onChange={setCritFlows}
+                showSearch
+                filterOption={(input, opt) => (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
+                options={flows.map((f) => ({ label: f.name, value: f.name })).sort((a, b) => a.label.localeCompare(b.label))}
+              />
+            }
+          >
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie data={critPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} labelLine>
@@ -405,9 +589,30 @@ function FlowDashboard({ flows }: { flows: FlowProfile[] }) {
         </Col>
 
         {/* Radar */}
-        {radarFlows.length > 1 && (
-          <Col xs={24} md={12}>
-            <Card title="Compliance Radar — Top 5 Riskiest Flows" size="small">
+        <Col xs={24} md={12}>
+          <Card
+            title={radarTitle}
+            size="small"
+            extra={
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder="Top 5 by risk"
+                style={{ minWidth: 200, maxWidth: 340 }}
+                maxTagCount={2}
+                value={radarSelected}
+                onChange={(vals) => setRadarSelected(vals.slice(0, 5))}
+                showSearch
+                filterOption={(input, opt) => (opt?.label as string ?? '').toLowerCase().includes(input.toLowerCase())}
+                options={flows.map((f) => ({ label: f.name, value: f.name })).sort((a, b) => a.label.localeCompare(b.label))}
+              />
+            }
+          >
+            {radarFlows.length < 2 ? (
+              <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b949e' }}>
+                Select at least 2 flows to display the radar
+              </div>
+            ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <RadarChart data={radarData}>
                   <PolarGrid />
@@ -427,9 +632,9 @@ function FlowDashboard({ flows }: { flows: FlowProfile[] }) {
                   <Tooltip />
                 </RadarChart>
               </ResponsiveContainer>
-            </Card>
-          </Col>
-        )}
+            )}
+          </Card>
+        </Col>
       </Row>
 
       {/* Flow Table */}

@@ -121,28 +121,19 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
                 </Text>
               </Space>
 
-              {item.tags.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {item.tags.slice(0, 3).map((tag) => (
-                    <Tag key={tag} className="!text-[10px] !leading-4 !m-0">
-                      {tag}
-                    </Tag>
-                  ))}
-                  {item.tags.length > 3 && (
-                    <Text type="secondary" className="text-[10px]">
-                      +{item.tags.length - 3}
-                    </Text>
-                  )}
-                </div>
-              )}
-
-              {(item.product || item.channel || item.domain || item.subdomain || item.lineOfBusiness) && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {[item.lineOfBusiness, item.channel, item.domain, item.subdomain, item.product].filter(Boolean).map((val) => (
-                    <Tag key={val} color="blue" className="!text-[10px] !leading-4 !m-0">
-                      {val}
-                    </Tag>
-                  ))}
+              {item.status && (
+                <div className="mt-0.5">
+                  <Tag
+                    color={
+                      item.status === 'published' ? 'green' :
+                      item.status === 'staged' ? 'blue' :
+                      item.status === 'draft' ? 'default' :
+                      item.status === 'archived' ? 'red' : 'default'
+                    }
+                    className="!text-[10px] !leading-4 !m-0 capitalize"
+                  >
+                    {item.status}
+                  </Tag>
                 </div>
               )}
             </div>

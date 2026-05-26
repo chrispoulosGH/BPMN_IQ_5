@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select } from 'antd';
-import { SearchOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons';
+import { SearchOutlined, SettingOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
 import type { ApplicationItem } from '../types';
-import { getRefItems, createRefItem } from '../api';
+import { getRefItems, createApplication, updateApplication } from '../api';
 import type { ColumnsType } from 'antd/es/table';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 
@@ -10,6 +10,7 @@ interface ApplicationFactoryProps {
   defaultSearch?: string;
   defaultAdd?: string;
   userRole?: string | null;
+  readOnly?: boolean;
 }
 
 /** All possible columns with their keys, labels, and default visibility */
@@ -39,7 +40,7 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'owner', title: 'Owner', defaultVisible: true },
 ];
 
-export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole }: ApplicationFactoryProps) {
+export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly }: ApplicationFactoryProps) {
   const { message } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,6 +48,8 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   const [detail, setDetail] = useState<ApplicationItem | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm] = Form.useForm();
+  const [editingApp, setEditingApp] = useState<ApplicationItem | null>(null);
+  const [editForm] = Form.useForm();
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
     () => new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
@@ -90,9 +93,27 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
       })
     : items;
 
-  const handleAddApplication = async (values: { name: string }) => {
+  const handleEdit = (record: ApplicationItem) => {
+    setEditingApp(record);
+    editForm.setFieldsValue(record);
+  };
+
+  const handleUpdateApplication = async (values: Partial<ApplicationItem>) => {
+    if (!editingApp) return;
     try {
-      const created = await createRefItem('applications', values.name, undefined, 'draft');
+      await updateApplication(editingApp._id, values);
+      message.success('Application updated');
+      setEditingApp(null);
+      editForm.resetFields();
+      loadItems();
+    } catch (e: any) {
+      message.error(e.response?.data?.error || e.message);
+    }
+  };
+
+  const handleAddApplication = async (values: Partial<ApplicationItem> & { name: string }) => {
+    try {
+      const created = await createApplication({ ...values, state: 'draft' });
       message.success('Application created');
       setShowAddForm(false);
       addForm.resetFields();
@@ -191,7 +212,12 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
       },
     },
     { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 130, ellipsis: true, render: (v: string) => v || '—' },
-  ], [items]);
+    { title: '', key: 'actions', width: 50, render: (_: unknown, record: ApplicationItem) => readOnly ? null : (
+      <Tooltip title="Edit">
+        <Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+      </Tooltip>
+    )},
+  ], [items, readOnly]);
 
   const columns = allColumnDefs.filter(c => visibleKeys.has(c.key as string));
 
@@ -233,7 +259,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         </Popover>
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} of {items.length} applications</span>
-        {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { addForm.resetFields(); setShowAddForm(true); }}>
+        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { addForm.resetFields(); setShowAddForm(true); }}>
           New Application
         </Button>}
       </div>
@@ -289,12 +315,98 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         onCancel={() => setShowAddForm(false)}
         onOk={() => addForm.submit()}
         okText="Create"
-        width={400}
+        width={720}
       >
         <Form form={addForm} layout="vertical" onFinish={handleAddApplication}>
-          <Form.Item name="name" label="Application Name" rules={[{ required: true, message: 'Name is required' }]}>
-            <Input autoFocus />
-          </Form.Item>
+          <div className="grid grid-cols-2 gap-x-4">
+            <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
+              <Input autoFocus />
+            </Form.Item>
+            <Form.Item name="acronym" label="Acronym"><Input /></Form.Item>
+            <Form.Item name="applicationType" label="Application Type">
+              <Select allowClear options={['cots','homegrown','saas','tenant','vendor_hosted'].map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+            <Form.Item name="businessCriticality" label="Business Criticality">
+              <Select allowClear options={['mission_critical','business_critical','business_operational','administrative','deferrable','non_essential'].map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+            <Form.Item name="lifecycle" label="Lifecycle">
+              <Select allowClear options={['Ideation','Design','Operational','End of Life','Non Application'].map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+            <Form.Item name="lifecycleStatus" label="Lifecycle Status">
+              <Select allowClear options={['build','in_use','in_maintenance','propose_to_retire','funded_to_retire','tracking','under_evaluation'].map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+            <Form.Item name="installType" label="Install Type">
+              <Select allowClear options={['cloud','hybrid','on_premise','third_party_hosted'].map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+            <Form.Item name="discoverySource" label="Discovery Source">
+              <Select allowClear showSearch options={['CLOUDBAND-USP','MOTS','mots'].map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+            <Form.Item name="userInterface" label="User Interface">
+              <Select allowClear options={['Web GUI','Non-Web GUI','Mobile App','Mobile Web','Hybrid Mobile Apps','Multiple GUI','Command Line','IVR','None-Batch','Non-Graphical','Web Service','Other'].map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+            <Form.Item name="owner" label="Owner"><Input /></Form.Item>
+            <Form.Item name="customerFacing" label="Customer Facing">
+              <Select allowClear options={[{ label: 'Yes', value: 'Y' }, { label: 'No', value: 'N' }]} />
+            </Form.Item>
+            <Form.Item name="internetFacing" label="Internet Facing">
+              <Select allowClear options={[{ label: 'Yes', value: 'Y' }, { label: 'No', value: 'N' }]} />
+            </Form.Item>
+            <Form.Item name="cpniIndicator" label="CPNI Indicator">
+              <Select allowClear options={[{ label: 'Yes', value: 'Y' }, { label: 'No', value: 'N' }]} />
+            </Form.Item>
+            <Form.Item name="handleSpi" label="Handle SPI">
+              <Select allowClear options={[{ label: 'Yes', value: 'Y' }, { label: 'No', value: 'N' }]} />
+            </Form.Item>
+            <Form.Item name="storeSpi" label="Store SPI">
+              <Select allowClear options={[{ label: 'Yes', value: 'Y' }, { label: 'No', value: 'N' }]} />
+            </Form.Item>
+            <Form.Item name="pciData" label="PCI Data">
+              <Select allowClear options={[{ label: 'Yes', value: 'Y' }, { label: 'No', value: 'N' }]} />
+            </Form.Item>
+            <Form.Item name="pciDataStored" label="PCI Data Stored">
+              <Select allowClear options={[{ label: 'Yes', value: 'Y' }, { label: 'No', value: 'N' }, { label: 'Tokenized', value: 'T' }]} />
+            </Form.Item>
+            <Form.Item name="soxFsa" label="SOX/FSA">
+              <Select allowClear options={[{ label: 'Yes', value: 'Y' }, { label: 'No', value: 'N' }]} />
+            </Form.Item>
+            <Form.Item name="correlationId" label="Correlation ID"><Input /></Form.Item>
+          </div>
+          <Form.Item name="shortDescription" label="Short Description"><Input /></Form.Item>
+          <Form.Item name="businessPurpose" label="Business Purpose"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="applPurpose" label="Application Purpose"><Input.TextArea rows={2} /></Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={`Edit: ${editingApp?.name ?? ''}`}
+        open={!!editingApp}
+        onCancel={() => { setEditingApp(null); editForm.resetFields(); }}
+        onOk={() => editForm.submit()}
+        okText="Save"
+        width={600}
+      >
+        <Form form={editForm} layout="vertical" onFinish={handleUpdateApplication}>
+          <div className="grid grid-cols-2 gap-x-4">
+            <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="acronym" label="Acronym"><Input /></Form.Item>
+            <Form.Item name="applicationType" label="Type"><Input /></Form.Item>
+            <Form.Item name="businessCriticality" label="Criticality"><Input /></Form.Item>
+            <Form.Item name="lifecycleStatus" label="Lifecycle Status">
+              <Select allowClear options={['build','in_use','in_maintenance','propose_to_retire'].map(v => ({ label: v, value: v }))} />
+            </Form.Item>
+            <Form.Item name="lifecycle" label="Lifecycle"><Input /></Form.Item>
+            <Form.Item name="installType" label="Install Type"><Input /></Form.Item>
+            <Form.Item name="discoverySource" label="Discovery Source"><Input /></Form.Item>
+            <Form.Item name="customerFacing" label="Customer Facing"><Input /></Form.Item>
+            <Form.Item name="internetFacing" label="Internet Facing"><Input /></Form.Item>
+            <Form.Item name="owner" label="Owner"><Input /></Form.Item>
+            <Form.Item name="userInterface" label="User Interface"><Input /></Form.Item>
+          </div>
+          <Form.Item name="shortDescription" label="Short Description"><Input /></Form.Item>
+          <Form.Item name="businessPurpose" label="Business Purpose"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="applPurpose" label="App Purpose"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
     </div>

@@ -66,6 +66,14 @@ import type { CapabilityMatch, TaskAddData, DiagramMetadata } from './types';
 const { Header, Sider, Content } = Layout;
 const { Text, Title } = Typography;
 
+/** Renders a non-interactive narrow spacer between tab groups */
+const tabGroupSep = (key: string, _label: string) => ({
+  key,
+  disabled: true,
+  children: null as any,
+  label: <span style={{ display: 'inline-block', width: 4 }} />,
+});
+
 interface ActiveDiagram {
   _id: string;
   name: string;
@@ -211,7 +219,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [showAdmin, setShowAdmin] = useState(false);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<string>('bpmn');
+  const [activeTab, setActiveTab] = useState<string>('dashboard');
 
   // Editor state
   const [currentXml, setCurrentXml] = useState<string>(EMPTY_DIAGRAM);
@@ -236,6 +244,35 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   // Canvas diagram search
   const [canvasDiagramOptions, setCanvasDiagramOptions] = useState<{ value: string; label: string; desc?: string }[]>([]);
   const canvasSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Tab group labels — measured from DOM after render
+  const tabNavWrapRef = useRef<HTMLDivElement>(null);
+  const [groupLabels, setGroupLabels] = useState<{ left: number; width: number; label: string; color: string; keys: string[] }[]>([]);
+  useEffect(() => {
+    const measure = () => {
+      const wrap = tabNavWrapRef.current;
+      if (!wrap) return;
+      const wr = wrap.getBoundingClientRect();
+      if (!wr.width) return;
+      const span = (a: string, b: string) => {
+        const fa = wrap.querySelector(`[data-node-key="${a}"]`);
+        const lb = wrap.querySelector(`[data-node-key="${b}"]`);
+        if (!fa || !lb) return null;
+        const ra = fa.getBoundingClientRect(), rb = lb.getBoundingClientRect();
+        return { left: ra.left - wr.left, width: rb.right - ra.left };
+      };
+      const next = [
+        { s: span('bpmn', 'bpmn'),                keys: ['bpmn'],                                                                                                               label: 'Canvas',    color: '#0891b2' },
+        { s: span('diagramFactory', 'subdomains'), keys: ['diagramFactory','tasks','applications','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'], label: 'Factories', color: '#4f46e5' },
+        { s: span('dashboard', 'reports'),         keys: ['dashboard','reports'],                                                                                               label: 'Analytics', color: '#d97706' },
+      ].filter(g => g.s).map(g => ({ ...g.s!, label: g.label, color: g.color, keys: g.keys }));
+      setGroupLabels(next);
+    };
+    measure();
+    const obs = new ResizeObserver(measure);
+    if (tabNavWrapRef.current) obs.observe(tabNavWrapRef.current);
+    return () => obs.disconnect();
+  }, []);
 
   // Modals
   const [showSaveDb, setShowSaveDb] = useState(false);
@@ -871,6 +908,46 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
             size="small"
             className="factory-tabs"
             destroyInactiveTabPane={false}
+            renderTabBar={(props, DefaultBar) => {
+              const TAB_H = 24;
+              return (
+                <div style={{ background: '#f1f5f9' }}>
+                  {/* Group label row — each label styled as a parent tab */}
+                  <div style={{ height: TAB_H, position: 'relative', paddingLeft: 8, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
+                    {groupLabels.map(g => {
+                      const isActive = g.keys.includes(activeTab);
+                      return (
+                        <div key={g.label} style={{
+                          position: 'absolute',
+                          left: g.left + 2,
+                          width: g.width - 4,
+                          bottom: 0,
+                          height: TAB_H - 2,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 10, fontWeight: 800, letterSpacing: 1.5,
+                          textTransform: 'uppercase',
+                          color: isActive ? g.color : '#94a3b8',
+                          background: isActive ? '#ffffff' : '#e8edf4',
+                          border: `1px solid ${isActive ? g.color + 'aa' : '#d1d9e0'}`,
+                          borderBottom: isActive ? '1px solid #ffffff' : `1px solid #d1d9e0`,
+                          borderRadius: '5px 5px 0 0',
+                          boxShadow: isActive ? `0 -1px 4px 0 ${g.color}22` : 'none',
+                          transition: 'all 0.15s',
+                          userSelect: 'none',
+                          zIndex: isActive ? 2 : 1,
+                        }}>
+                          {g.label}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Actual tab nav */}
+                  <div ref={tabNavWrapRef} style={{ borderTop: '1px solid #d1d9e0', background: '#f1f5f9' }}>
+                    <DefaultBar {...props} />
+                  </div>
+                </div>
+              );
+            }}
             items={[
               {
                 key: 'bpmn',
@@ -937,6 +1014,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                   </div>
                 ),
               },
+              tabGroupSep('sep-factories', 'Factories'),
               {
                 key: 'diagramFactory',
                 label: <span><DatabaseOutlined /> BPMN Factory</span>,
@@ -950,7 +1028,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               {
                 key: 'applications',
                 label: <span><LaptopOutlined /> Application Factory</span>,
-                children: <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} />,
+                children: <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} readOnly={readOnly} />,
               },
               {
                 key: 'capabilities',
@@ -992,6 +1070,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 label: <span><ApartmentOutlined /> Subdomain Factory</span>,
                 children: <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
               },
+              tabGroupSep('sep-analytics', 'Analytics'),
               {
                 key: 'dashboard',
                 label: <span><DashboardOutlined /> Dashboards</span>,

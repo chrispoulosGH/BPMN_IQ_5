@@ -107,6 +107,92 @@ html, body, #root {
   border-bottom: 1px solid #e2e8f0;
 }
 
+/* ── Tab groups: colored top stripe per group ───────────── */
+
+/* GROUP: Canvas — cyan */
+.factory-tabs .ant-tabs-tab[data-node-key="bpmn"] {
+  border-top: 3px solid #0891b2 !important;
+}
+.factory-tabs .ant-tabs-tab-active[data-node-key="bpmn"] {
+  background: rgba(8, 145, 178, 0.09) !important;
+}
+.factory-tabs .ant-tabs-tab[data-node-key="bpmn"]:not(.ant-tabs-tab-active):hover {
+  background: rgba(8, 145, 178, 0.05) !important;
+}
+
+/* GROUP: Factories — indigo */
+.factory-tabs .ant-tabs-tab[data-node-key="diagramFactory"],
+.factory-tabs .ant-tabs-tab[data-node-key="tasks"],
+.factory-tabs .ant-tabs-tab[data-node-key="applications"],
+.factory-tabs .ant-tabs-tab[data-node-key="capabilities"],
+.factory-tabs .ant-tabs-tab[data-node-key="actors"],
+.factory-tabs .ant-tabs-tab[data-node-key="businessFlows"],
+.factory-tabs .ant-tabs-tab[data-node-key="products"],
+.factory-tabs .ant-tabs-tab[data-node-key="linesOfBusiness"],
+.factory-tabs .ant-tabs-tab[data-node-key="channels"],
+.factory-tabs .ant-tabs-tab[data-node-key="domains"],
+.factory-tabs .ant-tabs-tab[data-node-key="subdomains"] {
+  border-top: 3px solid #4f46e5 !important;
+}
+.factory-tabs .ant-tabs-tab-active[data-node-key="diagramFactory"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="tasks"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="applications"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="capabilities"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="actors"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="businessFlows"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="products"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="linesOfBusiness"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="channels"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="domains"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="subdomains"] {
+  background: rgba(79, 70, 229, 0.09) !important;
+}
+.factory-tabs .ant-tabs-tab[data-node-key="diagramFactory"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="tasks"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="applications"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="capabilities"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="actors"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="businessFlows"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="products"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="linesOfBusiness"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="channels"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="domains"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="subdomains"]:not(.ant-tabs-tab-active):hover {
+  background: rgba(79, 70, 229, 0.05) !important;
+}
+
+/* GROUP: Analytics — amber */
+.factory-tabs .ant-tabs-tab[data-node-key="dashboard"],
+.factory-tabs .ant-tabs-tab[data-node-key="reports"] {
+  border-top: 3px solid #d97706 !important;
+}
+.factory-tabs .ant-tabs-tab-active[data-node-key="dashboard"],
+.factory-tabs .ant-tabs-tab-active[data-node-key="reports"] {
+  background: rgba(217, 119, 6, 0.09) !important;
+}
+.factory-tabs .ant-tabs-tab[data-node-key="dashboard"]:not(.ant-tabs-tab-active):hover,
+.factory-tabs .ant-tabs-tab[data-node-key="reports"]:not(.ant-tabs-tab-active):hover {
+  background: rgba(217, 119, 6, 0.05) !important;
+}
+
+/* Separator tabs: purely decorative, no interaction */
+.factory-tabs .ant-tabs-tab[data-node-key^="sep-"] {
+  border-top: 3px solid transparent !important;
+  background: transparent !important;
+  cursor: default !important;
+  pointer-events: none !important;
+  padding: 0 2px !important;
+  margin: 0 2px !important;
+  min-width: 0 !important;
+}
+.factory-tabs .ant-tabs-tab[data-node-key^="sep-"]:hover {
+  background: transparent !important;
+}
+.factory-tabs .ant-tabs-tab[data-node-key^="sep-"] .ant-tabs-tab-btn {
+  cursor: default !important;
+  color: #94a3b8 !important;
+}
+
 /* The canvas MUST fill the entire container vertically.
    This ensures the bpmn-js palette (left tool column) is fully visible. */
 .bpmn-canvas {

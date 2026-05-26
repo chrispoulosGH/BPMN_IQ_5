@@ -104,8 +104,14 @@ export const getRefItems = (collection: string): Promise<RefItem[]> =>
 export const createRefItem = (collection: string, name: string, owner?: string, state?: string): Promise<RefItem> =>
   api.post(`/tasks/reference/${collection}`, { name, owner, state }).then((r) => r.data);
 
+export const createApplication = (data: Partial<import('./types').ApplicationItem> & { name: string }): Promise<import('./types').ApplicationItem> =>
+  api.post(`/tasks/reference/applications`, data).then((r) => r.data);
+
 export const updateRefItem = (collection: string, id: string, name: string, owner?: string): Promise<RefItem> =>
   api.put(`/tasks/reference/${collection}/${id}`, { name, owner }).then((r) => r.data);
+
+export const updateApplication = (id: string, data: Partial<import('./types').ApplicationItem>): Promise<import('./types').ApplicationItem> =>
+  api.put(`/tasks/reference/applications/${id}`, data).then((r) => r.data);
 
 export const deleteRefItem = (collection: string, id: string): Promise<{ success: boolean }> =>
   api.delete(`/tasks/reference/${collection}/${id}`).then((r) => r.data);
@@ -152,5 +158,10 @@ export const getDashboardFlow3D = (): Promise<{ businessFlows: string[]; points:
 
 export const getDashboardFlowCost3D = (): Promise<{ businessFlows: string[]; points: Array<{ businessFlow: string; task: string; taskOrder: number; year: number; totalCost: number; opCost: number; devCost: number }>; taskOrders: Record<string, string[]> }> =>
   api.get('/dashboard/flow-cost-3d').then((r) => r.data);
+
+export interface CostByYearItem { name: string; opCost: number; devCost: number; totalCost: number; }
+export interface TaskCostByYearItem extends CostByYearItem { businessFlow: string; }
+export const getDashboardCostByYear = (year: number): Promise<{ flows: CostByYearItem[]; tasks: TaskCostByYearItem[]; year: number }> =>
+  api.get(`/dashboard/cost-by-year?year=${year}`).then((r) => r.data);
 
 export default api;
