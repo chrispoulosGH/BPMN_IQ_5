@@ -9,6 +9,7 @@ interface Props {
   loading: boolean;
   selected: CapabilityMatch[];
   onSelectionChange: (selected: CapabilityMatch[]) => void;
+  onCapabilityClick?: (capability: CapabilityMatch, nextSelected: CapabilityMatch[]) => void;
   onDelete?: (capabilityId: number) => void;
   error?: string | null;
   savedCaps?: CapabilityMatch[];
@@ -21,7 +22,7 @@ function confidenceColor(c: number) {
   return 'default';
 }
 
-export default function CapabilityMatchPanel({ matches, loading, selected, onSelectionChange, onDelete, error, savedCaps = [] }: Props) {
+export default function CapabilityMatchPanel({ matches, loading, selected, onSelectionChange, onCapabilityClick, onDelete, error, savedCaps = [] }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-6 gap-2">
@@ -48,9 +49,15 @@ export default function CapabilityMatchPanel({ matches, loading, selected, onSel
           <div key={cap.capabilityId} className="capability-match-item selected">
             <div className="flex items-center gap-1.5 min-w-0">
               <CheckCircleOutlined className="text-green-500 text-xs flex-shrink-0" />
-              <Text ellipsis className="text-xs !leading-tight flex-1 min-w-0">
-                {cap.capabilityName}
-              </Text>
+              <Tooltip title={cap.capabilityName} placement="topLeft">
+                <Text
+                  ellipsis
+                  className="text-xs !leading-tight flex-1 min-w-0 cursor-pointer"
+                  onClick={() => onCapabilityClick?.(cap, selected)}
+                >
+                  {cap.capabilityName}
+                </Text>
+              </Tooltip>
             </div>
             <div className="flex items-center gap-1">
               <Tag color={confidenceColor(cap.confidence)} className="!text-[10px] !px-1 !py-0 !m-0 !leading-4">
@@ -81,8 +88,9 @@ export default function CapabilityMatchPanel({ matches, loading, selected, onSel
             <div
               className={`capability-match-item ${isSelected ? 'selected' : 'cursor-pointer'}`}
               onClick={() => {
-                if (isSelected) return;
-                onSelectionChange([...selected, m]);
+                const nextSelected = isSelected ? selected : [...selected, m];
+                if (!isSelected) onSelectionChange(nextSelected);
+                onCapabilityClick?.(m, nextSelected);
               }}
             >
               <div className="flex items-center gap-1.5 min-w-0">
@@ -91,9 +99,11 @@ export default function CapabilityMatchPanel({ matches, loading, selected, onSel
                 ) : (
                   <ThunderboltOutlined className="text-gray-400 text-xs flex-shrink-0" />
                 )}
-                <Text ellipsis className="text-xs !leading-tight flex-1 min-w-0">
-                  {m.capabilityName}
-                </Text>
+                <Tooltip title={m.capabilityName} placement="topLeft">
+                  <Text ellipsis className="text-xs !leading-tight flex-1 min-w-0">
+                    {m.capabilityName}
+                  </Text>
+                </Tooltip>
                 {isSaved && (
                   <Tag color="purple" className="!text-[10px] !px-1 !py-0 !m-0 !leading-4">assigned</Tag>
                 )}

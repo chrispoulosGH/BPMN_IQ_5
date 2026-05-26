@@ -18,9 +18,10 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { getDashboardTaskRisk, getDashboardFlowRisk, getDashboardCostByYear } from '../api';
+import { getDashboardTaskRisk, getDashboardFlowRisk, getDashboardCostByYear, getDashboardCapabilityFlowRelationships } from '../api';
 import type { CostByYearItem, TaskCostByYearItem } from '../api';
 import Flow3DChart from './Flow3DChart';
+import LobDrilldownTree from './LobDrilldownTree';
 
 // ─── Types ──────────────────────────────────────────────────
 interface YNCount { yes: number; no: number; unknown: number }
@@ -67,6 +68,23 @@ interface FlowProfile {
   riskScore: number;
 }
 
+interface CapabilityFlowRelationshipLink {
+  capability: string;
+  businessFlow: string;
+  count: number;
+}
+
+interface CapabilityFlowRelationshipData {
+  totalDiagrams: number;
+  diagramsWithCapabilities: number;
+  capabilityCount: number;
+  businessFlowCount: number;
+  linkCount: number;
+  capabilities: Array<{ name: string; count: number }>;
+  businessFlows: Array<{ name: string; count: number }>;
+  links: CapabilityFlowRelationshipLink[];
+}
+
 // ─── Constants ──────────────────────────────────────────────
 const COMPLIANCE_FIELDS = ['cpni', 'handleSpi', 'storeSpi', 'pciData', 'pciDataStored', 'soxFsa', 'customerFacing', 'internetFacing'] as const;
 const COMPLIANCE_LABELS: Record<string, string> = {
@@ -96,22 +114,25 @@ export default function Dashboard() {
   const [taskData, setTaskData] = useState<TaskProfile[]>([]);
   const [flowData, setFlowData] = useState<FlowProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'tasks' | 'flows' | '3d'>('flows');
+  const [view, setView] = useState<'tasks' | 'flows' | '3d' | 'caprels' | 'drilltree'>('flows');
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
   const [flowCostData, setFlowCostData] = useState<CostByYearItem[]>([]);
   const [taskCostData, setTaskCostData] = useState<TaskCostByYearItem[]>([]);
+  const [capRelData, setCapRelData] = useState<CapabilityFlowRelationshipData | null>(null);
 
   useEffect(() => {
     Promise.all([
       getDashboardTaskRisk(),
       getDashboardFlowRisk(),
       getDashboardCostByYear(COST_YEAR),
+      getDashboardCapabilityFlowRelationships(),
     ])
-      .then(([tasks, flows, cost]) => {
+      .then(([tasks, flows, cost, caprels]) => {
         setTaskData(tasks);
         setFlowData(flows);
         setFlowCostData(cost.flows);
         setTaskCostData(cost.tasks);
+        setCapRelData(caprels);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -131,10 +152,12 @@ export default function Dashboard() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <Segmented
           value={view}
-          onChange={(v) => setView(v as 'tasks' | 'flows' | '3d')}
+          onChange={(v) => setView(v as 'tasks' | 'flows' | '3d' | 'caprels' | 'drilltree')}
           options={[
             { label: 'Business Flow Comparison', value: 'flows' },
             { label: 'Task Comparison', value: 'tasks' },
+            { label: 'Capability to Business Flow', value: 'caprels' },
+            { label: 'LOB Drilldown Tree', value: 'drilltree' },
             { label: '3D Flow Explorer', value: '3d' },
           ]}
         />
@@ -152,12 +175,62 @@ export default function Dashboard() {
 
       {view === 'tasks' ? (
         <TaskDashboard tasks={filteredTasks} allTasks={taskData} costData={taskCostData} costYear={COST_YEAR} />
+      ) : view === 'caprels' ? (
+        <CapabilityFlowRelationshipDashboard data={capRelData} />
+      ) : view === 'drilltree' ? (
+        <LobDrilldownTree />
       ) : view === 'flows' ? (
         <FlowDashboard flows={flowData} costData={flowCostData} costYear={COST_YEAR} />
       ) : (
         <Flow3DChart />
       )}
     </div>
+  );
+}
+
+function CapabilityFlowRelationshipDashboard({ data }: { data: CapabilityFlowRelationshipData | null }) {
+  if (!data || !data.links.length) return <Empty description="No capability-to-business-flow relationships found" />;
+
+  const topLinks = data.links.slice(0, 20).map((l) => ({
+    pair: `${l.capability} -> ${l.businessFlow}`,
+    count: l.count,
+  }));
+
+  return (
+    <>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={12} sm={6}><Card size="small"><Statistic title="Diagrams" value={data.totalDiagrams} /></Card></Col>
+        <Col xs={12} sm={6}><Card size="small"><Statistic title="With Capabilities" value={data.diagramsWithCapabilities} /></Card></Col>
+        <Col xs={12} sm={6}><Card size="small"><Statistic title="Capabilities" value={data.capabilityCount} /></Card></Col>
+        <Col xs={12} sm={6}><Card size="small"><Statistic title="Business Flows" value={data.businessFlowCount} /></Card></Col>
+      </Row>
+
+      <Card title="Top Capability-to-Business-Flow Relationships" size="small" style={{ marginBottom: 24 }}>
+        <ResponsiveContainer width="100%" height={380}>
+          <BarChart data={topLinks} margin={{ top: 5, right: 20, left: 10, bottom: 110 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="pair" angle={-45} textAnchor="end" interval={0} height={120} tick={{ fontSize: 11 }} />
+            <YAxis allowDecimals={false} />
+            <Tooltip />
+            <Bar dataKey="count" name="Relationship Count" fill="#13c2c2" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <Card title="Capability to Business Flow Relationships (Top Links)" size="small">
+        <Table
+          rowKey={(r) => `${r.capability}__${r.businessFlow}`}
+          dataSource={data.links.slice(0, 100)}
+          size="small"
+          pagination={{ pageSize: 20, showSizeChanger: true }}
+          columns={[
+            { title: 'Business Capability', dataIndex: 'capability', key: 'capability', ellipsis: true, sorter: (a, b) => a.capability.localeCompare(b.capability) },
+            { title: 'Business Flow', dataIndex: 'businessFlow', key: 'businessFlow', ellipsis: true, sorter: (a, b) => a.businessFlow.localeCompare(b.businessFlow) },
+            { title: 'Relationship Strength', dataIndex: 'count', key: 'count', width: 170, sorter: (a, b) => a.count - b.count, defaultSortOrder: 'descend' as const },
+          ]}
+        />
+      </Card>
+    </>
   );
 }
 

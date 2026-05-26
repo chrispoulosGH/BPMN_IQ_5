@@ -8,13 +8,25 @@ interface CapabilitiesFactoryProps {
   onNavigateToFactory?: (tab: string, search: string) => void;
   readOnly?: boolean;
   userRole?: string | null;
+  defaultSearch?: string;
+  focusCapabilityNames?: string[];
+  focusDiagramName?: string | null;
+  onClearFocus?: () => void;
 }
 
-export default function CapabilitiesFactory({ onNavigateToFactory, readOnly, userRole }: CapabilitiesFactoryProps = {}) {
+export default function CapabilitiesFactory({
+  onNavigateToFactory,
+  readOnly,
+  userRole,
+  defaultSearch = '',
+  focusCapabilityNames = [],
+  focusDiagramName,
+  onClearFocus,
+}: CapabilitiesFactoryProps = {}) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<CapabilityItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(defaultSearch);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<CapabilityItem | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -33,6 +45,10 @@ export default function CapabilitiesFactory({ onNavigateToFactory, readOnly, use
   }, [message]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
+
+  useEffect(() => {
+    setSearch(defaultSearch || '');
+  }, [defaultSearch]);
 
   const handleCreate = () => {
     setEditingItem(null);
@@ -93,13 +109,25 @@ export default function CapabilitiesFactory({ onNavigateToFactory, readOnly, use
     }
   };
 
-  const filtered = search
-    ? items.filter((i) =>
-        i.name.toLowerCase().includes(search.toLowerCase()) ||
-        (i.domainName || '').toLowerCase().includes(search.toLowerCase()) ||
-        (i.aspect || '').toLowerCase().includes(search.toLowerCase())
-      )
+  const focusNamesSet = new Set(focusCapabilityNames.map((n) => n.toLowerCase()));
+
+  const filteredByFocus = focusNamesSet.size
+    ? items.filter((i) => focusNamesSet.has((i.name || '').toLowerCase()))
     : items;
+
+  const searchTerms = search
+    .toLowerCase()
+    .replace(/>/g, ',')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const filtered = searchTerms.length
+    ? filteredByFocus.filter((i) => {
+        const haystack = `${i.name || ''} ${i.domainName || ''} ${i.aspect || ''}`.toLowerCase();
+        return searchTerms.every((term) => haystack.includes(term));
+      })
+    : filteredByFocus;
 
   const columns = [
     { title: 'Name', dataIndex: 'name', key: 'name', width: 260, sorter: (a: CapabilityItem, b: CapabilityItem) => a.name.localeCompare(b.name) },
@@ -157,6 +185,7 @@ export default function CapabilitiesFactory({ onNavigateToFactory, readOnly, use
           placeholder="Search capabilities…"
           size="small"
           prefix={<SearchOutlined />}
+          value={search}
           style={{ width: 280 }}
           allowClear
           onChange={(e) => setSearch(e.target.value)}
@@ -167,6 +196,16 @@ export default function CapabilitiesFactory({ onNavigateToFactory, readOnly, use
           New Capability
         </Button>}
       </div>
+
+      {focusNamesSet.size > 0 && (
+        <div className="flex items-center gap-2 text-xs text-gray-600">
+          <Tag color="blue">Capability Name Filter</Tag>
+          <span>
+            {`Showing only selected capability name${focusNamesSet.size > 1 ? 's' : ''}`}
+          </span>
+          <Button size="small" type="link" onClick={onClearFocus}>Clear</Button>
+        </div>
+      )}
 
       <Table
         dataSource={filtered}

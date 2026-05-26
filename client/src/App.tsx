@@ -301,6 +301,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   // Factory navigation (from diagram links)
   const [factorySearch, setFactorySearch] = useState<Record<string, string>>({});
   const [factoryAdd, setFactoryAdd] = useState<Record<string, string | TaskAddData>>({});
+  const [clickedCapabilityNames, setClickedCapabilityNames] = useState<string[]>([]);
 
   // Selected task in diagram (for right sidebar link)
   const [selectedDiagramTask, setSelectedDiagramTask] = useState<{ name: string; id: string } | null>(null);
@@ -363,6 +364,37 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     }
     setActiveTab(tab);
   }, [diagramMeta, activeDiagram, canvasDiagramName]);
+
+  const handleCapabilityClick = useCallback((_capability: CapabilityMatch, nextSelected: CapabilityMatch[]) => {
+    const rawName = nextSelected[nextSelected.length - 1]?.capabilityName || '';
+    const levels = rawName
+      .split(/[>,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    // Prefer segment with the highest explicit numeric level marker (e.g. L3, Level 3).
+    // Fallback to the deepest/right-most segment when no numeric marker exists.
+    let clickedName = levels[levels.length - 1] || rawName;
+    let maxLevel = -1;
+    for (const segment of levels) {
+      const m = segment.match(/(?:^|\b)(?:l|level)\s*(\d+)(?:\b|$)/i) || segment.match(/^(\d+)(?:[.)\-\s]|$)/);
+      if (!m) continue;
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > maxLevel) {
+        maxLevel = n;
+        clickedName = segment;
+      }
+    }
+
+    clickedName = clickedName
+      .replace(/^(?:l|level)\s*\d+\s*[:)\-\.]?\s*/i, '')
+      .replace(/^\d+[.)\-\s]+/, '')
+      .trim() || clickedName;
+
+    setClickedCapabilityNames([]);
+    setFactorySearch((prev) => ({ ...prev, capabilities: clickedName }));
+    setActiveTab('capabilities');
+  }, []);
 
   const handleXmlChange = useCallback((xml: string) => {
     currentXmlRef.current = xml;
@@ -1033,7 +1065,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               {
                 key: 'capabilities',
                 label: <span><ClusterOutlined /> Capability Factory</span>,
-                children: <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} />,
+                children: <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} defaultSearch={factorySearch.capabilities || ''} />,
               },
               {
                 key: 'actors',
@@ -1135,7 +1167,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               className="sidebar-card !mb-3"
               title={
                 <span className="flex items-center gap-2 text-sm font-medium">
-                  <ThunderboltOutlined className="text-purple-500" /> GB1029C Capabilities
+                  <ThunderboltOutlined className="text-purple-500" /> Business Capabilties
                 </span>
               }
               extra={
@@ -1156,6 +1188,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 loading={capLoading}
                 selected={selectedCaps}
                 onSelectionChange={setSelectedCaps}
+                onCapabilityClick={handleCapabilityClick}
                 onDelete={handleDeleteCapability}
                 error={capError}
                 savedCaps={savedCaps}

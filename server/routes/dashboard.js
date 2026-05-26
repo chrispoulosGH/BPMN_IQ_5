@@ -125,7 +125,175 @@ router.get('/flow-risk', async (_req, res) => {
   }
 });
 
+/**
+ * GET /api/dashboard/capability-flow-relationships
+ * Builds capability-to-business-flow relationship strengths from diagram data.
+ */
+router.get('/capability-flow-relationships', async (_req, res) => {
+  try {
+    const diagrams = await Diagram.find({}, { name: 1, businessFlow: 1, capabilities: 1 }).lean();
+
+    const capabilityCounts = new Map();
+    const flowCounts = new Map();
+    const linkCounts = new Map();
+    let diagramsWithCapabilities = 0;
+
+    for (const d of diagrams) {
+      const flowName = (d.businessFlow || d.name || '').trim();
+      const names = Array.from(
+        new Set(
+          (d.capabilities || [])
+            .map((c) => (c?.capabilityName || '').trim())
+            .filter(Boolean)
+        )
+      );
+
+      if (!names.length || !flowName) continue;
+      diagramsWithCapabilities++;
+      flowCounts.set(flowName, (flowCounts.get(flowName) || 0) + 1);
+
+      for (const n of names) {
+        capabilityCounts.set(n, (capabilityCounts.get(n) || 0) + 1);
+        const key = `${n}|||${flowName}`;
+        linkCounts.set(key, (linkCounts.get(key) || 0) + 1);
+      }
+    }
+
+    const capabilities = [...capabilityCounts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const businessFlows = [...flowCounts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
+    const links = [...linkCounts.entries()]
+      .map(([key, count]) => {
+        const [capability, businessFlow] = key.split('|||');
+        return { capability, businessFlow, count };
+      })
+      .sort((a, b) => b.count - a.count);
+
+    res.json({
+      totalDiagrams: diagrams.length,
+      diagramsWithCapabilities,
+      capabilityCount: capabilities.length,
+      businessFlowCount: businessFlows.length,
+      linkCount: links.length,
+      capabilities,
+      businessFlows,
+      links,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/lob-drilldown-tree
+ * Returns a hierarchical drilldown tree:
+ * LOB -> Channel -> Product -> Domain -> Subdomain -> Business Flow -> Task -> Application
+ */
+router.get('/lob-drilldown-tree', async (_req, res) => {
+  try {
+    const diagrams = await Diagram.find(
+      {},
+      { lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1, businessFlow: 1, name: 1, tasks: 1 }
+    ).lean();
+
+    const root = new Map();
+
+    for (const d of diagrams) {
+      const lob = normalizeValue(d.lineOfBusiness, 'Unspecified LOB');
+      const channel = normalizeValue(d.channel, 'Unspecified Channel');
+      const product = normalizeValue(d.product, 'Unspecified Product');
+      const domain = normalizeValue(d.domain, 'Unspecified Domain');
+      const subdomain = normalizeValue(d.subdomain, 'Unspecified Subdomain');
+      const businessFlow = normalizeValue(d.businessFlow || d.name, 'Unspecified Business Flow');
+
+      const basePath = [lob, channel, product, domain, subdomain, businessFlow];
+      const levels = ['lob', 'channel', 'product', 'domain', 'subdomain', 'businessFlow'];
+
+      let childrenMap = root;
+      for (let i = 0; i < basePath.length; i++) {
+        const segment = basePath[i];
+        const level = levels[i];
+        const node = getOrCreateTreeNode(childrenMap, segment, level, basePath.slice(0, i + 1));
+        node.count += 1;
+        childrenMap = node.children;
+      }
+
+      for (const task of d.tasks || []) {
+        const taskName = normalizeValue(task?.name, 'Unnamed Task');
+        const taskPath = [...basePath, taskName];
+        const taskNode = getOrCreateTreeNode(childrenMap, taskName, 'task', taskPath);
+        taskNode.count += 1;
+
+        const apps = (task?.applications || [])
+          .map((a) => normalizeValue(a?.name, ''))
+          .filter(Boolean);
+
+        if (!apps.length) {
+          const noAppPath = [...taskPath, 'No Application'];
+          const noAppNode = getOrCreateTreeNode(taskNode.children, 'No Application', 'application', noAppPath);
+          noAppNode.count += 1;
+          continue;
+        }
+
+        for (const appName of Array.from(new Set(apps))) {
+          const appPath = [...taskPath, appName];
+          const appNode = getOrCreateTreeNode(taskNode.children, appName, 'application', appPath);
+          appNode.count += 1;
+        }
+      }
+    }
+
+    const tree = mapToTreeArray(root);
+    res.json({
+      levels: ['lob', 'channel', 'product', 'domain', 'subdomain', 'businessFlow', 'task', 'application'],
+      totalDiagrams: diagrams.length,
+      rootCount: tree.length,
+      tree,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Helpers ────────────────────────────────────────────────
+
+function normalizeValue(value, fallback = '') {
+  const v = (value || '').toString().trim();
+  return v || fallback;
+}
+
+function getOrCreateTreeNode(map, name, level, pathParts) {
+  if (!map.has(name)) {
+    map.set(name, {
+      id: `${level}::${pathParts.join(' > ')}`,
+      name,
+      level,
+      count: 0,
+      children: new Map(),
+    });
+  }
+  return map.get(name);
+}
+
+function mapToTreeArray(map) {
+  return [...map.values()]
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name);
+    })
+    .map((node) => ({
+      id: node.id,
+      name: node.name,
+      level: node.level,
+      count: node.count,
+      children: mapToTreeArray(node.children),
+    }));
+}
 
 function countValues(apps, field) {
   const counts = {};

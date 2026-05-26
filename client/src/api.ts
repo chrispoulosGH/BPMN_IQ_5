@@ -118,7 +118,7 @@ export const deleteRefItem = (collection: string, id: string): Promise<{ success
 
 // ── Capabilities CRUD (for CapabilitiesFactory) ─────────────
 export const getCapabilities = (): Promise<CapabilityItem[]> =>
-  api.get('/capabilities').then((r) => r.data.capabilities || r.data);
+  api.get('/capabilities', { params: { limit: 5000, skip: 0 } }).then((r) => r.data.capabilities || r.data);
 
 export const createCapability = (data: Partial<CapabilityItem>): Promise<CapabilityItem> =>
   api.post('/capabilities', data).then((r) => r.data);
@@ -152,6 +152,30 @@ export const getDashboardTaskRisk = (): Promise<any[]> =>
 
 export const getDashboardFlowRisk = (): Promise<any[]> =>
   api.get('/dashboard/flow-risk').then((r) => r.data);
+
+export const getDashboardCapabilityFlowRelationships = (): Promise<{
+  totalDiagrams: number;
+  diagramsWithCapabilities: number;
+  capabilityCount: number;
+  businessFlowCount: number;
+  linkCount: number;
+  capabilities: Array<{ name: string; count: number }>;
+  businessFlows: Array<{ name: string; count: number }>;
+  links: Array<{ capability: string; businessFlow: string; count: number }>;
+}> => api.get('/dashboard/capability-flow-relationships').then((r) => r.data);
+
+export const getDashboardLobDrilldownTree = (): Promise<{
+  levels: string[];
+  totalDiagrams: number;
+  rootCount: number;
+  tree: Array<{
+    id: string;
+    name: string;
+    level: string;
+    count: number;
+    children: any[];
+  }>;
+}> => api.get('/dashboard/lob-drilldown-tree').then((r) => r.data);
 
 export const getDashboardFlow3D = (): Promise<{ businessFlows: string[]; points: Array<{ appName: string; businessCriticality: string; lifecycleStatus: string; task: string; businessFlow: string; taskOrder: number }>; taskOrders: Record<string, string[]> }> =>
   api.get('/dashboard/flow-3d').then((r) => r.data);
