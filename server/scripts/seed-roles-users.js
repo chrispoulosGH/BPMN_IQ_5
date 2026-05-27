@@ -29,6 +29,13 @@ const ALL_PERMISSIONS = ['Read', 'Write', 'Approve', 'Publish', 'Submit'];
 
 const ROLES = [
   {
+    name: 'Super',
+    description: 'Super user with all permissions across all functions',
+    capabilities: ALL_FUNCTIONS.flatMap(fn =>
+      ALL_PERMISSIONS.map(permission => ({ function: fn, permission }))
+    ),
+  },
+  {
     name: 'Admin',
     description: 'Full access to all factories and admin panel',
     capabilities: ALL_FUNCTIONS.flatMap(fn => [
@@ -56,6 +63,7 @@ const ROLES = [
 
 // Default users: userId / displayName / role / password
 const USERS = [
+  { userId: 'super',  displayName: 'Super User',  role: 'Super',  password: 'super123' },
   { userId: 'admin',  displayName: 'Admin User',  role: 'Admin',  password: 'admin123' },
   { userId: 'editor', displayName: 'Editor User', role: 'Editor', password: 'editor123' },
   { userId: 'Viewer', displayName: 'Viewer',      role: 'Viewer', password: null },

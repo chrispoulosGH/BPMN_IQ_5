@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, Col, Empty, Row, Spin, Statistic, Tag, Typography } from 'antd';
-import { getDashboardLobDrilldownTree } from '../api';
+import { LoadingOutlined } from '@ant-design/icons';
+import { getApplicationServers, getDashboardLobDrilldownTree, getServers } from '../api';
 
 interface TreeNode {
   id: string;
   name: string;
   level: string;
   count: number;
+  metadata?: {
+    correlationId?: string;
+  };
   children: TreeNode[];
 }
 
@@ -16,6 +20,8 @@ interface TreeResponse {
   rootCount: number;
   tree: TreeNode[];
 }
+
+type ServerLoadStatus = 'loading' | 'loaded' | 'empty' | 'error';
 
 interface PositionedNode {
   node: TreeNode;
@@ -39,6 +45,7 @@ const LEVEL_LABELS: Record<string, string> = {
   businessFlow: 'Business Flow',
   task: 'Task',
   application: 'Application',
+  server: 'Server',
 };
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -50,13 +57,67 @@ const LEVEL_COLORS: Record<string, string> = {
   businessFlow: '#d97706',
   task: '#dc2626',
   application: '#475569',
+  server: '#0f766e',
 };
+
+function extractFallbackIdentifiers(node: TreeNode): { correlationIds: string[]; searchTerms: string[] } {
+  const correlationIds = new Set<string>();
+  const searchTerms = new Set<string>();
+
+  const explicitCorrelationId = (node.metadata?.correlationId || '').trim();
+  const explicitName = (node.name || '').trim();
+
+  if (explicitCorrelationId) correlationIds.add(explicitCorrelationId);
+  if (explicitName) searchTerms.add(explicitName);
+
+  const numericTokens = explicitName.match(/\b\d{3,}\b/g) || [];
+  for (const token of numericTokens) correlationIds.add(token);
+
+  const leadingTokenMatch = explicitName.match(/^([^([]+?)\s*\(\d+\)\s*$/);
+  if (leadingTokenMatch?.[1]) {
+    searchTerms.add(leadingTokenMatch[1].trim());
+  }
+
+  return {
+    correlationIds: [...correlationIds],
+    searchTerms: [...searchTerms],
+  };
+}
+
+async function fetchServersForApplicationNode(node: TreeNode): Promise<import('../types').ServerItem[]> {
+  const { correlationIds, searchTerms } = extractFallbackIdentifiers(node);
+  const seen = new Map<string, import('../types').ServerItem>();
+
+  for (const correlationId of correlationIds) {
+    const servers = await getApplicationServers(correlationId);
+    for (const server of servers) {
+      const key = server._id || server.sourceKey;
+      if (!key || seen.has(key)) continue;
+      seen.set(key, server);
+    }
+    if (seen.size > 0) return [...seen.values()];
+  }
+
+  for (const term of searchTerms) {
+    const servers = await getServers({ search: term });
+    for (const server of servers) {
+      const key = server._id || server.sourceKey;
+      if (!key || seen.has(key)) continue;
+      seen.set(key, server);
+    }
+    if (seen.size > 0) return [...seen.values()];
+  }
+
+  return [];
+}
 
 export default function LobDrilldownTree() {
   const [data, setData] = useState<TreeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pendingCenterNodeId, setPendingCenterNodeId] = useState<string | null>(null);
+  const [serversByApplicationNodeId, setServersByApplicationNodeId] = useState<Record<string, TreeNode[]>>({});
+  const [serverLoadStatusByApplicationNodeId, setServerLoadStatusByApplicationNodeId] = useState<Record<string, ServerLoadStatus>>({});
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const nodeRefMap = useRef(new Map<string, HTMLButtonElement>());
@@ -69,9 +130,25 @@ export default function LobDrilldownTree() {
         if (result.tree.length > 0) {
           setExpanded(new Set(result.tree.slice(0, 1).map((n) => n.id)));
         }
+        setServersByApplicationNodeId({});
+        setServerLoadStatusByApplicationNodeId({});
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const treeWithServers = useMemo(() => {
+    const injectServerChildren = (nodes: TreeNode[]): TreeNode[] =>
+      nodes.map((node) => {
+        const nestedChildren = injectServerChildren(node.children || []);
+        if (node.level !== 'application') {
+          return { ...node, children: nestedChildren };
+        }
+        const serverChildren = serversByApplicationNodeId[node.id] || [];
+        return { ...node, children: serverChildren.length ? serverChildren : nestedChildren };
+      });
+
+    return injectServerChildren(data?.tree || []);
+  }, [data, serversByApplicationNodeId]);
 
   const positioned = useMemo(() => {
     const out: PositionedNode[] = [];
@@ -87,9 +164,40 @@ export default function LobDrilldownTree() {
       }
     };
 
-    walk(data?.tree || [], 0, null);
+    walk(treeWithServers, 0, null);
     return out;
-  }, [data, expanded]);
+  }, [expanded, treeWithServers]);
+
+  const loadServersForApplicationNode = async (node: TreeNode) => {
+    if (node.level !== 'application') return;
+    if (serverLoadStatusByApplicationNodeId[node.id]) return;
+
+    setServerLoadStatusByApplicationNodeId((prev) => ({ ...prev, [node.id]: 'loading' }));
+    try {
+      const servers = await fetchServersForApplicationNode(node);
+      const unique = new Map<string, TreeNode>();
+      for (const server of servers) {
+        const uniqueKey = server._id || server.serverSystemId || server.name || server.hostName || server.fqdn || server.ipAddress;
+        if (!uniqueKey || unique.has(uniqueKey)) continue;
+        const displayName = server.name || server.hostName || server.fqdn || server.ipAddress || 'Unnamed Server';
+        unique.set(uniqueKey, {
+          id: `${node.id}::server::${uniqueKey}`,
+          name: displayName,
+          level: 'server',
+          count: 1,
+          children: [],
+        });
+      }
+
+      const serverNodes = [...unique.values()].sort((a, b) => a.name.localeCompare(b.name));
+      setServersByApplicationNodeId((prev) => ({ ...prev, [node.id]: serverNodes }));
+      setServerLoadStatusByApplicationNodeId((prev) => ({ ...prev, [node.id]: serverNodes.length ? 'loaded' : 'empty' }));
+      setPendingCenterNodeId(serverNodes[0]?.id || node.id);
+    } catch {
+      setServerLoadStatusByApplicationNodeId((prev) => ({ ...prev, [node.id]: 'error' }));
+      setPendingCenterNodeId(node.id);
+    }
+  };
 
   const dimensions = useMemo(() => {
     const maxDepth = positioned.reduce((m, p) => Math.max(m, p.depth), 0);
@@ -126,7 +234,25 @@ export default function LobDrilldownTree() {
   }, [pendingCenterNodeId, expanded, positioned]);
 
   const onToggle = (node: TreeNode) => {
-    if (!node.children.length) {
+    const isApplicationNode = node.level === 'application';
+    const loadStatus = serverLoadStatusByApplicationNodeId[node.id];
+    const appServerChildren = isApplicationNode ? (serversByApplicationNodeId[node.id] || []) : [];
+    const hasChildren = isApplicationNode
+      ? (appServerChildren.length > 0 || !loadStatus || loadStatus === 'loading')
+      : node.children.length > 0;
+
+    if (isApplicationNode && !expanded.has(node.id) && !loadStatus) {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.add(node.id);
+        return next;
+      });
+      setPendingCenterNodeId(node.id);
+      void loadServersForApplicationNode(node);
+      return;
+    }
+
+    if (!hasChildren) {
       setPendingCenterNodeId(node.id);
       return;
     }
@@ -142,7 +268,10 @@ export default function LobDrilldownTree() {
 
     next.add(node.id);
     setExpanded(next);
-    setPendingCenterNodeId(node.children[0]?.id || node.id);
+    const nextChildId = isApplicationNode
+      ? appServerChildren[0]?.id
+      : node.children[0]?.id;
+    setPendingCenterNodeId(nextChildId || node.id);
   };
 
   if (loading) {
@@ -164,7 +293,7 @@ export default function LobDrilldownTree() {
 
       <Card
         size="small"
-        title="LOB to Application Drilldown"
+        title="LOB to Application/Server Drilldown"
         extra={<Typography.Text type="secondary">Click a node to expand rightward. View auto-centers on the opened branch.</Typography.Text>}
         bodyStyle={{ padding: 0 }}
       >
@@ -201,7 +330,11 @@ export default function LobDrilldownTree() {
               const pos = positionById.get(p.node.id)!;
               const color = LEVEL_COLORS[p.node.level] || '#475569';
               const isExpanded = expanded.has(p.node.id);
-              const hasChildren = p.node.children.length > 0;
+              const isApplicationNode = p.node.level === 'application';
+              const appLoadStatus = isApplicationNode ? serverLoadStatusByApplicationNodeId[p.node.id] : undefined;
+              const hasChildren = isApplicationNode
+                ? ((serversByApplicationNodeId[p.node.id] || []).length > 0 || !appLoadStatus || appLoadStatus === 'loading')
+                : p.node.children.length > 0;
 
               return (
                 <button
@@ -241,7 +374,8 @@ export default function LobDrilldownTree() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Tag color="default" style={{ marginRight: 0 }}>{p.node.count}</Tag>
-                    {hasChildren && <span style={{ color: '#64748b', fontSize: 12 }}>{isExpanded ? '▾' : '▸'}</span>}
+                    {isApplicationNode && appLoadStatus === 'loading' && <LoadingOutlined style={{ color: '#64748b', fontSize: 12 }} />}
+                    {hasChildren && appLoadStatus !== 'loading' && <span style={{ color: '#64748b', fontSize: 12 }}>{isExpanded ? '▾' : '▸'}</span>}
                   </div>
                 </button>
               );

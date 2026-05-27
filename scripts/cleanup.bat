@@ -4,14 +4,7 @@ for /f "tokens=5" %%P in ('netstat -ano ^| findstr :3001 ^| findstr LISTENING 2^
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr :5173 ^| findstr LISTENING 2^>nul') do taskkill /F /PID %%P >nul 2>&1
 for /f "tokens=5" %%P in ('netstat -ano ^| findstr :5174 ^| findstr LISTENING 2^>nul') do taskkill /F /PID %%P >nul 2>&1
 
-REM Ensure MongoDB is running
-sc query MongoDB | findstr "RUNNING" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Starting MongoDB service...
-    net start MongoDB >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo WARNING: Could not start MongoDB service. Trying mongod directly...
-        start /B mongod --dbpath "C:\data\db" >nul 2>&1
-    )
-)
+REM Do not auto-start mongod from here. A hardcoded dbPath can point to a different
+REM data store than the Windows service and make collections appear to disappear.
+echo INFO: Skipping MongoDB auto-start in cleanup.bat. Use start.ps1 to validate MongoDB connectivity.
 exit /b 0

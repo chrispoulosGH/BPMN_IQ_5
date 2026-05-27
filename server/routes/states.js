@@ -24,6 +24,45 @@ const collectionModelMap = {
   diagrams: Diagram,
 };
 
+function extractLaneNames(xml) {
+  if (!xml) return [];
+  const laneNames = [];
+  const laneRegex = /<bpmn:lane\b[^>]*\bname="([^"]+)"/gi;
+  let match;
+  while ((match = laneRegex.exec(xml)) !== null) {
+    const name = String(match[1] || '').trim();
+    if (name) laneNames.push(name);
+  }
+  return [...new Set(laneNames)];
+}
+
+async function validateDiagramForSubmission(diagram) {
+  const businessFlow = (diagram.name || diagram.businessFlow || '').trim();
+  const taskNames = [...new Set((diagram.tasks || []).map((task) => String(task.name || '').trim()).filter(Boolean))];
+  const applicationNames = [...new Set(
+    (diagram.tasks || []).flatMap((task) =>
+      (task.applications || []).map((app) => String(app?.name || '').trim()).filter(Boolean)
+    )
+  )];
+  const laneNames = extractLaneNames(diagram.xml || '');
+
+  const [knownTaskNames, knownApplicationNames, knownActorNames] = await Promise.all([
+    Task.distinct('name', businessFlow ? { businessFlow } : {}),
+    Application.distinct('name'),
+    Actor.distinct('name'),
+  ]);
+
+  const taskSet = new Set(knownTaskNames.map((name) => String(name || '').toLowerCase().trim()));
+  const applicationSet = new Set(knownApplicationNames.map((name) => String(name || '').toLowerCase().trim()));
+  const actorSet = new Set(knownActorNames.map((name) => String(name || '').toLowerCase().trim()));
+
+  const invalidTasks = taskNames.filter((name) => !taskSet.has(name.toLowerCase().trim()));
+  const invalidApplications = applicationNames.filter((name) => !applicationSet.has(name.toLowerCase().trim()));
+  const invalidActors = laneNames.filter((name) => !actorSet.has(name.toLowerCase().trim()));
+
+  return { invalidTasks, invalidApplications, invalidActors };
+}
+
 // GET /api/states — list all valid states
 router.get('/', async (_req, res) => {
   try {
@@ -76,6 +115,22 @@ router.post('/transition', async (req, res) => {
       return res.status(403).json({
         error: `Role "${role}" cannot perform "${action}" on a record in state "${currentState}"`,
       });
+    }
+
+    if (collection === 'diagrams' && currentState === 'draft' && targetState === 'submitted') {
+      const { invalidTasks, invalidApplications, invalidActors } = await validateDiagramForSubmission(record);
+      if (invalidTasks.length || invalidApplications.length || invalidActors.length) {
+        const problems = [];
+        if (invalidTasks.length) problems.push(`invalid tasks: ${invalidTasks.join(', ')}`);
+        if (invalidApplications.length) problems.push(`invalid applications: ${invalidApplications.join(', ')}`);
+        if (invalidActors.length) problems.push(`invalid actors: ${invalidActors.join(', ')}`);
+        return res.status(400).json({
+          error: `Cannot submit diagram with invalid objects: ${problems.join(' | ')}`,
+          invalidTasks,
+          invalidApplications,
+          invalidActors,
+        });
+      }
     }
 
     // Update the state field (use 'state' for ref data, 'status' for diagrams if that's what they use)

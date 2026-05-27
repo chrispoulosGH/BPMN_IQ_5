@@ -46,6 +46,7 @@ interface BpmnEditorProps {
   allTaskNames?: string[];
   allActorNames?: string[];
   diagramName?: string;
+  canEditDiagramName?: boolean;
   isInFactory?: boolean;
   isAlreadyLoaded?: boolean;
   readOnly?: boolean;
@@ -69,7 +70,7 @@ function isActivityType(type?: string): boolean {
 }
 
 const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
-  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allTaskNames = [], allActorNames = [], diagramName, isInFactory, isAlreadyLoaded, readOnly, onNavigateToFactory, onTaskSelect, onAddToFactory, onDeleteAndReload, onSaveAsNew, onDiagramNameClick, onNewDiagram, onDiagramNameChange }, ref) => {
+  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allTaskNames = [], allActorNames = [], diagramName, canEditDiagramName = false, isInFactory, isAlreadyLoaded, readOnly, onNavigateToFactory, onTaskSelect, onAddToFactory, onDeleteAndReload, onSaveAsNew, onDiagramNameClick, onNewDiagram, onDiagramNameChange }, ref) => {
     const canvasRef = useRef<HTMLDivElement>(null);
     const propertiesRef = useRef<HTMLDivElement>(null);
     const modelerRef = useRef<any>(null);
@@ -1038,12 +1039,12 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               onDiagramNameClick?.();
             }}
             onDoubleClick={() => {
-              if ((!isInFactory || isAlreadyLoaded) && onDiagramNameChange) {
+              if (canEditDiagramName && onDiagramNameChange) {
                 setEditNameValue(diagramName);
                 setEditingDiagramName(true);
               }
             }}
-            title={isInFactory ? 'Click to view diagram properties' : 'Click for properties, double-click to edit name'}
+            title={canEditDiagramName ? 'Click for properties, double-click to edit name' : 'Click for properties'}
           >
             <div className={`bg-white/90 backdrop-blur-sm border rounded-md px-5 py-2 shadow-sm ${isInFactory ? 'border-gray-200' : 'border-orange-300'}`}>
               <span className="text-xl font-bold" style={{ color: isInFactory ? '#374151' : '#cc7000' }}>{diagramName}</span>
@@ -1162,9 +1163,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               </div>
               <div className="border-t border-gray-100 pt-3">
                 <table className="w-full text-xs">
-                  <tbody>
-                    <tr><td className="text-gray-500 py-1 pr-2 align-top">Factory Status</td><td className="py-1"><span className={`px-1.5 py-0.5 rounded text-xs ${isInFactory ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-300'}`}>{isInFactory ? 'In Factory' : isAlreadyLoaded ? 'Already Loaded' : 'Not in Factory'}</span></td></tr>
-                  </tbody>
+                  <tbody />
                 </table>
               </div>
               {isAlreadyLoaded && (
@@ -1201,10 +1200,10 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                   <button
                     className="w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700"
                     onClick={() => onAddToFactory?.()}
-                    title="Add this diagram to the BPMN Factory"
+                    title="Save this diagram to MongoDB"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-                    Add to BPMN Factory →
+                    Save to MongoDB →
                   </button>
                 </div>
               )}

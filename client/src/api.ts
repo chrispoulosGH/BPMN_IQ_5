@@ -1,6 +1,6 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem } from './types';
-export type { RefItem, CapabilityItem, ActorItem };
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem } from './types';
+export type { RefItem, CapabilityItem, ActorItem, ServerItem };
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
 
@@ -116,6 +116,13 @@ export const updateApplication = (id: string, data: Partial<import('./types').Ap
 export const deleteRefItem = (collection: string, id: string): Promise<{ success: boolean }> =>
   api.delete(`/tasks/reference/${collection}/${id}`).then((r) => r.data);
 
+// ── Servers (Server Factory) ────────────────────────────────
+export const getServers = (params?: { search?: string; applicationCorrelationId?: string; applicationName?: string }): Promise<ServerItem[]> =>
+  api.get('/servers', { params }).then((r) => r.data);
+
+export const getApplicationServers = (correlationId: string): Promise<ServerItem[]> =>
+  api.get(`/servers/by-application/${encodeURIComponent(correlationId)}`).then((r) => r.data);
+
 // ── Capabilities CRUD (for CapabilitiesFactory) ─────────────
 export const getCapabilities = (): Promise<CapabilityItem[]> =>
   api.get('/capabilities', { params: { limit: 5000, skip: 0 } }).then((r) => r.data.capabilities || r.data);
@@ -173,6 +180,7 @@ export const getDashboardLobDrilldownTree = (): Promise<{
     name: string;
     level: string;
     count: number;
+    metadata?: { correlationId?: string };
     children: any[];
   }>;
 }> => api.get('/dashboard/lob-drilldown-tree').then((r) => r.data);
@@ -187,5 +195,9 @@ export interface CostByYearItem { name: string; opCost: number; devCost: number;
 export interface TaskCostByYearItem extends CostByYearItem { businessFlow: string; }
 export const getDashboardCostByYear = (year: number): Promise<{ flows: CostByYearItem[]; tasks: TaskCostByYearItem[]; year: number }> =>
   api.get(`/dashboard/cost-by-year?year=${year}`).then((r) => r.data);
+
+export interface CapabilityCostByYearItem extends CostByYearItem { flowCount: number; }
+export const getDashboardCapabilityCostByYear = (year: number): Promise<{ capabilities: CapabilityCostByYearItem[]; year: number }> =>
+  api.get(`/dashboard/capability-cost-by-year?year=${year}`).then((r) => r.data);
 
 export default api;

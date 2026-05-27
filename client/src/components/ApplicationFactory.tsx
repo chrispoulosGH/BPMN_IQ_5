@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select } from 'antd';
+import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select, List, Spin, Typography } from 'antd';
 import { SearchOutlined, SettingOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
-import type { ApplicationItem } from '../types';
-import { getRefItems, createApplication, updateApplication } from '../api';
+import type { ApplicationItem, ServerItem } from '../types';
+import { getRefItems, createApplication, updateApplication, getApplicationServers } from '../api';
 import type { ColumnsType } from 'antd/es/table';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 
@@ -11,6 +11,7 @@ interface ApplicationFactoryProps {
   defaultAdd?: string;
   userRole?: string | null;
   readOnly?: boolean;
+  onNavigateToFactory?: (tab: string, search: string) => void;
 }
 
 /** All possible columns with their keys, labels, and default visibility */
@@ -40,7 +41,7 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'owner', title: 'Owner', defaultVisible: true },
 ];
 
-export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly }: ApplicationFactoryProps) {
+export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, onNavigateToFactory }: ApplicationFactoryProps) {
   const { message } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,6 +52,8 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   const [editingApp, setEditingApp] = useState<ApplicationItem | null>(null);
   const [editForm] = Form.useForm();
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [detailServers, setDetailServers] = useState<ServerItem[]>([]);
+  const [detailServersLoading, setDetailServersLoading] = useState(false);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
     () => new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
   );
@@ -80,6 +83,33 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
       setShowAddForm(true);
     }
   }, [defaultAdd, addForm]);
+
+  useEffect(() => {
+    if (!detail?.correlationId) {
+      setDetailServers([]);
+      return;
+    }
+
+    let cancelled = false;
+    setDetailServersLoading(true);
+    getApplicationServers(detail.correlationId)
+      .then((servers) => {
+        if (!cancelled) setDetailServers(servers);
+      })
+      .catch((e: any) => {
+        if (!cancelled) {
+          setDetailServers([]);
+          message.error(e.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDetailServersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detail, message]);
 
   const filtered = search
     ? items.filter((i) => {
@@ -305,6 +335,30 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
             <Descriptions.Item label="Application Purpose">{detail.applPurpose || '—'}</Descriptions.Item>
             <Descriptions.Item label="User Interface">{detail.userInterface || '—'}</Descriptions.Item>
             <Descriptions.Item label="Owner">{detail.owner || '—'}</Descriptions.Item>
+            <Descriptions.Item label="Servers">
+              {detailServersLoading ? (
+                <Spin size="small" />
+              ) : detailServers.length ? (
+                <List
+                  size="small"
+                  dataSource={detailServers}
+                  renderItem={(server) => (
+                    <List.Item style={{ paddingInline: 0 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <Typography.Link onClick={() => onNavigateToFactory?.('servers', server.name)}>
+                          {server.name}
+                        </Typography.Link>
+                        <span className="text-xs text-gray-500">
+                          {[server.hostName, server.fqdn, server.ipAddress].filter(Boolean).join(' | ') || 'No host details'}
+                        </span>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              ) : (
+                '—'
+              )}
+            </Descriptions.Item>
           </Descriptions>
         )}
       </Drawer>

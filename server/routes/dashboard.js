@@ -196,10 +196,21 @@ router.get('/capability-flow-relationships', async (_req, res) => {
  */
 router.get('/lob-drilldown-tree', async (_req, res) => {
   try {
-    const diagrams = await Diagram.find(
-      {},
-      { lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1, businessFlow: 1, name: 1, tasks: 1 }
-    ).lean();
+    const [diagrams, applications] = await Promise.all([
+      Diagram.find(
+        {},
+        { lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1, businessFlow: 1, name: 1, tasks: 1 }
+      ).lean(),
+      Application.find({}, { name: 1, correlationId: 1 }).lean(),
+    ]);
+
+    const appCorrelationByName = new Map();
+    for (const app of applications) {
+      const appName = normalizeValue(app?.name, '').toLowerCase();
+      const correlationId = normalizeValue(app?.correlationId, '');
+      if (!appName || !correlationId || appCorrelationByName.has(appName)) continue;
+      appCorrelationByName.set(appName, correlationId);
+    }
 
     const root = new Map();
 
@@ -242,7 +253,8 @@ router.get('/lob-drilldown-tree', async (_req, res) => {
 
         for (const appName of Array.from(new Set(apps))) {
           const appPath = [...taskPath, appName];
-          const appNode = getOrCreateTreeNode(taskNode.children, appName, 'application', appPath);
+          const appCorrelationId = appCorrelationByName.get(appName.toLowerCase()) || undefined;
+          const appNode = getOrCreateTreeNode(taskNode.children, appName, 'application', appPath, appCorrelationId ? { correlationId: appCorrelationId } : undefined);
           appNode.count += 1;
         }
       }
@@ -267,7 +279,7 @@ function normalizeValue(value, fallback = '') {
   return v || fallback;
 }
 
-function getOrCreateTreeNode(map, name, level, pathParts) {
+function getOrCreateTreeNode(map, name, level, pathParts, metadata) {
   if (!map.has(name)) {
     map.set(name, {
       id: `${level}::${pathParts.join(' > ')}`,
@@ -275,7 +287,11 @@ function getOrCreateTreeNode(map, name, level, pathParts) {
       level,
       count: 0,
       children: new Map(),
+      metadata: metadata || null,
     });
+  } else if (metadata) {
+    const existing = map.get(name);
+    existing.metadata = { ...(existing.metadata || {}), ...metadata };
   }
   return map.get(name);
 }
@@ -291,6 +307,7 @@ function mapToTreeArray(map) {
       name: node.name,
       level: node.level,
       count: node.count,
+      ...(node.metadata ? { metadata: node.metadata } : {}),
       children: mapToTreeArray(node.children),
     }));
 }
@@ -555,6 +572,105 @@ router.get('/cost-by-year', async (req, res) => {
     const tasks = [...taskMap.values()].sort((a, b) => b.totalCost - a.totalCost).slice(0, 20);
 
     res.json({ flows, tasks, year });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/capability-cost-by-year?year=2025
+ * Returns top-10 business capabilities ranked by total cost for the given year.
+ * Cost attribution is derived from business flow totals, grouped by the set of
+ * capabilities tagged on the corresponding diagram(s) for each flow.
+ */
+router.get('/capability-cost-by-year', async (req, res) => {
+  const year = parseInt(req.query.year) || 2025;
+  const yearIdx = year - 2016;
+  if (yearIdx < 0 || yearIdx >= 10) {
+    return res.status(400).json({ error: 'Year must be between 2016 and 2025' });
+  }
+
+  try {
+    const db = require('mongoose').connection;
+    const [bfDocs, diagramDocs] = await Promise.all([
+      db.collection('businessflows')
+        .find({ 'tasks.0': { $exists: true } })
+        .toArray(),
+      Diagram.find({}, { name: 1, businessFlow: 1, capabilities: 1 }).lean(),
+    ]);
+
+    const flowCostMap = new Map();
+    for (const bf of bfDocs) {
+      let opCost = 0;
+      let devCost = 0;
+      let totalCost = 0;
+
+      for (const task of (bf.tasks || [])) {
+        for (const app of (task.applications || [])) {
+          const entry = app.annualCosts?.[yearIdx];
+          if (!entry) continue;
+          opCost += entry.operationCost || 0;
+          devCost += entry.developmentCost || 0;
+          totalCost += entry.totalCost || 0;
+        }
+      }
+
+      if (totalCost > 0) {
+        flowCostMap.set((bf.name || '').trim(), { name: (bf.name || '').trim(), opCost, devCost, totalCost });
+      }
+    }
+
+    const capabilityToFlows = new Map();
+    for (const diagram of diagramDocs) {
+      const flowName = normalizeValue(diagram.businessFlow || diagram.name, '');
+      if (!flowName) continue;
+
+      const capabilityNames = Array.from(new Set(
+        (diagram.capabilities || [])
+          .map((capability) => normalizeValue(capability?.capabilityName, ''))
+          .filter(Boolean)
+      ));
+
+      if (!capabilityNames.length) continue;
+
+      if (!capabilityToFlows.has(flowName)) {
+        capabilityToFlows.set(flowName, new Set());
+      }
+      const flowCapabilities = capabilityToFlows.get(flowName);
+      for (const capabilityName of capabilityNames) {
+        flowCapabilities.add(capabilityName);
+      }
+    }
+
+    const capabilityMap = new Map();
+    for (const [flowName, flowCost] of flowCostMap.entries()) {
+      const capabilityNames = capabilityToFlows.get(flowName);
+      if (!capabilityNames || !capabilityNames.size) continue;
+
+      for (const capabilityName of capabilityNames) {
+        if (!capabilityMap.has(capabilityName)) {
+          capabilityMap.set(capabilityName, {
+            name: capabilityName,
+            opCost: 0,
+            devCost: 0,
+            totalCost: 0,
+            flowCount: 0,
+          });
+        }
+
+        const capabilityRow = capabilityMap.get(capabilityName);
+        capabilityRow.opCost += flowCost.opCost;
+        capabilityRow.devCost += flowCost.devCost;
+        capabilityRow.totalCost += flowCost.totalCost;
+        capabilityRow.flowCount += 1;
+      }
+    }
+
+    const capabilities = [...capabilityMap.values()]
+      .sort((a, b) => b.totalCost - a.totalCost || b.flowCount - a.flowCount || a.name.localeCompare(b.name))
+      .slice(0, 10);
+
+    res.json({ capabilities, year });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

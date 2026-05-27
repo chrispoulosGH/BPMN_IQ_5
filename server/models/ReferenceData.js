@@ -61,6 +61,8 @@ const applicationSchema = new mongoose.Schema({
   state: { type: String, enum: VALID_STATES, default: 'published' },
 }, { timestamps: true });
 
+applicationSchema.index({ correlationId: 1 });
+
 const BusinessFlow = mongoose.model('BusinessFlow', businessFlowSchema);
 const Product = mongoose.model('Product', refSchema);
 const Application = mongoose.model('Application', applicationSchema);

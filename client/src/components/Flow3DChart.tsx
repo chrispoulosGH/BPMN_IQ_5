@@ -499,7 +499,7 @@ export default function Flow3DChart() {
               uirevision: `${mode}-${selectedFlows.join(',')}-${cameraReset}`,
               title: {
                 text: selectedFlows.join(' | '),
-                font: { size: 38, color: '#ffffff', family: 'Arial Black, sans-serif' },
+                font: { size: 23, color: '#111827', family: 'Arial Black, sans-serif' },
                 x: 0.5,
                 xanchor: 'center',
                 y: 0.98,

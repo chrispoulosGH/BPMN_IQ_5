@@ -178,6 +178,63 @@ export interface ApplicationItem extends RefItem {
   userInterface?: string;
 }
 
+export interface ServerLinkedApplication {
+  correlationId?: string | null;
+  name?: string | null;
+  acronym?: string | null;
+  apmNumber?: string | null;
+  relationType?: string | null;
+  relationSystemId?: string | null;
+}
+
+export interface ServerItem {
+  _id: string;
+  sourceKey: string;
+  name: string;
+  serverSystemId?: string | null;
+  objectId?: string | null;
+  assetId?: string | null;
+  assetTag?: string | null;
+  hostName?: string | null;
+  fqdn?: string | null;
+  ipAddress?: string | null;
+  macAddress?: string | null;
+  environment?: string | null;
+  installStatus?: string | null;
+  operationalStatus?: string | null;
+  lifecycleStage?: string | null;
+  lifecycleStatus?: string | null;
+  usedFor?: string | null;
+  os?: string | null;
+  osVersion?: string | null;
+  osDomain?: string | null;
+  osServicePack?: string | null;
+  normalizedOs?: string | null;
+  normalizedOsVersion?: string | null;
+  normalizedOsServicePack?: string | null;
+  vendorName?: string | null;
+  manufacturer?: string | null;
+  modelNumber?: string | null;
+  serialNumber?: string | null;
+  cpuCount?: number | null;
+  cpuName?: string | null;
+  cpuSpeed?: string | null;
+  ram?: number | null;
+  location?: string | null;
+  supportGroup?: string | null;
+  supportedBy?: string | null;
+  managedByGroup?: string | null;
+  cloudAccountId?: string | null;
+  internetFacing?: string | null;
+  virtualized?: boolean | null;
+  className?: string | null;
+  relationTypes?: string[];
+  relationPorts?: string[];
+  linkedApplications?: ServerLinkedApplication[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // ─── Capabilities Factory ────────────────────────────────────
 export interface CapabilityItem {
   _id: string;

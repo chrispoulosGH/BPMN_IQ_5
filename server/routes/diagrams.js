@@ -3,15 +3,30 @@ const router = express.Router();
 const Diagram = require('../models/Diagram');
 const { BusinessFlow } = require('../models/ReferenceData');
 
-/** Strip the DiagramTitle and LastUpdated text annotations from the XML (they clutter the canvas) */
+/** Strip title/status housekeeping text annotations from the XML (they clutter the canvas) */
 function stripTitleAnnotations(xml) {
   if (!xml) return xml;
-  // Remove the textAnnotation elements
+  // Remove known housekeeping textAnnotation elements
   xml = xml.replace(/<bpmn:textAnnotation id="TextAnnotation_DiagramTitle">[\s\S]*?<\/bpmn:textAnnotation>\s*/g, '');
   xml = xml.replace(/<bpmn:textAnnotation id="TextAnnotation_LastUpdated">[\s\S]*?<\/bpmn:textAnnotation>\s*/g, '');
+  xml = xml.replace(/<bpmn:textAnnotation id="TextAnnotation_Status">[\s\S]*?<\/bpmn:textAnnotation>\s*/g, '');
+
+  // Remove one-off annotations whose text is purely housekeeping metadata.
+  // Keep task/application annotations intact.
+  xml = xml.replace(
+    /<bpmn:textAnnotation\s+id="([^"]+)"[^>]*>[\s\S]*?<bpmn:text>([\s\S]*?)<\/bpmn:text>[\s\S]*?<\/bpmn:textAnnotation>\s*/gi,
+    (match, annId, annText) => {
+      const text = String(annText || '').trim();
+      if (/^(status|factory status)\s*:/i.test(text)) return '';
+      return match;
+    }
+  );
+
   // Remove their DI shapes
   xml = xml.replace(/<bpmndi:BPMNShape id="TextAnnotation_DiagramTitle_di"[\s\S]*?<\/bpmndi:BPMNShape>\s*/g, '');
   xml = xml.replace(/<bpmndi:BPMNShape id="TextAnnotation_LastUpdated_di"[\s\S]*?<\/bpmndi:BPMNShape>\s*/g, '');
+  xml = xml.replace(/<bpmndi:BPMNShape id="TextAnnotation_Status_di"[\s\S]*?<\/bpmndi:BPMNShape>\s*/g, '');
+  xml = xml.replace(/<bpmndi:BPMNShape[^>]+bpmnElement="TextAnnotation_Status"[\s\S]*?<\/bpmndi:BPMNShape>\s*/g, '');
   return xml;
 }
 

@@ -3,6 +3,9 @@ import { Spin, Select, Segmented, Empty, Card, Row, Col, Statistic, Table, Tag }
 import {
   BarChart,
   Bar,
+  ScatterChart,
+  Scatter,
+  ZAxis,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -18,8 +21,8 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { getDashboardTaskRisk, getDashboardFlowRisk, getDashboardCostByYear, getDashboardCapabilityFlowRelationships } from '../api';
-import type { CostByYearItem, TaskCostByYearItem } from '../api';
+import { getDashboardTaskRisk, getDashboardFlowRisk, getDashboardCostByYear, getDashboardCapabilityCostByYear, getDashboardCapabilityFlowRelationships } from '../api';
+import type { CapabilityCostByYearItem, CostByYearItem, TaskCostByYearItem } from '../api';
 import Flow3DChart from './Flow3DChart';
 import LobDrilldownTree from './LobDrilldownTree';
 
@@ -118,6 +121,7 @@ export default function Dashboard() {
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
   const [flowCostData, setFlowCostData] = useState<CostByYearItem[]>([]);
   const [taskCostData, setTaskCostData] = useState<TaskCostByYearItem[]>([]);
+  const [capabilityCostData, setCapabilityCostData] = useState<CapabilityCostByYearItem[]>([]);
   const [capRelData, setCapRelData] = useState<CapabilityFlowRelationshipData | null>(null);
 
   useEffect(() => {
@@ -125,13 +129,15 @@ export default function Dashboard() {
       getDashboardTaskRisk(),
       getDashboardFlowRisk(),
       getDashboardCostByYear(COST_YEAR),
+      getDashboardCapabilityCostByYear(COST_YEAR),
       getDashboardCapabilityFlowRelationships(),
     ])
-      .then(([tasks, flows, cost, caprels]) => {
+      .then(([tasks, flows, cost, capabilityCost, caprels]) => {
         setTaskData(tasks);
         setFlowData(flows);
         setFlowCostData(cost.flows);
         setTaskCostData(cost.tasks);
+        setCapabilityCostData(capabilityCost.capabilities);
         setCapRelData(caprels);
       })
       .finally(() => setLoading(false));
@@ -156,7 +162,7 @@ export default function Dashboard() {
           options={[
             { label: 'Business Flow Comparison', value: 'flows' },
             { label: 'Task Comparison', value: 'tasks' },
-            { label: 'Capability to Business Flow', value: 'caprels' },
+            { label: 'Capability Cost & Flow', value: 'caprels' },
             { label: 'LOB Drilldown Tree', value: 'drilltree' },
             { label: '3D Flow Explorer', value: '3d' },
           ]}
@@ -176,7 +182,7 @@ export default function Dashboard() {
       {view === 'tasks' ? (
         <TaskDashboard tasks={filteredTasks} allTasks={taskData} costData={taskCostData} costYear={COST_YEAR} />
       ) : view === 'caprels' ? (
-        <CapabilityFlowRelationshipDashboard data={capRelData} />
+        <CapabilityFlowRelationshipDashboard data={capRelData} costData={capabilityCostData} costYear={COST_YEAR} />
       ) : view === 'drilltree' ? (
         <LobDrilldownTree />
       ) : view === 'flows' ? (
@@ -188,39 +194,247 @@ export default function Dashboard() {
   );
 }
 
-function CapabilityFlowRelationshipDashboard({ data }: { data: CapabilityFlowRelationshipData | null }) {
-  if (!data || !data.links.length) return <Empty description="No capability-to-business-flow relationships found" />;
+function CapabilityFlowRelationshipDashboard({ data, costData, costYear }: { data: CapabilityFlowRelationshipData | null; costData: CapabilityCostByYearItem[]; costYear: number }) {
+  const [capLimit, setCapLimit] = useState<number>(20);
+  const [flowLimit, setFlowLimit] = useState<number>(20);
+  const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(1) + 'M';
+  const relationshipLinks = data?.links || [];
+  const hasRelationshipData = relationshipLinks.length > 0;
 
-  const topLinks = data.links.slice(0, 20).map((l) => ({
-    pair: `${l.capability} -> ${l.businessFlow}`,
-    count: l.count,
+  const capabilityCostBarData = costData.map((capability) => ({
+    name: capability.name.length > 28 ? capability.name.slice(0, 25) + '...' : capability.name,
+    fullName: capability.name,
+    opCost: capability.opCost,
+    devCost: capability.devCost,
+    totalCost: capability.totalCost,
+    flowCount: capability.flowCount,
   }));
+
+  const linkMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const l of relationshipLinks) {
+      map.set(`${l.capability}|||${l.businessFlow}`, l.count);
+    }
+    return map;
+  }, [relationshipLinks]);
+
+  const capabilitySummary = useMemo(() => {
+    const byCapability = new Map<string, { flowSet: Set<string>; totalStrength: number; maxStrength: number }>();
+    for (const l of relationshipLinks) {
+      if (!byCapability.has(l.capability)) {
+        byCapability.set(l.capability, { flowSet: new Set(), totalStrength: 0, maxStrength: 0 });
+      }
+      const row = byCapability.get(l.capability)!;
+      row.flowSet.add(l.businessFlow);
+      row.totalStrength += l.count;
+      row.maxStrength = Math.max(row.maxStrength, l.count);
+    }
+
+    return [...byCapability.entries()]
+      .map(([name, agg]) => ({
+        name,
+        flowCount: agg.flowSet.size,
+        totalStrength: agg.totalStrength,
+        maxStrength: agg.maxStrength,
+      }))
+      .sort((a, b) => {
+        if (b.flowCount !== a.flowCount) return b.flowCount - a.flowCount;
+        return b.totalStrength - a.totalStrength;
+      });
+  }, [relationshipLinks]);
+
+  const selectedCapabilities = capabilitySummary.slice(0, capLimit);
+  const selectedCapabilityNames = new Set(selectedCapabilities.map((c) => c.name));
+
+  const topFlows = useMemo(() => {
+    const strengthByFlow = new Map<string, number>();
+    for (const l of relationshipLinks) {
+      if (!selectedCapabilityNames.has(l.capability)) continue;
+      strengthByFlow.set(l.businessFlow, (strengthByFlow.get(l.businessFlow) || 0) + l.count);
+    }
+    return [...strengthByFlow.entries()]
+      .map(([name, strength]) => ({ name, strength }))
+      .sort((a, b) => b.strength - a.strength)
+      .slice(0, flowLimit)
+      .map((f) => f.name);
+  }, [relationshipLinks, selectedCapabilityNames, flowLimit]);
+
+  const bubbleData = selectedCapabilities.map((c, i) => ({
+    x: i + 1,
+    y: c.flowCount,
+    z: c.flowCount,
+    capability: c.name,
+    totalStrength: c.totalStrength,
+    maxStrength: c.maxStrength,
+  }));
+
+  const heatRows = selectedCapabilities.map((c) => ({
+    capability: c.name,
+    flowCount: c.flowCount,
+    cells: topFlows.map((flow) => ({
+      flow,
+      value: linkMap.get(`${c.name}|||${flow}`) || 0,
+    })),
+  }));
+
+  const heatMax = Math.max(1, ...heatRows.flatMap((r) => r.cells.map((c) => c.value)));
 
   return (
     <>
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}><Card size="small"><Statistic title="Diagrams" value={data.totalDiagrams} /></Card></Col>
-        <Col xs={12} sm={6}><Card size="small"><Statistic title="With Capabilities" value={data.diagramsWithCapabilities} /></Card></Col>
-        <Col xs={12} sm={6}><Card size="small"><Statistic title="Capabilities" value={data.capabilityCount} /></Card></Col>
-        <Col xs={12} sm={6}><Card size="small"><Statistic title="Business Flows" value={data.businessFlowCount} /></Card></Col>
-      </Row>
-
-      <Card title="Top Capability-to-Business-Flow Relationships" size="small" style={{ marginBottom: 24 }}>
-        <ResponsiveContainer width="100%" height={380}>
-          <BarChart data={topLinks} margin={{ top: 5, right: 20, left: 10, bottom: 110 }}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="pair" angle={-45} textAnchor="end" interval={0} height={120} tick={{ fontSize: 11 }} />
-            <YAxis allowDecimals={false} />
-            <Tooltip />
-            <Bar dataKey="count" name="Relationship Count" fill="#13c2c2" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      <Card title={`Top 10 Business Capabilities by Cost — ${costYear}`} size="small" style={{ marginBottom: 24 }}>
+        {capabilityCostBarData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={360}>
+            <BarChart data={capabilityCostBarData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis type="number" tickFormatter={fmtM} />
+              <YAxis dataKey="name" type="category" width={240} tick={{ fontSize: 11 }} />
+              <Tooltip content={({ payload }) => {
+                if (!payload?.length) return null;
+                const d = payload[0].payload;
+                return <div style={{ background: '#fff', border: '1px solid #ccc', padding: 8, borderRadius: 4, fontSize: 12 }}>
+                  <div style={{ fontWeight: 600 }}>{d.fullName}</div>
+                  <div style={{ color: '#6e7681', fontSize: 11 }}>Supported by {d.flowCount} business flow{d.flowCount === 1 ? '' : 's'}</div>
+                  <div style={{ color: '#1890ff' }}>Operation: {fmtM(d.opCost)}</div>
+                  <div style={{ color: '#d29922' }}>Development: {fmtM(d.devCost)}</div>
+                  <div style={{ fontWeight: 600 }}>Total: {fmtM(d.totalCost)}</div>
+                </div>;
+              }} />
+              <Legend />
+              <Bar dataKey="opCost" name="Operation Cost" stackId="a" fill="#1890ff" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="devCost" name="Development Cost" stackId="a" fill="#d29922" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <Empty description={`No capability cost data for ${costYear}. Add capability mappings to diagrams to populate this chart.`} />
+        )}
       </Card>
 
-      <Card title="Capability to Business Flow Relationships (Top Links)" size="small">
+      {hasRelationshipData ? (
+        <>
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={12} sm={6}><Card size="small"><Statistic title="Diagrams" value={data!.totalDiagrams} /></Card></Col>
+            <Col xs={12} sm={6}><Card size="small"><Statistic title="With Capabilities" value={data!.diagramsWithCapabilities} /></Card></Col>
+            <Col xs={12} sm={6}><Card size="small"><Statistic title="Capabilities" value={data!.capabilityCount} /></Card></Col>
+            <Col xs={12} sm={6}><Card size="small"><Statistic title="Relationships" value={data!.linkCount} /></Card></Col>
+          </Row>
+
+      <Card
+        title="Capability Bubble Map"
+        size="small"
+        style={{ marginBottom: 24 }}
+        extra={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Select
+              size="small"
+              value={capLimit}
+              style={{ width: 170 }}
+              options={[10, 20, 30, 50].map((n) => ({ label: `Top ${n} capabilities`, value: n }))}
+              onChange={setCapLimit}
+            />
+            <Select
+              size="small"
+              value={flowLimit}
+              style={{ width: 170 }}
+              options={[10, 20, 30, 50].map((n) => ({ label: `Top ${n} flows`, value: n }))}
+              onChange={setFlowLimit}
+            />
+          </div>
+        }
+      >
+        <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          Bubble size represents the number of distinct process flows supporting each capability.
+        </div>
+        <ResponsiveContainer width="100%" height={360}>
+          <ScatterChart margin={{ top: 10, right: 20, left: 10, bottom: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis type="number" dataKey="x" tick={false} domain={[0, Math.max(12, capLimit + 1)]} name="Capability Rank" />
+            <YAxis type="number" dataKey="y" allowDecimals={false} name="Supporting Process Flows" />
+            <ZAxis type="number" dataKey="z" range={[80, 1200]} />
+            <Tooltip
+              cursor={{ strokeDasharray: '3 3' }}
+              formatter={(value: any, name: any) => [value, name]}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const d: any = payload[0].payload;
+                return (
+                  <div style={{ background: '#fff', border: '1px solid #ccc', padding: 8, borderRadius: 4, fontSize: 12, maxWidth: 340 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>{d.capability}</div>
+                    <div>Supporting flows: {d.y}</div>
+                    <div>Total strength: {d.totalStrength}</div>
+                    <div>Max link strength: {d.maxStrength}</div>
+                  </div>
+                );
+              }}
+            />
+            <Scatter data={bubbleData} fill="#1d4ed8" />
+          </ScatterChart>
+        </ResponsiveContainer>
+
+        <Table
+          style={{ marginTop: 12 }}
+          rowKey={(r) => r.name}
+          dataSource={selectedCapabilities.slice(0, 15)}
+          size="small"
+          pagination={false}
+          columns={[
+            { title: 'Capability', dataIndex: 'name', key: 'name', ellipsis: true },
+            { title: 'Supporting Flows', dataIndex: 'flowCount', key: 'flowCount', width: 140, sorter: (a, b) => a.flowCount - b.flowCount, defaultSortOrder: 'descend' as const },
+            { title: 'Total Strength', dataIndex: 'totalStrength', key: 'totalStrength', width: 130, sorter: (a, b) => a.totalStrength - b.totalStrength },
+          ]}
+        />
+      </Card>
+
+      <Card title="Capability x Business Flow Heatmap" size="small" style={{ marginBottom: 24 }}>
+        <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc' }}>
+                <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid #e5e7eb', minWidth: 280 }}>Business Capability</th>
+                {topFlows.map((flow) => (
+                  <th key={flow} style={{ textAlign: 'center', padding: '8px 10px', borderBottom: '1px solid #e5e7eb', minWidth: 120, fontSize: 11 }} title={flow}>
+                    {flow.length > 20 ? `${flow.slice(0, 17)}...` : flow}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {heatRows.map((row) => (
+                <tr key={row.capability}>
+                  <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', fontWeight: 600 }} title={row.capability}>
+                    {row.capability.length > 42 ? `${row.capability.slice(0, 39)}...` : row.capability}
+                  </td>
+                  {row.cells.map((cell) => {
+                    const ratio = cell.value / heatMax;
+                    const background = cell.value > 0 ? `rgba(29, 78, 216, ${0.12 + ratio * 0.82})` : '#f8fafc';
+                    const color = ratio > 0.55 ? '#ffffff' : '#0f172a';
+                    return (
+                      <td
+                        key={`${row.capability}__${cell.flow}`}
+                        title={`${row.capability} -> ${cell.flow}: ${cell.value}`}
+                        style={{
+                          textAlign: 'center',
+                          padding: '8px 6px',
+                          borderBottom: '1px solid #f1f5f9',
+                          background,
+                          color,
+                          fontWeight: cell.value > 0 ? 700 : 500,
+                        }}
+                      >
+                        {cell.value || '-'}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card title="Top Capability to Business Flow Relationships" size="small">
         <Table
           rowKey={(r) => `${r.capability}__${r.businessFlow}`}
-          dataSource={data.links.slice(0, 100)}
+          dataSource={relationshipLinks.slice(0, 100)}
           size="small"
           pagination={{ pageSize: 20, showSizeChanger: true }}
           columns={[
@@ -230,6 +444,12 @@ function CapabilityFlowRelationshipDashboard({ data }: { data: CapabilityFlowRel
           ]}
         />
       </Card>
+        </>
+      ) : (
+        <Card title="Capability to Business Flow Relationships" size="small">
+          <Empty description="No capability-to-business-flow relationships found" />
+        </Card>
+      )}
     </>
   );
 }

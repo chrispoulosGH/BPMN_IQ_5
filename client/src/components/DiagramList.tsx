@@ -18,12 +18,13 @@ interface DiagramListProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRefresh: () => void;
+  onDelete?: (id: string) => void;
   refreshTick: number;
   searchQuery: string;
   readOnly?: boolean;
 }
 
-export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTick, searchQuery, readOnly }: DiagramListProps) {
+export default function DiagramList({ selectedId, onSelect, onRefresh, onDelete, refreshTick, searchQuery, readOnly }: DiagramListProps) {
   const [diagrams, setDiagrams] = useState<DiagramMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export default function DiagramList({ selectedId, onSelect, onRefresh, refreshTi
   const handleDelete = async (e: React.MouseEvent | undefined, id: string) => {
     e?.stopPropagation();
     await deleteDiagram(id);
+    onDelete?.(id);
     onRefresh();
   };
 

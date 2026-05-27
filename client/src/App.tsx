@@ -29,6 +29,7 @@ import {
   AppstoreOutlined,
   LaptopOutlined,
   ClusterOutlined,
+  DeploymentUnitOutlined,
   UserOutlined,
   ShoppingOutlined,
   BankOutlined,
@@ -51,13 +52,13 @@ import CapabilityMatchPanel from './components/CapabilityMatchPanel';
 import TaskFactory from './components/TaskFactory';
 import ReferenceFactory from './components/ReferenceFactory';
 import ApplicationFactory from './components/ApplicationFactory';
+import ServerFactory from './components/ServerFactory';
 import BusinessFlowFactory from './components/BusinessFlowFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
 import ActorFactory from './components/ActorFactory';
 import BpmnFactory from './components/BpmnFactory';
 import Dashboard from './components/Dashboard';
 import ReportsPanel from './components/ReportsPanel';
-import AddToFactoryModal from './components/AddToFactoryModal';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
 import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap } from './api';
@@ -79,6 +80,7 @@ interface ActiveDiagram {
   name: string;
   description: string;
   tags: string[];
+  status?: string | null;
   /** 'db' = loaded from DB; 'local-match' = local file whose BF name already exists in DB */
   source?: 'db' | 'local-match';
 }
@@ -218,6 +220,12 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const readOnly = !(user.capabilities?.some(c => c.permission !== 'Read'));
   const [showAdmin, setShowAdmin] = useState(false);
 
+  const renderScrollablePane = (child: React.ReactNode) => (
+    <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
+      {child}
+    </div>
+  );
+
   // Tab state
   const [activeTab, setActiveTab] = useState<string>('dashboard');
 
@@ -263,7 +271,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       };
       const next = [
         { s: span('bpmn', 'bpmn'),                keys: ['bpmn'],                                                                                                               label: 'Canvas',    color: '#0891b2' },
-        { s: span('diagramFactory', 'subdomains'), keys: ['diagramFactory','tasks','applications','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'], label: 'Factories', color: '#4f46e5' },
+        { s: span('diagramFactory', 'subdomains'), keys: ['diagramFactory','tasks','applications','servers','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'], label: 'Factories', color: '#4f46e5' },
         { s: span('dashboard', 'reports'),         keys: ['dashboard','reports'],                                                                                               label: 'Analytics', color: '#d97706' },
       ].filter(g => g.s).map(g => ({ ...g.s!, label: g.label, color: g.color, keys: g.keys }));
       setGroupLabels(next);
@@ -276,7 +284,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
   // Modals
   const [showSaveDb, setShowSaveDb] = useState(false);
-  const [showAddToFactory, setShowAddToFactory] = useState(false);
 
   // Capability matching
   const [capMatches, setCapMatches] = useState<CapabilityMatch[]>([]);
@@ -311,6 +318,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [appMatchResults, setAppMatchResults] = useState<AppMatchResult[]>([]);
   const [showTaskMatch, setShowTaskMatch] = useState(false);
   const [taskMatchResults, setTaskMatchResults] = useState<AppMatchResult[]>([]);
+
+  const canEditCurrentDiagramName = !readOnly && (!activeDiagram || (activeDiagram.status || '').toLowerCase() === 'draft');
+  const canSaveCurrentDiagramToDb = currentXml !== EMPTY_DIAGRAM;
 
   const editorRef = useRef<BpmnEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -586,6 +596,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
           name: diagram.name,
           description: diagram.description,
           tags: diagram.tags,
+          status: diagram.status,
           source: 'db',
         });
         setCurrentXml(diagram.xml);
@@ -611,6 +622,32 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       }
     },
     [message],
+  );
+
+  const openDiagramInCanvas = useCallback(
+    async (id: string) => {
+      setActiveTab('bpmn');
+      await handleSelectDiagram(id);
+    },
+    [handleSelectDiagram],
+  );
+
+  const handleDiagramDeleted = useCallback(
+    (deletedId: string) => {
+      if (activeDiagram?._id !== deletedId) return;
+      setActiveDiagram(null);
+      setCurrentXml(EMPTY_DIAGRAM);
+      setImportTrigger((t) => t + 1);
+      setDiagramMeta({});
+      setActiveFileName(null);
+      setCanvasDiagramName(null);
+      setIsDirty(false);
+      setCapMatches([]);
+      setSelectedCaps([]);
+      setSavedCaps([]);
+      message.info('Diagram deleted. Canvas reset to blank.');
+    },
+    [activeDiagram, message],
   );
 
   // Canvas tab diagram search handler
@@ -680,6 +717,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
             name: updated.name,
             description: updated.description,
             tags: updated.tags,
+            status: updated.status,
             source: 'db',
           });
           setSavedCaps(selectedCapsRef.current);
@@ -691,6 +729,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
             name: created.name,
             description: created.description,
             tags: created.tags,
+            status: created.status,
             source: 'db',
           });
           setSavedCaps(selectedCapsRef.current);
@@ -706,34 +745,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         message.error(err.message);
       }
     },
-    [activeDiagram, message, refresh],
-  );
-
-  const handleAddToFactory = useCallback(
-    async ({ name, description, tags }: { name: string; description: string; tags: string[] }) => {
-      try {
-        const latestXml = await editorRef.current?.getXml() || currentXmlRef.current;
-        currentXmlRef.current = latestXml;
-        const created = await createDiagram({ name, description, tags, xml: latestXml, capabilities: selectedCapsRef.current, createdBy: CURRENT_USER, sourcedFrom: activeFileName || undefined });
-        setActiveDiagram({
-          _id: created._id,
-          name: created.name,
-          description: created.description,
-          tags: created.tags,
-          source: 'db',
-        });
-        setSavedCaps(selectedCapsRef.current);
-        savedXmlRef.current = latestXml;
-        setIsDirty(false);
-        setShowAddToFactory(false);
-        message.success(`Added to BPMN Factory: ${created.name}`);
-        refresh();
-        setActiveTab('diagramFactory');
-      } catch (err: any) {
-        message.error(err.response?.data?.error || err.message);
-      }
-    },
-    [message, refresh, activeFileName],
+    [activeDiagram, message, refresh, activeFileName],
   );
 
   const handleQuickSaveDb = useCallback(async () => {
@@ -788,6 +800,11 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const handleRenameDiagram = useCallback(async (newName: string) => {
     const trimmed = newName.trim();
     if (!trimmed) { setEditingName(false); return; }
+    if (activeDiagram?._id && (activeDiagram.status || '').toLowerCase() !== 'draft') {
+      message.warning('Set the diagram status to Draft before renaming it.');
+      setEditingName(false);
+      return;
+    }
     if (activeDiagram?._id) {
       try {
         await updateDiagram(activeDiagram._id, { name: trimmed });
@@ -844,11 +861,12 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                   className="!text-gray-300 text-sm cursor-pointer hover:!text-white"
                   onClick={() => {
                     if (activeDiagram && !readOnly) {
+                      if (!canEditCurrentDiagramName) return;
                       setNameInput(activeDiagram.name);
                       setEditingName(true);
                     }
                   }}
-                  title={activeDiagram && !readOnly ? 'Click to rename' : undefined}
+                  title={activeDiagram && canEditCurrentDiagramName ? 'Click to rename' : activeDiagram && !readOnly ? 'Set status to Draft to rename' : undefined}
                 >
                   {activeDiagram?.name || activeFileName}
                 </Text>
@@ -880,16 +898,16 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               icon={<CloudUploadOutlined />}
               onClick={handleQuickSaveDb}
               className="toolbar-btn"
-              disabled={readOnly}
+              disabled={readOnly || !canSaveCurrentDiagramToDb}
             />
           </Tooltip>
-          <Tooltip title="Save as new to MongoDB…">
+          <Tooltip title="Save to MongoDB…">
             <Button
               type="text"
               icon={<DatabaseOutlined />}
               onClick={() => setShowSaveDb(true)}
               className="toolbar-btn"
-              disabled={readOnly}
+              disabled={readOnly || !canSaveCurrentDiagramToDb}
             />
           </Tooltip>
 
@@ -998,12 +1016,13 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         allTaskNames={allTaskNames}
                         allActorNames={allActorNames}
                         diagramName={activeDiagram?.name || canvasDiagramName || diagramMeta.businessFlow || activeFileName?.replace(/\.bpmn$/i, '') || undefined}
+                        canEditDiagramName={canEditCurrentDiagramName}
                         isInFactory={activeDiagram?.source === 'db'}
                         isAlreadyLoaded={activeDiagram?.source === 'local-match'}
                         readOnly={readOnly}
                         onNavigateToFactory={handleNavigateToFactory}
                         onTaskSelect={setSelectedDiagramTask}
-                        onAddToFactory={() => setShowAddToFactory(true)}
+                        onAddToFactory={() => setShowSaveDb(true)}
                         onDeleteAndReload={async () => {
                           if (!activeDiagram?._id) return;
                           try {
@@ -1012,7 +1031,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                             const meta = extractDiagramMetadata(xml);
                             const diagramName = meta.businessFlow || activeDiagram.name;
                             const created = await createDiagram({ name: diagramName, xml, status: 'staged', createdBy: user.userId });
-                            setActiveDiagram({ _id: created._id, name: created.name, description: created.description || '', tags: created.tags || [], source: 'db' });
+                            setActiveDiagram({ _id: created._id, name: created.name, description: created.description || '', tags: created.tags || [], status: created.status, source: 'db' });
                             refresh();
                             message.success(`Replaced: ${created.name}`);
                           } catch (err: any) { message.error(err.message); }
@@ -1021,19 +1040,25 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                           try {
                             const xml = await editorRef.current?.getXml() || currentXmlRef.current;
                             const created = await createDiagram({ name: newName, xml, status: 'draft', createdBy: user.userId });
-                            setActiveDiagram({ _id: created._id, name: created.name, description: created.description || '', tags: created.tags || [], source: 'db' });
+                            setActiveDiagram({ _id: created._id, name: created.name, description: created.description || '', tags: created.tags || [], status: created.status, source: 'db' });
                             refresh();
                             message.success(`Saved as new: ${created.name}`);
                           } catch (err: any) { message.error(err.message); }
                         }}
                         onNewDiagram={handleNew}
                         onDiagramNameChange={async (name) => {
-                          setCanvasDiagramName(name);
+                          const trimmed = name.trim();
+                          if (!trimmed) return;
+                          if (activeDiagram?._id) {
+                            await handleRenameDiagram(trimmed);
+                            return;
+                          }
+                          setCanvasDiagramName(trimmed);
                           try {
                             const flowMap = await getBusinessFlowMap();
-                            const existingId = flowMap[name];
+                            const existingId = flowMap[trimmed];
                             if (existingId) {
-                              setActiveDiagram({ _id: existingId, name, description: '', tags: [], source: 'local-match' });
+                              setActiveDiagram({ _id: existingId, name: trimmed, description: '', tags: [], source: 'local-match' });
                             } else {
                               setActiveDiagram(null);
                             }
@@ -1050,57 +1075,86 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               {
                 key: 'diagramFactory',
                 label: <span><DatabaseOutlined /> BPMN Factory</span>,
-                children: <BpmnFactory onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} refreshTick={refreshTick} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <BpmnFactory onOpenDiagram={openDiagramInCanvas} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} refreshTick={refreshTick} userRole={user.role} />,
+                ),
               },
               {
                 key: 'tasks',
                 label: <span><AppstoreOutlined /> Task Factory</span>,
-                children: <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} />,
+                ),
               },
               {
                 key: 'applications',
                 label: <span><LaptopOutlined /> Application Factory</span>,
-                children: <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} readOnly={readOnly} />,
+                children: renderScrollablePane(
+                  <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} readOnly={readOnly} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
+                ),
+              },
+              {
+                key: 'servers',
+                label: <span><DeploymentUnitOutlined /> Servers Factory</span>,
+                children: renderScrollablePane(
+                  <ServerFactory defaultSearch={factorySearch.servers} readOnly={readOnly} userRole={user.role} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
+                ),
               },
               {
                 key: 'capabilities',
                 label: <span><ClusterOutlined /> Capability Factory</span>,
-                children: <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} defaultSearch={factorySearch.capabilities || ''} />,
+                children: renderScrollablePane(
+                  <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} defaultSearch={factorySearch.capabilities || ''} />,
+                ),
               },
               {
                 key: 'actors',
                 label: <span><UserOutlined /> Actor Factory</span>,
-                children: <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                ),
               },
               {
                 key: 'businessFlows',
                 label: <span><BranchesOutlined /> Business Flow Factory</span>,
-                children: <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }} readOnly={readOnly} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={openDiagramInCanvas} readOnly={readOnly} userRole={user.role} />,
+                ),
               },
               {
                 key: 'products',
                 label: <span><ShoppingOutlined /> Product Factory</span>,
-                children: <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                ),
               },
               {
                 key: 'linesOfBusiness',
                 label: <span><BankOutlined /> LOB Factory</span>,
-                children: <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                ),
               },
               {
                 key: 'channels',
                 label: <span><PhoneOutlined /> Channel Factory</span>,
-                children: <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                ),
               },
               {
                 key: 'domains',
                 label: <span><GlobalOutlined /> Domain Factory</span>,
-                children: <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                ),
               },
               {
                 key: 'subdomains',
                 label: <span><ApartmentOutlined /> Subdomain Factory</span>,
-                children: <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                children: renderScrollablePane(
+                  <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                ),
               },
               tabGroupSep('sep-analytics', 'Analytics'),
               {
@@ -1195,21 +1249,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               />
             </Card>
 
-            {/* ─ Add to BPMN Factory (visible when diagram not in factory) ─ */}
-            {!activeDiagram && currentXml !== EMPTY_DIAGRAM && (
-              <div className="!mx-3 !mb-3">
-                <Button
-                  type="primary"
-                  block
-                  icon={<DatabaseOutlined />}
-                  onClick={() => setShowAddToFactory(true)}
-                  disabled={readOnly}
-                >
-                  Add to BPMN Factory
-                </Button>
-              </div>
-            )}
-
             {/* ─ MongoDB Card ─ */}
             <Card
               size="small"
@@ -1225,7 +1264,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                   type="primary"
                   icon={<CloudUploadOutlined />}
                   onClick={() => setShowSaveDb(true)}
-                  disabled={readOnly}
+                  disabled={readOnly || !canSaveCurrentDiagramToDb}
                 >
                   Save
                 </Button>
@@ -1245,8 +1284,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 <div className="flex-1 overflow-y-auto min-h-0">
                   <DiagramList
                     selectedId={activeDiagram?._id ?? null}
-                    onSelect={(id) => { handleSelectDiagram(id); setActiveTab('bpmn'); }}
+                    onSelect={openDiagramInCanvas}
                     onRefresh={refresh}
+                    onDelete={handleDiagramDeleted}
                     refreshTick={refreshTick}
                     searchQuery={searchQuery}
                     readOnly={readOnly}
@@ -1272,7 +1312,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       {/* ─── Modals ───────────────────────────────────────── */}
       <SaveModal
         open={showSaveDb}
-        initial={activeDiagram ?? { name: diagramMeta.businessFlow || activeFileName?.replace(/\.bpmn$/i, '') || '' }}
+        initial={activeDiagram ?? { name: canvasDiagramName || diagramMeta.businessFlow || activeFileName?.replace(/\.bpmn$/i, '') || '' }}
         isUpdate={!!activeDiagram?._id}
         defaultChangeNote={activeDiagram?._id ? generateChangeNote(savedXmlRef.current, currentXmlRef.current, savedCapsRef.current, selectedCapsRef.current) : undefined}
         onSave={handleSaveDb}
@@ -1293,13 +1333,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         title="Task Name Matching"
         onApprove={handleTaskMatchApprove}
         onClose={() => setShowTaskMatch(false)}
-      />
-
-      <AddToFactoryModal
-        open={showAddToFactory}
-        initialName={canvasDiagramName || diagramMeta.businessFlow || activeFileName?.replace(/\.(bpmn|xml)$/i, '') || ''}
-        onSave={handleAddToFactory}
-        onClose={() => setShowAddToFactory(false)}
       />
 
       {/* New Diagram Name Prompt */}
