@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "reseed:servers": "node scripts/reseed-servers.js"
+    "reseed:servers": "node scripts/reseed-servers.js",
+    "enrich:server-notes": "node scripts/enrich-server-notes.js",
+    "reseed:databases": "node scripts/reseed-databases.js",
+    "enrich:database-notes": "node scripts/enrich-database-notes.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

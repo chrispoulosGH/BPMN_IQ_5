@@ -1,5 +1,5 @@
 const express = require('express');
-const Server = require('../models/Server');
+const DatabaseInstance = require('../models/DatabaseInstance');
 
 const router = express.Router();
 
@@ -14,13 +14,15 @@ function buildSearchFilter(search) {
   return {
     $or: [
       { name: regex },
-      { hostName: regex },
-      { fqdn: regex },
-      { ipAddress: regex },
-      { serverSystemId: regex },
-      { environment: regex },
-      { os: regex },
-      { supportGroup: regex },
+      { instanceName: regex },
+      { serviceName: regex },
+      { applicationName: regex },
+      { applicationAcronym: regex },
+      { applicationCorrelationId: regex },
+      { databaseClassName: regex },
+      { vendor: regex },
+      { normalizedVendor: regex },
+      { version: regex },
       { 'linkedApplications.name': regex },
       { 'linkedApplications.correlationId': regex },
       { 'linkedApplications.acronym': regex },
@@ -46,22 +48,36 @@ router.get('/', async (req, res) => {
     };
 
     if (req.query.applicationCorrelationId) {
-      filter['linkedApplications.correlationId'] = String(req.query.applicationCorrelationId).trim();
+      const correlationId = String(req.query.applicationCorrelationId).trim();
+      filter.$or = [
+        { applicationCorrelationId: correlationId },
+        { 'linkedApplications.correlationId': correlationId },
+      ];
     }
+
     if (req.query.applicationName) {
       const appRegex = new RegExp(escapeRegex(String(req.query.applicationName).trim()), 'i');
-      filter.$or = [
-        { 'linkedApplications.acronym': appRegex },
-      ];
+      const nameFilter = {
+        $or: [
+          { applicationAcronym: appRegex },
+          { 'linkedApplications.acronym': appRegex },
+        ],
+      };
+      if (filter.$or) {
+        filter.$and = [nameFilter, { $or: filter.$or }];
+        delete filter.$or;
+      } else {
+        Object.assign(filter, nameFilter);
+      }
     }
 
     const searchFilter = buildSearchFilter(req.query.search);
     const query = searchFilter ? { $and: [filter, searchFilter] } : filter;
-    console.log('[servers:/] request params:', safeJson(debugInput));
-    console.log('[servers:/] effective query:', safeJson(query));
+    console.log('[databases:/] request params:', safeJson(debugInput));
+    console.log('[databases:/] effective query:', safeJson(query));
 
-    const items = await Server.find(query).sort({ name: 1, hostName: 1 }).lean();
-    console.log('[servers:/] match count:', items.length);
+    const items = await DatabaseInstance.find(query).sort({ name: 1, instanceName: 1 }).lean();
+    console.log('[databases:/] match count:', items.length);
 
     res.json(items);
   } catch (err) {
@@ -73,12 +89,17 @@ router.get('/by-application/:correlationId', async (req, res) => {
   try {
     const correlationId = String(req.params.correlationId || '').trim();
     if (!correlationId) return res.status(400).json({ error: 'correlationId is required' });
-    const query = { 'linkedApplications.correlationId': correlationId };
-    console.log('[servers:/by-application] correlationId:', correlationId);
-    console.log('[servers:/by-application] effective query:', safeJson(query));
+    const query = {
+      $or: [
+        { applicationCorrelationId: correlationId },
+        { 'linkedApplications.correlationId': correlationId },
+      ],
+    };
+    console.log('[databases:/by-application] correlationId:', correlationId);
+    console.log('[databases:/by-application] effective query:', safeJson(query));
 
-    const items = await Server.find(query).sort({ name: 1, hostName: 1 }).lean();
-    console.log('[servers:/by-application] match count:', items.length);
+    const items = await DatabaseInstance.find(query).sort({ name: 1, instanceName: 1 }).lean();
+    console.log('[databases:/by-application] match count:', items.length);
 
     res.json(items);
   } catch (err) {
@@ -88,8 +109,8 @@ router.get('/by-application/:correlationId', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const item = await Server.findById(req.params.id).lean();
-    if (!item) return res.status(404).json({ error: 'Server not found' });
+    const item = await DatabaseInstance.findById(req.params.id).lean();
+    if (!item) return res.status(404).json({ error: 'Database not found' });
     res.json(item);
   } catch (err) {
     res.status(500).json({ error: err.message });

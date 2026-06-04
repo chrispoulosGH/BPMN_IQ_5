@@ -1,6 +1,6 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem } from './types';
-export type { RefItem, CapabilityItem, ActorItem, ServerItem };
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem } from './types';
+export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem };
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
 
@@ -42,7 +42,7 @@ export const deleteDiagram = (id: string): Promise<{ message: string }> =>
   api.delete(`/diagrams/${id}`).then((r) => r.data);
 
 export interface BatchImportResult {
-  success: { _id: string; name: string; fileName: string }[];
+  success: { _id: string; name: string; fileName: string; status: string }[];
   failed: { fileName: string; error: string }[];
 }
 
@@ -97,6 +97,10 @@ export const getTaskNames = (businessFlow?: string): Promise<string[]> =>
 export const getBusinessFlowMap = (): Promise<Record<string, string>> =>
   api.get('/diagrams/business-flow-map').then((r) => r.data);
 
+export interface FlowBreadcrumb { name: string; lineOfBusiness: string | null; channel: string | null; product: string | null; domain: string | null; subdomain: string | null; }
+export const getFlowBreadcrumbs = (names: string[]): Promise<FlowBreadcrumb[]> =>
+  api.get('/diagrams/flow-breadcrumbs', { params: { names: names.join(',') } }).then((r) => r.data);
+
 // ── Reference Data CRUD (for ReferenceFactory) ──────────────
 export const getRefItems = (collection: string): Promise<RefItem[]> =>
   api.get(`/tasks/reference/${collection}`).then((r) => r.data);
@@ -106,6 +110,9 @@ export const createRefItem = (collection: string, name: string, owner?: string, 
 
 export const createApplication = (data: Partial<import('./types').ApplicationItem> & { name: string }): Promise<import('./types').ApplicationItem> =>
   api.post(`/tasks/reference/applications`, data).then((r) => r.data);
+
+export const getApplicationByCorrelationId = (correlationId: string): Promise<import('./types').ApplicationItem> =>
+  api.get(`/tasks/reference/applications/by-correlation/${encodeURIComponent(correlationId)}`).then((r) => r.data);
 
 export const updateRefItem = (collection: string, id: string, name: string, owner?: string): Promise<RefItem> =>
   api.put(`/tasks/reference/${collection}/${id}`, { name, owner }).then((r) => r.data);
@@ -122,6 +129,19 @@ export const getServers = (params?: { search?: string; applicationCorrelationId?
 
 export const getApplicationServers = (correlationId: string): Promise<ServerItem[]> =>
   api.get(`/servers/by-application/${encodeURIComponent(correlationId)}`).then((r) => r.data);
+
+export const getServer = (id: string): Promise<ServerItem> =>
+  api.get(`/servers/${encodeURIComponent(id)}`).then((r) => r.data);
+
+// ── Databases (DB Factory) ─────────────────────────────────
+export const getDatabases = (params?: { search?: string; applicationCorrelationId?: string; applicationName?: string }): Promise<DatabaseItem[]> =>
+  api.get('/databases', { params }).then((r) => r.data);
+
+export const getApplicationDatabases = (correlationId: string): Promise<DatabaseItem[]> =>
+  api.get(`/databases/by-application/${encodeURIComponent(correlationId)}`).then((r) => r.data);
+
+export const getDatabase = (id: string): Promise<DatabaseItem> =>
+  api.get(`/databases/${encodeURIComponent(id)}`).then((r) => r.data);
 
 // ── Capabilities CRUD (for CapabilitiesFactory) ─────────────
 export const getCapabilities = (): Promise<CapabilityItem[]> =>
@@ -199,5 +219,25 @@ export const getDashboardCostByYear = (year: number): Promise<{ flows: CostByYea
 export interface CapabilityCostByYearItem extends CostByYearItem { flowCount: number; }
 export const getDashboardCapabilityCostByYear = (year: number): Promise<{ capabilities: CapabilityCostByYearItem[]; year: number }> =>
   api.get(`/dashboard/capability-cost-by-year?year=${year}`).then((r) => r.data);
+
+export const getDashboardServerLocationPoints = (): Promise<{
+  totalServers: number;
+  points: Array<{
+    _id: string;
+    name: string;
+    hostName?: string | null;
+    ipAddress?: string | null;
+    location?: string | null;
+    environment?: string | null;
+    operationalStatus?: string | null;
+    internetFacing?: string | null;
+    healthNotes?: Array<{ label: string }>;
+    linkedApplications?: Array<{
+      correlationId?: string | null;
+      name?: string | null;
+      acronym?: string | null;
+    }>;
+  }>;
+}> => api.get('/dashboard/server-location-points').then((r) => r.data);
 
 export default api;

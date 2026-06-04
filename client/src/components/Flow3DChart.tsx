@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Select, Spin, Empty, Button, Segmented } from 'antd';
 import Plot from 'react-plotly.js';
-import { getDashboardFlow3D, getDashboardFlowCost3D } from '../api';
+import { getDashboardFlow3D, getDashboardFlowCost3D, getFlowBreadcrumbs, type FlowBreadcrumb } from '../api';
 
 type ChartMode = 'criticality' | 'cost';
 
@@ -110,7 +110,7 @@ function cameraStorageKey(flows: string[]) {
 }
 
 export default function Flow3DChart() {
-  const [mode, setMode] = useState<ChartMode>('criticality');
+  const [mode, setMode] = useState<ChartMode>('cost');
   const [data, setData] = useState<Flow3DData | null>(null);
   const [costData, setCostData] = useState<FlowCost3DData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,6 +119,21 @@ export default function Flow3DChart() {
   const [cameraReset, setCameraReset] = useState(0);
   const [defaultCamera, setDefaultCamera] = useState(HARDCODED_CAMERA);
   const liveCameraRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const [flowBreadcrumbs, setFlowBreadcrumbs] = useState<Record<string, FlowBreadcrumb>>({});
+
+  // Fetch breadcrumb metadata when selected flows change
+  useEffect(() => {
+    if (!selectedFlows.length) return;
+    const missing = selectedFlows.filter(f => !flowBreadcrumbs[f]);
+    if (!missing.length) return;
+    getFlowBreadcrumbs(selectedFlows).then(results => {
+      setFlowBreadcrumbs(prev => {
+        const next = { ...prev };
+        for (const r of results) next[r.name] = r;
+        return next;
+      });
+    }).catch(() => {});
+  }, [selectedFlows]);
 
   // Load saved default camera for the current flow selection
   useEffect(() => {
@@ -204,10 +219,12 @@ export default function Flow3DChart() {
       const taskOrder = costData.taskOrders[flowName] || [];
       if (!flowPoints.length) return;
 
+      const N = selectedFlows.length;
       const taskCount = taskOrder.length || 1;
       const taskIndexMap: Record<string, number> = {};
       taskOrder.forEach((name, idx) => {
-        taskIndexMap[name.toLowerCase().trim()] = taskCount - 1 - idx;
+        const reversedIdx = taskCount - 1 - idx;
+        taskIndexMap[name.toLowerCase().trim()] = N > 1 ? reversedIdx * N + flowIdx : reversedIdx;
       });
 
       const shownLegendGroups = new Set<string>();
@@ -315,10 +332,12 @@ export default function Flow3DChart() {
       if (!flowPoints.length) return;
 
       // Build task name → execution index lookup (reversed so first task = highest X = appears on LEFT)
+      const N = selectedFlows.length;
       const taskCount = taskOrder.length || 1;
       const taskIndexMap: Record<string, number> = {};
       taskOrder.forEach((name, idx) => {
-        taskIndexMap[name.toLowerCase().trim()] = taskCount - 1 - idx;
+        const reversedIdx = taskCount - 1 - idx;
+        taskIndexMap[name.toLowerCase().trim()] = N > 1 ? reversedIdx * N + flowIdx : reversedIdx;
       });
 
       // X = reversed task execution index, Y = criticality, Z = lifecycle
@@ -422,11 +441,21 @@ export default function Flow3DChart() {
       const n = order.length;
       return { vals: order.map((_, i) => n - 1 - i), labels: order };
     }
+    // Multi-flow interleaved: BF1-T1, BF2-T1, BF1-T2, BF2-T2, …
+    const N = selectedFlows.length;
     const maxLen = Math.max(...selectedFlows.map(f => (src.taskOrders[f] || []).length));
-    return {
-      vals: Array.from({ length: maxLen }, (_, i) => maxLen - 1 - i),
-      labels: Array.from({ length: maxLen }, (_, i) => `Step ${i + 1}`),
-    };
+    const vals: number[] = [];
+    const labels: string[] = [];
+    for (let ri = 0; ri < maxLen; ri++) {
+      for (let fi = 0; fi < N; fi++) {
+        const order = src.taskOrders[selectedFlows[fi]] || [];
+        const n = order.length;
+        const origIdx = n - 1 - ri; // ri=0 → last task, ri=maxLen-1 → first task
+        vals.push(ri * N + fi);
+        labels.push(origIdx >= 0 ? order[origIdx] : '');
+      }
+    }
+    return { vals, labels };
   }, [mode, data, costData, selectedFlows]);
 
   if (loading) return <Spin size="large" style={{ display: 'block', margin: '48px auto' }} />;
@@ -437,17 +466,7 @@ export default function Flow3DChart() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <Segmented
-          size="small"
-          value={mode}
-          onChange={v => { setMode(v as ChartMode); setCameraReset(0); }}
-          options={[
-            { label: 'Lifecycle Criticality by Business Flow', value: 'criticality' },
-            { label: 'Cost by Business Flow', value: 'cost' },
-          ]}
-        />
-      </div>
+
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ fontWeight: 500, fontSize: 13 }}>Business Flows:</span>
@@ -492,23 +511,36 @@ export default function Flow3DChart() {
         <Empty description="Select one or more business flows to see data in 3D space" style={{ marginTop: 64 }} />
       ) : (
         <div style={{ flex: 1, minHeight: 500 }}>
+          {/* Title + breadcrumb header — one block per flow */}
+          <div style={{ textAlign: 'center', marginBottom: 6 }}>
+            {selectedFlows.map((f, i) => {
+              const b = flowBreadcrumbs[f];
+              const parts = b ? [b.lineOfBusiness, b.channel, b.product, b.domain, b.subdomain, f].filter(Boolean) : [];
+              const hasBreadcrumb = parts.length > 1;
+              return (
+                <div key={f} style={{ marginTop: i > 0 ? 8 : 0 }}>
+                  {hasBreadcrumb && (
+                    <div style={{ fontSize: 14, color: '#94a3b8', letterSpacing: '0.02em', lineHeight: '1.5' }}>
+                      {parts.join(' | ')}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 20, fontWeight: 900, color: '#111827', fontFamily: 'Arial Black, sans-serif', lineHeight: '1.3' }}>
+                    {f}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           <Plot
             data={mode === 'cost' ? costTraces : traces}
             layout={{
               autosize: true,
               uirevision: `${mode}-${selectedFlows.join(',')}-${cameraReset}`,
-              title: {
-                text: selectedFlows.join(' | '),
-                font: { size: 23, color: '#111827', family: 'Arial Black, sans-serif' },
-                x: 0.5,
-                xanchor: 'center',
-                y: 0.98,
-                yanchor: 'top',
-              },
-              margin: { l: 0, r: 0, t: 60, b: 80 },
+              title: undefined,
+              margin: { l: 0, r: 0, t: 10, b: 80 },
               scene: {
                 aspectmode: 'manual',
-                aspectratio: { x: 3, y: 1, z: 1 },
+                aspectratio: { x: Math.max(3, selectedFlows.length * 1.5), y: 1, z: 1 },
                 xaxis: {
                   title: { text: 'Task (E2EUX)', font: { size: 14, color: '#52c41a' } },
                   tickvals: taskTickLabels.vals,

@@ -3,6 +3,47 @@ const router = express.Router();
 const Task = require('../models/Task');
 const { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
 
+const APPLICATION_FIELDS = [
+  'name',
+  'correlationId',
+  'shortDescription',
+  'applicationType',
+  'businessCriticality',
+  'discoverySource',
+  'installType',
+  'cpniIndicator',
+  'customerFacing',
+  'handleSpi',
+  'internetFacing',
+  'pciData',
+  'soxFsa',
+  'storeSpi',
+  'acronym',
+  'applPurpose',
+  'lifecycle',
+  'lifecycleStatus',
+  'businessPurpose',
+  'pciDataStored',
+  'userInterface',
+  'owner',
+  'state',
+];
+
+function pickFields(source, allowed) {
+  const output = {};
+  for (const field of allowed) {
+    if (source[field] !== undefined) output[field] = source[field];
+  }
+  return output;
+}
+
+function duplicateErrorMessage(err) {
+  const key = Object.keys(err?.keyPattern || {})[0] || '';
+  if (key === 'correlationId') return 'Application correlationId already exists';
+  if (key === 'name') return 'Application name already exists';
+  return 'Already exists';
+}
+
 // ─── Reference Data ──────────────────────────────────────────
 const refModels = { businessFlows: BusinessFlow, products: Product, applications: Application, actors: Actor, channels: Channel, domains: Domain, subdomains: Subdomain, linesOfBusiness: LineOfBusiness };
 
@@ -21,6 +62,15 @@ router.get('/reference', async (_req, res) => {
 });
 
 // CRUD for individual reference collections
+router.get('/reference/applications/by-correlation/:correlationId', async (req, res) => {
+  const correlationId = String(req.params.correlationId || '').trim();
+  if (!correlationId) return res.status(400).json({ error: 'correlationId is required' });
+
+  const item = await Application.findOne({ correlationId }).lean();
+  if (!item) return res.status(404).json({ error: 'Application not found' });
+  res.json(item);
+});
+
 router.get('/reference/:collection', async (req, res) => {
   const Model = refModels[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
@@ -32,13 +82,20 @@ router.post('/reference/:collection', async (req, res) => {
   const Model = refModels[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
   try {
-    const data = { name: req.body.name };
-    if (req.body.owner !== undefined) data.owner = req.body.owner;
-    if (req.body.state !== undefined) data.state = req.body.state;
+    const isApplications = req.params.collection === 'applications';
+    const data = isApplications
+      ? pickFields(req.body, APPLICATION_FIELDS)
+      : { name: req.body.name };
+
+    if (!isApplications) {
+      if (req.body.owner !== undefined) data.owner = req.body.owner;
+      if (req.body.state !== undefined) data.state = req.body.state;
+    }
+
     const item = await Model.create(data);
     res.status(201).json(item);
   } catch (err) {
-    if (err.code === 11000) return res.status(409).json({ error: 'Already exists' });
+    if (err.code === 11000) return res.status(409).json({ error: duplicateErrorMessage(err) });
     res.status(400).json({ error: err.message });
   }
 });
@@ -47,13 +104,18 @@ router.put('/reference/:collection/:id', async (req, res) => {
   const Model = refModels[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
   try {
-    const update = { name: req.body.name };
-    if (req.body.owner !== undefined) update.owner = req.body.owner;
+    const isApplications = req.params.collection === 'applications';
+    const update = isApplications
+      ? pickFields(req.body, APPLICATION_FIELDS)
+      : { name: req.body.name };
+
+    if (!isApplications && req.body.owner !== undefined) update.owner = req.body.owner;
+
     const item = await Model.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);
   } catch (err) {
-    if (err.code === 11000) return res.status(409).json({ error: 'Already exists' });
+    if (err.code === 11000) return res.status(409).json({ error: duplicateErrorMessage(err) });
     res.status(400).json({ error: err.message });
   }
 });

@@ -12,6 +12,7 @@ const STATE_TRANSITIONS = [
   { role: 'Approver', action: 'reject', from: 'approved', to: 'draft' },
   { role: 'Publisher', action: 'publish', from: 'approved', to: 'published' },
   { role: 'Administrator', action: 'draft', from: 'staged', to: 'draft' },
+  { role: 'Administrator', action: 'stage', from: 'invalid', to: 'staged' },
 ];
 
 function getAllowedActions(role: string | null | undefined, currentState: string) {
@@ -160,7 +161,7 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
       title: `Batch Import ${readFiles.length} file(s)`,
       content: (
         <div>
-          <p>The following files will be imported with status <Tag color="orange">Staged</Tag>:</p>
+          <p>The following files will be imported with status <Tag color="orange">Staged</Tag> or <Tag color="red">Invalid</Tag> when the XML business flow is not in Business Flow reference data:</p>
           <ul style={{ maxHeight: 200, overflow: 'auto', paddingLeft: 16 }}>
             {readFiles.map((f) => <li key={f.fileName}>{f.fileName}</li>)}
           </ul>
@@ -170,10 +171,11 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
       onOk: async () => {
         try {
           const result = await batchImportDiagrams(readFiles, 'cp1853');
+          const invalidCount = result.success.filter((item) => (item.status || '').toLowerCase() === 'invalid').length;
           if (result.failed.length) {
-            message.warning(`${result.success.length} imported, ${result.failed.length} failed`);
+            message.warning(`${result.success.length} imported (${invalidCount} invalid), ${result.failed.length} failed`);
           } else {
-            message.success(`All ${result.success.length} diagrams imported successfully as Staged`);
+            message.success(`Imported ${result.success.length} diagrams (${invalidCount} invalid)`);
           }
           loadDiagrams();
         } catch (err: any) {
@@ -337,7 +339,7 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
         const currentState = (val || 'draft').toLowerCase();
         const actions = getAllowedActions(userRole, currentState);
         const displayState = (editingId === record._id && pendingStateAction) ? pendingStateAction.to : (val || 'draft');
-        const tagColor = displayState === 'published' ? 'green' : displayState === 'approved' ? 'blue' : displayState === 'submitted' ? 'orange' : displayState === 'staged' ? 'purple' : displayState === 'deleted' ? 'red' : 'default';
+        const tagColor = displayState === 'published' ? 'green' : displayState === 'approved' ? 'blue' : displayState === 'submitted' ? 'orange' : displayState === 'staged' ? 'purple' : displayState === 'invalid' ? 'red' : displayState === 'deleted' ? 'red' : 'default';
         if (!actions.length || readOnly || editingId !== record._id) {
           return <Tag color={tagColor}>{displayState}</Tag>;
         }

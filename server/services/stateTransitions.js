@@ -10,9 +10,10 @@ const transitions = [
   { role: 'Approver', action: 'reject', from: 'approved', to: 'draft' },
   { role: 'Publisher', action: 'publish', from: 'approved', to: 'published' },
   { role: 'Administrator', action: 'draft', from: 'staged', to: 'draft' },
+  { role: 'Administrator', action: 'stage', from: 'invalid', to: 'staged' },
 ];
 
-const VALID_STATES = ['staged', 'draft', 'submitted', 'approved', 'rejected', 'published', 'deleted'];
+const VALID_STATES = ['invalid', 'staged', 'draft', 'submitted', 'approved', 'rejected', 'published', 'deleted'];
 
 /**
  * Get allowed transitions for a given role and current state.

@@ -182,6 +182,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
       ),
     },
     { title: 'Acronym', dataIndex: 'acronym', key: 'acronym', width: 120, ellipsis: true,
+      ...filterCol('acronym'),
       sorter: (a: ApplicationItem, b: ApplicationItem) => (a.acronym || '').localeCompare(b.acronym || '') },
     { title: 'Correlation ID', dataIndex: 'correlationId', key: 'correlationId', width: 140, ellipsis: true },
     { title: 'Short Description', dataIndex: 'shortDescription', key: 'shortDescription', width: 250, ellipsis: true },
@@ -249,7 +250,10 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     )},
   ], [items, readOnly]);
 
-  const columns = allColumnDefs.filter(c => visibleKeys.has(c.key as string));
+  const columns = [
+    ...allColumnDefs.filter(c => c.key !== 'actions' && visibleKeys.has(c.key as string)),
+    ...(readOnly ? [] : [allColumnDefs.find(c => c.key === 'actions')!]),
+  ];
 
   const scrollX = columns.reduce((sum, c) => sum + ((c.width as number) || 150), 0);
 

@@ -3,6 +3,7 @@ const router = express.Router();
 const Task = require('../models/Task');
 const { Application, BusinessFlow } = require('../models/ReferenceData');
 const Diagram = require('../models/Diagram');
+const Server = require('../models/Server');
 
 /**
  * GET /api/dashboard/task-risk
@@ -201,15 +202,19 @@ router.get('/lob-drilldown-tree', async (_req, res) => {
         {},
         { lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1, businessFlow: 1, name: 1, tasks: 1 }
       ).lean(),
-      Application.find({}, { name: 1, correlationId: 1 }).lean(),
+      Application.find({}, { acronym: 1, correlationId: 1 }).lean(),
     ]);
 
-    const appCorrelationByName = new Map();
+    const appCorrelationByIdentifier = new Map();
     for (const app of applications) {
-      const appName = normalizeValue(app?.name, '').toLowerCase();
       const correlationId = normalizeValue(app?.correlationId, '');
-      if (!appName || !correlationId || appCorrelationByName.has(appName)) continue;
-      appCorrelationByName.set(appName, correlationId);
+      const acronym = normalizeValue(app?.acronym, '').toLowerCase();
+      if (correlationId && !appCorrelationByIdentifier.has(correlationId.toLowerCase())) {
+        appCorrelationByIdentifier.set(correlationId.toLowerCase(), correlationId);
+      }
+      if (acronym && correlationId && !appCorrelationByIdentifier.has(acronym)) {
+        appCorrelationByIdentifier.set(acronym, correlationId);
+      }
     }
 
     const root = new Map();
@@ -253,7 +258,7 @@ router.get('/lob-drilldown-tree', async (_req, res) => {
 
         for (const appName of Array.from(new Set(apps))) {
           const appPath = [...taskPath, appName];
-          const appCorrelationId = appCorrelationByName.get(appName.toLowerCase()) || undefined;
+          const appCorrelationId = appCorrelationByIdentifier.get(appName.toLowerCase()) || undefined;
           const appNode = getOrCreateTreeNode(taskNode.children, appName, 'application', appPath, appCorrelationId ? { correlationId: appCorrelationId } : undefined);
           appNode.count += 1;
         }
@@ -266,6 +271,36 @@ router.get('/lob-drilldown-tree', async (_req, res) => {
       totalDiagrams: diagrams.length,
       rootCount: tree.length,
       tree,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/dashboard/server-location-points
+ * Returns lightweight server data needed for geographic map rendering.
+ */
+router.get('/server-location-points', async (_req, res) => {
+  try {
+    const rows = await Server.find(
+      {},
+      {
+        name: 1,
+        hostName: 1,
+        ipAddress: 1,
+        location: 1,
+        environment: 1,
+        operationalStatus: 1,
+        internetFacing: 1,
+        healthNotes: 1,
+        linkedApplications: 1,
+      }
+    ).lean();
+
+    res.json({
+      totalServers: rows.length,
+      points: rows,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Modal, Checkbox, Table, Tag, Typography } from 'antd';
 import { compareTwoStrings } from 'string-similarity';
+import type { ApplicationItem } from '../types';
 
 const { Text } = Typography;
 
@@ -13,6 +14,8 @@ export interface AppMatchResult {
   score: number;
   /** Whether this was an exact match */
   exact: boolean;
+  /** Which application field produced the chosen match */
+  matchedOn?: 'correlationId' | 'acronym' | 'name' | null;
 }
 
 interface AppMatchModalProps {
@@ -31,11 +34,76 @@ const FUZZY_THRESHOLD = 0.4;
  */
 export function computeAppMatches(
   diagramApps: string[],
-  referenceApps: string[],
+  referenceApps: string[] | ApplicationItem[],
 ): AppMatchResult[] {
   if (!diagramApps.length || !referenceApps.length) return [];
 
-  const refLower = referenceApps.map((r) => r.toLowerCase().trim());
+  const referencesAreApplications = typeof referenceApps[0] !== 'string';
+
+  if (referencesAreApplications) {
+    const applicationReferences = referenceApps as ApplicationItem[];
+    const results: AppMatchResult[] = [];
+
+    for (const app of diagramApps) {
+      const appLower = app.toLowerCase().trim();
+      const exactMatch = applicationReferences.find((referenceApp) => {
+        const values = [
+          { field: 'correlationId' as const, value: String(referenceApp.correlationId || '').trim() },
+          { field: 'acronym' as const, value: String(referenceApp.acronym || '').trim() },
+          { field: 'name' as const, value: String(referenceApp.name || '').trim() },
+        ];
+        return values.some(({ value }) => value && value.toLowerCase() === appLower);
+      });
+
+      if (exactMatch) {
+        const matchedOn = [
+          { field: 'correlationId' as const, value: String(exactMatch.correlationId || '').trim() },
+          { field: 'acronym' as const, value: String(exactMatch.acronym || '').trim() },
+          { field: 'name' as const, value: String(exactMatch.name || '').trim() },
+        ].find(({ value }) => value && value.toLowerCase() === appLower)?.field;
+
+        results.push({
+          original: app,
+          refMatch: exactMatch.name,
+          score: 1,
+          exact: true,
+          matchedOn: matchedOn || null,
+        });
+        continue;
+      }
+
+      let bestScore = 0;
+      let bestRef: ApplicationItem | null = null;
+      let bestField: 'acronym' | 'name' | null = null;
+
+      for (const referenceApp of applicationReferences) {
+        const candidates = [
+          { field: 'acronym' as const, value: String(referenceApp.acronym || '').trim() },
+          { field: 'name' as const, value: String(referenceApp.name || '').trim() },
+        ].filter((candidate) => candidate.value);
+
+        for (const candidate of candidates) {
+          const score = compareTwoStrings(appLower, candidate.value.toLowerCase());
+          if (score > bestScore) {
+            bestScore = score;
+            bestRef = referenceApp;
+            bestField = candidate.field;
+          }
+        }
+      }
+
+      if (bestScore >= FUZZY_THRESHOLD && bestRef) {
+        results.push({ original: app, refMatch: bestRef.name, score: bestScore, exact: false, matchedOn: bestField });
+      } else {
+        results.push({ original: app, refMatch: null, score: bestScore, exact: false, matchedOn: bestField });
+      }
+    }
+
+    return results;
+  }
+
+  const refNames = referenceApps as string[];
+  const refLower = refNames.map((r) => r.toLowerCase().trim());
   const results: AppMatchResult[] = [];
 
   for (const app of diagramApps) {
@@ -43,7 +111,7 @@ export function computeAppMatches(
     // Check exact match first
     const exactIdx = refLower.indexOf(appLower);
     if (exactIdx >= 0) {
-      results.push({ original: app, refMatch: referenceApps[exactIdx], score: 1, exact: true });
+      results.push({ original: app, refMatch: refNames[exactIdx], score: 1, exact: true, matchedOn: 'name' });
       continue;
     }
     // Fuzzy match
@@ -53,13 +121,13 @@ export function computeAppMatches(
       const score = compareTwoStrings(appLower, refLower[i]);
       if (score > bestScore) {
         bestScore = score;
-        bestRef = referenceApps[i];
+        bestRef = refNames[i];
       }
     }
     if (bestScore >= FUZZY_THRESHOLD && bestRef) {
-      results.push({ original: app, refMatch: bestRef, score: bestScore, exact: false });
+      results.push({ original: app, refMatch: bestRef, score: bestScore, exact: false, matchedOn: 'name' });
     } else {
-      results.push({ original: app, refMatch: null, score: bestScore, exact: false });
+      results.push({ original: app, refMatch: null, score: bestScore, exact: false, matchedOn: null });
     }
   }
 
@@ -126,8 +194,14 @@ export default function AppMatchModal({ open, matches, title, onApprove, onClose
       dataIndex: 'refMatch',
       render: (text: string | null, record: AppMatchResult) => {
         if (!text) return <Tag color="red">No match</Tag>;
+        const matchedLabel = record.matchedOn === 'name' ? 'full name' : record.matchedOn;
         if (record.exact) return <Tag color="green">{text}</Tag>;
-        return <Tag color="orange">{text}</Tag>;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Tag color="orange">{text}</Tag>
+            {matchedLabel ? <Text type="secondary">Matched on {matchedLabel}</Text> : null}
+          </div>
+        );
       },
     },
     {

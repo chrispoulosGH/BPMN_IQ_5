@@ -4,8 +4,19 @@ import {
   BpmnPropertiesPanelModule,
   BpmnPropertiesProviderModule,
 } from 'bpmn-js-properties-panel';
-import { validateTasks, getTaskNames } from '../api';
+import { Modal, Tag } from 'antd';
+import { validateTasks, getTaskNames, getServers, getServer, getApplicationServers, getDatabases, getDatabase, getApplicationDatabases } from '../api';
+import type { ApplicationItem, ServerItem, DatabaseItem } from '../types';
 import bpmniqModdle from '../bpmniq-moddle.json';
+import {
+  buildExactApplicationIdentifierSet,
+  findBestFuzzyApplicationMatch,
+  findExactApplicationMatches,
+  getPreferredApplicationDisplayName,
+  getPreferredApplicationIdentifier,
+  normalizeApplicationLookupValue,
+} from '../utils/applicationMatching';
+import { mergeTaskApplicationNames } from '../utils/taskApplicationMigration';
 
 export const EMPTY_DIAGRAM = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -43,9 +54,12 @@ interface BpmnEditorProps {
   onDirty?: () => void;
   showProperties?: boolean;
   allApplicationNames?: string[];
+  allApplications?: ApplicationItem[];
+  allBusinessFlowNames?: string[];
   allTaskNames?: string[];
   allActorNames?: string[];
   diagramName?: string;
+  diagramStatus?: string | null;
   canEditDiagramName?: boolean;
   isInFactory?: boolean;
   isAlreadyLoaded?: boolean;
@@ -58,6 +72,7 @@ interface BpmnEditorProps {
   onDiagramNameClick?: () => void;
   onNewDiagram?: () => void;
   onDiagramNameChange?: (name: string) => void;
+  diagramBreadcrumb?: string;
 }
 
 const DARK_ORANGE = '#cc7000';
@@ -69,8 +84,14 @@ function isActivityType(type?: string): boolean {
   return type.includes('Task') || type.includes('SubProcess') || type.includes('CallActivity');
 }
 
+function normalizeBusinessFlowLookupValue(value?: string | null): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
 const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
-  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allTaskNames = [], allActorNames = [], diagramName, canEditDiagramName = false, isInFactory, isAlreadyLoaded, readOnly, onNavigateToFactory, onTaskSelect, onAddToFactory, onDeleteAndReload, onSaveAsNew, onDiagramNameClick, onNewDiagram, onDiagramNameChange }, ref) => {
+  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allApplications = [], allBusinessFlowNames = [], allTaskNames = [], allActorNames = [], diagramName, diagramStatus, canEditDiagramName = false, isInFactory, isAlreadyLoaded, readOnly, onNavigateToFactory, onTaskSelect, onAddToFactory, onDeleteAndReload, onSaveAsNew, onDiagramNameClick, onNewDiagram, onDiagramNameChange, diagramBreadcrumb }, ref) => {
     const canvasRef = useRef<HTMLDivElement>(null);
     const propertiesRef = useRef<HTMLDivElement>(null);
     const modelerRef = useRef<any>(null);
@@ -83,6 +104,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     const invalidTaskNamesRef = useRef<Set<string>>(new Set());
     const autocompleteRef = useRef<HTMLDivElement | null>(null);
     const appPopoverRef = useRef<HTMLDivElement | null>(null);
+    const appActionMenuRef = useRef<HTMLDivElement | null>(null);
     const popoverDirtyRef = useRef(false);
 
     // Properties panel resize & collapse state
@@ -92,6 +114,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     const propsStartX = useRef(0);
     const propsStartW = useRef(280);
     const allAppNamesRef = useRef<string[]>(allApplicationNames);
+    const allApplicationsRef = useRef<ApplicationItem[]>(allApplications);
     const renderAppOverlaysRef = useRef<(m?: any) => void>(() => {});
     const getTaskAppsRef = useRef<(bo: any) => string[]>(() => []);
     const [selectedApp, setSelectedApp] = useState<{ name: string; taskName: string; taskId: string } | null>(null);
@@ -101,13 +124,282 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
     const [editingDiagramName, setEditingDiagramName] = useState(false);
     const [editNameValue, setEditNameValue] = useState('');
     const [newDiagramName, setNewDiagramName] = useState('');
+    const [serverModalOpen, setServerModalOpen] = useState(false);
+    const [serverModalAppName, setServerModalAppName] = useState('');
+    const [serverList, setServerList] = useState<ServerItem[]>([]);
+    const [serverListLoading, setServerListLoading] = useState(false);
+    const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+    const [selectedServer, setSelectedServer] = useState<ServerItem | null>(null);
+    const [selectedServerLoading, setSelectedServerLoading] = useState(false);
+    const [databaseModalOpen, setDatabaseModalOpen] = useState(false);
+    const [databaseModalAppName, setDatabaseModalAppName] = useState('');
+    const [databaseList, setDatabaseList] = useState<DatabaseItem[]>([]);
+    const [databaseListLoading, setDatabaseListLoading] = useState(false);
+    const [selectedDatabaseId, setSelectedDatabaseId] = useState<string | null>(null);
+    const [selectedDatabase, setSelectedDatabase] = useState<DatabaseItem | null>(null);
+    const [selectedDatabaseLoading, setSelectedDatabaseLoading] = useState(false);
 
     // Keep the latest values in refs to avoid stale closures
     xmlRef.current = xml;
     allAppNamesRef.current = allApplicationNames;
+    allApplicationsRef.current = allApplications;
     if (allTaskNames.length) taskNamesRef.current = allTaskNames;
     const actorNamesRef = useRef<string[]>(allActorNames);
     actorNamesRef.current = allActorNames;
+
+    const getAppMetaMatches = (appName: string) => findExactApplicationMatches(allApplicationsRef.current, appName);
+
+    const getAppMeta = (appName: string) => getAppMetaMatches(appName).selected;
+
+    const getAppDisplayName = (appName: string) => getPreferredApplicationDisplayName(getAppMeta(appName), appName);
+
+    const replaceTaskAppIdentifier = async (taskId: string, currentAppName: string, application: ApplicationItem) => {
+      const replacementIdentifier = getPreferredApplicationIdentifier(application);
+      const modeler = modelerRef.current;
+      if (!replacementIdentifier || !modeler) return false;
+
+      const elementRegistry = modeler.get('elementRegistry');
+      const moddleInst = modeler.get('moddle');
+      const element = elementRegistry.get(taskId);
+      const businessObject = element?.businessObject;
+      if (!businessObject) return false;
+
+      const currentApps = getTaskAppsRef.current(businessObject);
+      const nextApps = Array.from(
+        new Map(
+          currentApps
+            .map((name) => normalizeApplicationLookupValue(name) === normalizeApplicationLookupValue(currentAppName) ? replacementIdentifier : name)
+            .map((name) => [normalizeApplicationLookupValue(name), name])
+        ).values()
+      );
+
+      if (!businessObject.extensionElements) {
+        businessObject.extensionElements = moddleInst.create('bpmn:ExtensionElements', { values: [] });
+        businessObject.extensionElements.$parent = businessObject;
+      }
+
+      businessObject.extensionElements.values = (businessObject.extensionElements.values || []).filter(
+        (entry: any) => entry.$type !== 'bpmniq:TaskApplications'
+      );
+
+      if (nextApps.length) {
+        const apps = nextApps.map((name) => {
+          const app = moddleInst.create('bpmniq:Application', { name });
+          return app;
+        });
+        const container = moddleInst.create('bpmniq:TaskApplications', { applications: apps });
+        container.$parent = businessObject.extensionElements;
+        apps.forEach((app: any) => { app.$parent = container; });
+        businessObject.extensionElements.values.push(container);
+      }
+
+      renderAppOverlaysRef.current();
+      const { xml: updated } = await modeler.saveXML({ format: true });
+      onXmlChange?.(updated);
+
+      setSelectedApp((currentSelectedApp) => {
+        if (!currentSelectedApp) return currentSelectedApp;
+        if (currentSelectedApp.taskId !== taskId) return currentSelectedApp;
+        if (normalizeApplicationLookupValue(currentSelectedApp.name) !== normalizeApplicationLookupValue(currentAppName)) return currentSelectedApp;
+        return { ...currentSelectedApp, name: replacementIdentifier };
+      });
+
+      return true;
+    };
+
+    const ensureResolvedDiagramApplication = async (appName: string, taskId: string): Promise<ApplicationItem | null> => {
+      const exactMatch = getAppMetaMatches(appName);
+      if (exactMatch.selected) return exactMatch.selected;
+
+      const fuzzyMatch = findBestFuzzyApplicationMatch(allApplicationsRef.current, appName);
+      if (!fuzzyMatch) return null;
+
+      return await new Promise<ApplicationItem | null>((resolve) => {
+        Modal.confirm({
+          title: 'Confirm application match',
+          okText: 'Confirm match',
+          cancelText: 'Cancel',
+          content: (
+            <div className="text-sm" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div>
+                <strong>Diagram application:</strong> {appName}
+              </div>
+              <div>
+                <strong>Reference application:</strong> {getPreferredApplicationDisplayName(fuzzyMatch.app, fuzzyMatch.identifier)}
+              </div>
+              <div>
+                <strong>Stored identifier:</strong> {fuzzyMatch.identifier}
+              </div>
+              <div>
+                <strong>Matched on:</strong> {fuzzyMatch.matchedOn} ({fuzzyMatch.matchedValue})
+              </div>
+              <div>
+                <strong>Similarity score:</strong> {(fuzzyMatch.score * 100).toFixed(0)}%
+              </div>
+            </div>
+          ),
+          onOk: async () => {
+            const applied = await replaceTaskAppIdentifier(taskId, appName, fuzzyMatch.app);
+            resolve(applied ? fuzzyMatch.app : null);
+          },
+          onCancel: () => resolve(null),
+        });
+      });
+    };
+
+    const toLabel = (key: string) =>
+      key
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .replace(/^./, (ch) => ch.toUpperCase());
+
+    const isKeyLikeString = (value: string): boolean => {
+      const text = value.trim();
+      if (!text) return false;
+      const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text);
+      const mongoIdLike = /^[0-9a-f]{24}$/i.test(text);
+      const longOpaqueToken = /^[A-Za-z0-9_-]{20,}$/i.test(text) && /\d/.test(text) && /[A-Za-z]/.test(text);
+      return uuidLike || mongoIdLike || longOpaqueToken;
+    };
+
+    const renderServerValue = (value: unknown) => {
+      if (value === null || value === undefined || value === '') return '—';
+      if (Array.isArray(value)) {
+        if (!value.length) return '—';
+        return <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(value, null, 2)}</pre>;
+      }
+      if (typeof value === 'object') {
+        return <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(value, null, 2)}</pre>;
+      }
+      if (typeof value === 'boolean') return value ? 'true' : 'false';
+      return String(value);
+    };
+
+    const renderDatabaseValue = (value: unknown) => {
+      if (value === null || value === undefined || value === '') return '—';
+      if (Array.isArray(value)) {
+        if (!value.length) return '—';
+        return <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(value, null, 2)}</pre>;
+      }
+      if (typeof value === 'object') {
+        return <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(value, null, 2)}</pre>;
+      }
+      if (typeof value === 'boolean') return value ? 'true' : 'false';
+      return String(value);
+    };
+
+    const loadServersForApp = async (appName: string, taskId?: string) => {
+      let app = getAppMeta(appName);
+      if (!app && taskId) {
+        app = await ensureResolvedDiagramApplication(appName, taskId);
+      }
+
+      const correlationId = String(app?.correlationId || '').trim();
+      const acronym = String(app?.acronym || '').trim();
+      const shouldUseCorrelationId = !!correlationId;
+      const shouldUseAcronym = !shouldUseCorrelationId && !!acronym;
+      console.log('[BpmnEditor] loadServersForApp input:', {
+        appName,
+        resolvedName: app?.name || null,
+        resolvedAcronym: app?.acronym || null,
+        resolvedCorrelationId: correlationId || null,
+        selectedMode: shouldUseCorrelationId ? 'correlationId' : shouldUseAcronym ? 'acronym' : 'unmatched',
+      });
+
+      setServerModalOpen(true);
+      setServerModalAppName(getAppDisplayName(appName));
+      setServerListLoading(true);
+      setSelectedServerId(null);
+      setSelectedServer(null);
+      try {
+        const rows = shouldUseCorrelationId
+          ? await getApplicationServers(correlationId)
+          : shouldUseAcronym
+            ? await getServers({ applicationName: acronym })
+            : [];
+        console.log('[BpmnEditor] loadServersForApp request:', shouldUseCorrelationId
+          ? { endpoint: '/servers/by-application/:correlationId', correlationId }
+          : shouldUseAcronym
+            ? { endpoint: '/servers', params: { applicationName: acronym } }
+            : { endpoint: 'unmatched', params: null });
+        console.log('[BpmnEditor] loadServersForApp response count:', rows.length);
+        setServerList(rows);
+      } catch {
+        console.error('[BpmnEditor] loadServersForApp failed');
+        setServerList([]);
+      } finally {
+        setServerListLoading(false);
+      }
+    };
+
+    const loadDatabasesForApp = async (appName: string, taskId?: string) => {
+      let app = getAppMeta(appName);
+      if (!app && taskId) {
+        app = await ensureResolvedDiagramApplication(appName, taskId);
+      }
+
+      const correlationId = String(app?.correlationId || '').trim();
+      const acronym = String(app?.acronym || '').trim();
+      const shouldUseCorrelationId = !!correlationId;
+      const shouldUseAcronym = !shouldUseCorrelationId && !!acronym;
+
+      console.log('[BpmnEditor] loadDatabasesForApp input:', {
+        appName,
+        resolvedName: app?.name || null,
+        resolvedAcronym: app?.acronym || null,
+        resolvedCorrelationId: correlationId || null,
+        selectedMode: shouldUseCorrelationId ? 'correlationId' : shouldUseAcronym ? 'acronym' : 'unmatched',
+      });
+
+      setDatabaseModalOpen(true);
+      setDatabaseModalAppName(getAppDisplayName(appName));
+      setDatabaseListLoading(true);
+      setSelectedDatabaseId(null);
+      setSelectedDatabase(null);
+      try {
+        const rows = shouldUseCorrelationId
+          ? await getApplicationDatabases(correlationId)
+          : shouldUseAcronym
+            ? await getDatabases({ applicationName: acronym })
+            : [];
+        console.log('[BpmnEditor] loadDatabasesForApp request:', shouldUseCorrelationId
+          ? { endpoint: '/databases/by-application/:correlationId', correlationId }
+          : shouldUseAcronym
+            ? { endpoint: '/databases', params: { applicationName: acronym } }
+            : { endpoint: 'unmatched', params: null });
+        console.log('[BpmnEditor] loadDatabasesForApp response count:', rows.length);
+        setDatabaseList(rows);
+      } catch {
+        console.error('[BpmnEditor] loadDatabasesForApp failed');
+        setDatabaseList([]);
+      } finally {
+        setDatabaseListLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      if (!selectedServerId) {
+        setSelectedServer(null);
+        return;
+      }
+      setSelectedServerLoading(true);
+      getServer(selectedServerId)
+        .then((row) => setSelectedServer(row))
+        .catch(() => setSelectedServer(null))
+        .finally(() => setSelectedServerLoading(false));
+    }, [selectedServerId]);
+
+    useEffect(() => {
+      if (!selectedDatabaseId) {
+        setSelectedDatabase(null);
+        return;
+      }
+      setSelectedDatabaseLoading(true);
+      getDatabase(selectedDatabaseId)
+        .then((row) => setSelectedDatabase(row))
+        .catch(() => setSelectedDatabase(null))
+        .finally(() => setSelectedDatabaseLoading(false));
+    }, [selectedDatabaseId]);
 
     useImperativeHandle(ref, () => ({
       getXml: async () => {
@@ -380,9 +672,10 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
           const html = document.createElement('div');
           html.className = 'task-app-overlay';
           html.style.cssText = 'display:flex;flex-direction:column;gap:1px;padding:2px 0;cursor:pointer;font-family:"IBM Plex Sans",Arial,sans-serif;';
-          const validSet = new Set(allAppNamesRef.current.map((n) => n.toLowerCase().trim()));
+          const validSet = buildExactApplicationIdentifierSet(allApplicationsRef.current);
           for (const appName of appNames) {
-            const isValid = validSet.has(appName.toLowerCase().trim());
+            const isValid = validSet.has(normalizeApplicationLookupValue(appName));
+            const displayName = getAppDisplayName(appName);
             const row = document.createElement('div');
             row.style.cssText = 'display:flex;align-items:center;gap:3px;white-space:nowrap;cursor:pointer;padding:1px 2px;border-radius:3px;';
             row.addEventListener('mouseenter', () => { row.style.background = '#f0f5ff'; });
@@ -391,11 +684,16 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               e.stopPropagation();
               setSelectedApp({ name: appName, taskName: el.businessObject.name || el.id, taskId: el.id });
             });
+            row.addEventListener('contextmenu', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              showAppActionMenu(appName, el, m, e.clientX, e.clientY);
+            });
             const icon = document.createElement('span');
             icon.innerHTML = COMPUTER_ICON;
             icon.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;color:${isValid ? '#1677ff' : DARK_ORANGE};flex-shrink:0;`;
             const label = document.createElement('span');
-            label.textContent = appName;
+            label.textContent = displayName;
             label.style.cssText = `font-size:9px;color:${isValid ? '#333' : DARK_ORANGE};line-height:1.1;overflow:hidden;text-overflow:ellipsis;max-width:120px;`;
             row.appendChild(icon);
             row.appendChild(label);
@@ -420,6 +718,69 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         }
       }
 
+      function removeAppActionMenu() {
+        if (appActionMenuRef.current) {
+          appActionMenuRef.current.remove();
+          appActionMenuRef.current = null;
+        }
+      }
+
+      function showAppActionMenu(appName: string, element: any, m: any, clientX: number, clientY: number) {
+        removeAppActionMenu();
+        const displayName = getAppDisplayName(appName);
+
+        const menu = document.createElement('div');
+        menu.style.cssText = `
+          position: fixed;
+          left: ${clientX}px;
+          top: ${clientY}px;
+          z-index: 100000;
+          min-width: 180px;
+          background: #fff;
+          border: 1px solid #d9d9d9;
+          border-radius: 8px;
+          box-shadow: 0 6px 16px rgba(0,0,0,.15);
+          padding: 6px;
+          font-family: 'IBM Plex Sans', Arial, sans-serif;
+          font-size: 12px;
+        `;
+
+        const title = document.createElement('div');
+        title.textContent = displayName;
+        title.style.cssText = 'padding:6px 8px;color:#6b7280;border-bottom:1px solid #f0f0f0;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+        menu.appendChild(title);
+
+        const makeItem = (label: string, onClick: () => void) => {
+          const item = document.createElement('div');
+          item.textContent = label;
+          item.style.cssText = 'padding:6px 8px;border-radius:6px;cursor:pointer;';
+          item.addEventListener('mouseenter', () => { item.style.background = '#f0f5ff'; });
+          item.addEventListener('mouseleave', () => { item.style.background = 'transparent'; });
+          item.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            removeAppActionMenu();
+            onClick();
+          });
+          return item;
+        };
+
+        menu.appendChild(makeItem('Edit applications', () => showAppPopover(element, m)));
+        menu.appendChild(makeItem('Servers', () => { void loadServersForApp(appName, element.id); }));
+        menu.appendChild(makeItem('Databases', () => { void loadDatabasesForApp(appName, element.id); }));
+
+        document.body.appendChild(menu);
+        appActionMenuRef.current = menu;
+
+        const closeOnOutside = (ev: MouseEvent) => {
+          if (!menu.contains(ev.target as Node)) {
+            removeAppActionMenu();
+            document.removeEventListener('mousedown', closeOnOutside, true);
+          }
+        };
+        setTimeout(() => document.addEventListener('mousedown', closeOnOutside, true), 0);
+      }
+
       function showAppPopover(element: any, m: any) {
         removeAppPopover();
         const canvas = m.get('canvas');
@@ -429,7 +790,17 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         const ey = (element.y + element.height - viewbox.y) * viewbox.scale + containerRect.top + 8;
 
         const bo = element.businessObject;
-        const availableApps = allAppNamesRef.current;
+        const availableApps = allApplicationsRef.current
+          .map((app) => {
+            const identifier = getPreferredApplicationIdentifier(app);
+            if (!identifier) return null;
+            return {
+              app,
+              identifier,
+              displayName: getPreferredApplicationDisplayName(app, identifier),
+            };
+          })
+          .filter((entry): entry is { app: ApplicationItem; identifier: string; displayName: string } => !!entry);
 
         const popover = document.createElement('div');
         popover.className = 'task-app-popover';
@@ -455,14 +826,15 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
             assignedDiv.innerHTML = '<span style="color:#999;font-style:italic;">No applications assigned</span>';
             return;
           }
-          const validAppSet = new Set(allAppNamesRef.current.map((n) => n.toLowerCase().trim()));
+          const validAppSet = buildExactApplicationIdentifierSet(allApplicationsRef.current);
           for (const appName of apps) {
-            const isValid = validAppSet.has(appName.toLowerCase().trim());
+            const isValid = validAppSet.has(normalizeApplicationLookupValue(appName));
+            const displayName = getAppDisplayName(appName);
             const tag = document.createElement('span');
             tag.style.cssText = isValid
               ? 'display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#e6f4ff;color:#1677ff;border:1px solid #91caff;border-radius:4px;font-size:11px;'
               : `display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:#fff7e6;color:${DARK_ORANGE};border:1px solid ${DARK_ORANGE};border-radius:4px;font-size:11px;`;
-            tag.innerHTML = COMPUTER_ICON + ' ' + appName;
+            tag.innerHTML = COMPUTER_ICON + ' ' + displayName;
             const x = document.createElement('span');
             x.textContent = '×';
             x.style.cssText = 'cursor:pointer;margin-left:2px;color:#ff4d4f;font-weight:bold;font-size:13px;line-height:1;';
@@ -495,23 +867,28 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
 
         function renderList(filter: string) {
           list.innerHTML = '';
-          const assigned = new Set(getTaskApps(bo));
+          const assigned = new Set(getTaskApps(bo).map((name) => normalizeApplicationLookupValue(name)));
           const lc = filter.toLowerCase();
-          const matches = availableApps.filter((a) => !assigned.has(a) && a.toLowerCase().includes(lc)).slice(0, 20);
+          const matches = availableApps.filter((entry) => {
+            if (assigned.has(normalizeApplicationLookupValue(entry.identifier))) return false;
+            return [entry.displayName, entry.identifier, entry.app.name, entry.app.acronym, entry.app.correlationId]
+              .map((value) => String(value || '').toLowerCase())
+              .some((value) => value.includes(lc));
+          }).slice(0, 20);
           if (!matches.length) {
             list.innerHTML = '<div style="padding:4px 8px;color:#999;">No matches</div>';
             return;
           }
-          for (const appName of matches) {
+          for (const match of matches) {
             const row = document.createElement('div');
-            row.textContent = appName;
+            row.textContent = match.displayName;
             row.style.cssText = 'padding:4px 8px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
             row.addEventListener('mouseenter', () => { row.style.background = '#f0f0ff'; });
             row.addEventListener('mouseleave', () => { row.style.background = 'white'; });
             row.addEventListener('click', (ev) => {
               ev.stopPropagation();
               const current = getTaskApps(bo);
-              setTaskApps(bo, [...current, appName], m);
+              setTaskApps(bo, [...current, match.identifier], m);
               popoverDirtyRef.current = true;
               rebuildAssigned();
               renderList(searchInput.value);
@@ -763,6 +1140,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       }
 
       return () => {
+        removeAppActionMenu();
         removeAppPopover();
         removeAutocomplete();
         modeler.destroy();
@@ -814,7 +1192,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       if (allApplicationNames.length && modelerRef.current) {
         renderAppOverlaysRef.current();
       }
-    }, [allApplicationNames]);
+    }, [allApplicationNames, allApplications]);
 
     // Re-validate task colors when task reference data changes
     useEffect(() => {
@@ -877,21 +1255,25 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
         const existing = (task.extensionElements?.values || []).find((e: any) => e.$type === 'bpmniq:TaskApplications');
 
         if (existing) {
-          // Already migrated — check if annotation text matches the stored apps
-          // If so, it's a duplicate and should be removed
           const storedNames = (existing.applications || []).map((a: any) => a.name?.trim()).filter(Boolean);
-          const annotNames = new Set(appNames.map((n: string) => n.toLowerCase()));
-          const storedSet = new Set(storedNames.map((n: string) => n.toLowerCase()));
-          const isMatch = annotNames.size === storedSet.size && [...annotNames].every((n) => storedSet.has(n));
-          if (isMatch) {
-            // Duplicate — collect for removal
-            const annotEl = elementRegistry.get(annotationId);
-            if (annotEl) toRemove.push(annotEl);
-            for (const assocEl of associations) {
-              const bo = assocEl.businessObject;
-              if (bo.sourceRef?.id === annotationId || bo.targetRef?.id === annotationId) {
-                toRemove.push(assocEl);
-              }
+          const mergedNames = mergeTaskApplicationNames(storedNames, appNames);
+
+          if (mergedNames.length !== storedNames.length) {
+            const mergedApps = mergedNames.map((name: string) => {
+              const app = moddle.create('bpmniq:Application', { name });
+              app.$parent = existing;
+              return app;
+            });
+            existing.applications = mergedApps;
+          }
+
+          // Legacy text annotations have been absorbed into extension elements.
+          const annotEl = elementRegistry.get(annotationId);
+          if (annotEl) toRemove.push(annotEl);
+          for (const assocEl of associations) {
+            const bo = assocEl.businessObject;
+            if (bo.sourceRef?.id === annotationId || bo.targetRef?.id === annotationId) {
+              toRemove.push(assocEl);
             }
           }
           continue;
@@ -1019,11 +1401,12 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
       }
     }
 
-    const validAppSet = new Set(allApplicationNames.map((n) => n.toLowerCase().trim()));
-    const isSelectedAppValid = selectedApp ? validAppSet.has(selectedApp.name.toLowerCase().trim()) : true;
+    const validAppSet = buildExactApplicationIdentifierSet(allApplications);
+    const isSelectedAppValid = selectedApp ? validAppSet.has(normalizeApplicationLookupValue(selectedApp.name)) : true;
     const isSelectedTaskValid = selectedTask ? !invalidTaskNamesRef.current.has(selectedTask.name.toLowerCase().trim()) : true;
     const validActorSet = new Set(allActorNames.map((n) => n.toLowerCase().trim()));
     const isSelectedLaneValid = selectedLane ? validActorSet.has(selectedLane.name.toLowerCase().trim()) : true;
+    const diagramNameColor = (diagramStatus || '').toLowerCase() === 'invalid' ? '#cc7000' : '#000000';
 
     return (
       <div className="flex h-full w-full overflow-hidden relative">
@@ -1046,8 +1429,13 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
             }}
             title={canEditDiagramName ? 'Click for properties, double-click to edit name' : 'Click for properties'}
           >
-            <div className={`bg-white/90 backdrop-blur-sm border rounded-md px-5 py-2 shadow-sm ${isInFactory ? 'border-gray-200' : 'border-orange-300'}`}>
-              <span className="text-xl font-bold" style={{ color: isInFactory ? '#374151' : '#cc7000' }}>{diagramName}</span>
+            <div className={`bg-white/90 backdrop-blur-sm border rounded-md px-5 py-2 shadow-sm ${isInFactory ? 'border-gray-200' : 'border-orange-300'}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              {diagramBreadcrumb && (
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400, letterSpacing: '0.02em', marginBottom: 2, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 480 }}>
+                  {diagramBreadcrumb}
+                </div>
+              )}
+              <span className="text-xl font-bold" style={{ color: diagramNameColor, textAlign: 'center' }}>{diagramName}</span>
             </div>
           </div>
         )}
@@ -1158,7 +1546,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 uppercase tracking-wide">Diagram</div>
-                  <div className="font-semibold text-sm" style={{ color: isInFactory ? '#333' : '#cc7000' }}>{diagramName || 'Untitled'}</div>
+                  <div className="font-semibold text-sm" style={{ color: diagramNameColor }}>{diagramName || 'Untitled'}</div>
                 </div>
               </div>
               <div className="border-t border-gray-100 pt-3">
@@ -1353,7 +1741,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                 </div>
                 <div>
                   <div className="text-xs text-gray-500 uppercase tracking-wide">Application</div>
-                  <div className="font-semibold text-sm" style={{ color: isSelectedAppValid ? '#333' : '#cc7000' }}>{selectedApp.name}</div>
+                  <div className="font-semibold text-sm" style={{ color: isSelectedAppValid ? '#333' : '#cc7000' }}>{getAppDisplayName(selectedApp.name)}</div>
                 </div>
               </div>
               <div className="border-t border-gray-100 pt-3">
@@ -1368,7 +1756,21 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               <div className="border-t border-gray-100 mt-3 pt-3 flex flex-col gap-1.5">
                 <button
                   className="w-full text-xs py-1.5 px-3 rounded border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-left flex items-center gap-1.5"
-                  onClick={() => onNavigateToFactory?.('applications', selectedApp.name, isSelectedAppValid ? 'view' : 'add')}
+                  onClick={async () => {
+                    const exactMatch = getAppMeta(selectedApp.name);
+                    if (exactMatch) {
+                      onNavigateToFactory?.('applications', getPreferredApplicationIdentifier(exactMatch) || selectedApp.name, 'view');
+                      return;
+                    }
+
+                    const resolvedApp = await ensureResolvedDiagramApplication(selectedApp.name, selectedApp.taskId);
+                    if (resolvedApp) {
+                      onNavigateToFactory?.('applications', getPreferredApplicationIdentifier(resolvedApp) || selectedApp.name, 'view');
+                      return;
+                    }
+
+                    onNavigateToFactory?.('applications', selectedApp.name, 'add');
+                  }}
                   title={isSelectedAppValid ? 'Open in Application Factory' : 'Add to Application Factory'}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -1384,6 +1786,200 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
             </div>
           </div>
         )}
+
+        <Modal
+          title={`Associated Servers${serverModalAppName ? ` - ${serverModalAppName}` : ''}`}
+          open={serverModalOpen}
+          onCancel={() => setServerModalOpen(false)}
+          footer={null}
+          width={1200}
+          destroyOnClose
+        >
+          <div className="grid grid-cols-12 gap-3" style={{ minHeight: 520 }}>
+            <div className="col-span-4 border border-gray-200 rounded overflow-hidden">
+              <div className="px-3 py-2 text-xs text-gray-500 border-b bg-gray-50">Servers ({serverList.length})</div>
+              <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+                {serverListLoading ? (
+                  <div className="p-4 text-sm text-gray-500">Loading servers...</div>
+                ) : !serverList.length ? (
+                  <div className="p-4 text-sm text-gray-500">No servers associated with this application.</div>
+                ) : (
+                  serverList.map((server) => (
+                    <button
+                      key={server._id}
+                      className={`w-full text-left px-3 py-2 border-b border-gray-100 hover:bg-blue-50 ${selectedServerId === server._id ? 'bg-blue-50' : ''}`}
+                      onClick={() => setSelectedServerId(server._id)}
+                    >
+                      <div className="text-sm font-medium text-gray-800">{server.name}</div>
+                      <div className="text-xs text-gray-500">{server.hostName || server.ipAddress || server.fqdn || 'No host identifier'}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="col-span-8 border border-gray-200 rounded overflow-hidden">
+              <div className="px-3 py-2 text-xs text-gray-500 border-b bg-gray-50">Server Properties</div>
+              <div className="p-3" style={{ maxHeight: 480, overflowY: 'auto' }}>
+                {selectedServerLoading ? (
+                  <div className="text-sm text-gray-500">Loading properties...</div>
+                ) : !selectedServer ? (
+                  <div className="text-sm text-gray-500">Select a server to view properties.</div>
+                ) : (
+                  <>
+                    <div className="text-base font-semibold text-gray-800">{selectedServer.name}</div>
+                    <div className="text-xs text-gray-500 mb-3">{selectedServer.hostName || selectedServer.ipAddress || selectedServer.fqdn || 'No host identifier'}</div>
+
+                    <div className="mb-3">
+                      <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Health Notes</div>
+                      {selectedServer.healthNotes?.length ? (
+                        <div className="space-y-2">
+                          {selectedServer.healthNotes.map((note, idx) => (
+                            <div key={`${note.label}-${idx}`} className="border border-gray-200 rounded p-2 bg-gray-50">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Tag color={note.severity === 'critical' ? 'red' : note.severity === 'high' ? 'volcano' : note.severity === 'medium' ? 'gold' : 'blue'}>{note.label}</Tag>
+                                {note.severity ? <span className="text-xs text-gray-500">{note.severity}</span> : null}
+                              </div>
+                              <div className="text-xs text-gray-700">{note.note}</div>
+                              {note.rationale ? <div className="text-xs text-gray-500 mt-1">Why: {note.rationale}</div> : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="text-xs text-gray-500">No health notes</div>}
+                    </div>
+
+                    <div className="mb-3">
+                      <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Linked Applications</div>
+                      {selectedServer.linkedApplications?.length ? (
+                        <div className="space-y-1">
+                          {selectedServer.linkedApplications.map((app, idx) => (
+                            <div key={`${app.name || app.correlationId || 'app'}-${idx}`} className="text-xs text-gray-700 border border-gray-200 rounded px-2 py-1 bg-gray-50">
+                              {[(app.acronym || '').trim() || app.name, app.relationType, app.correlationId && !isKeyLikeString(String(app.correlationId)) ? `(${app.correlationId})` : ''].filter(Boolean).join(' ')}
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="text-xs text-gray-500">No linked applications</div>}
+                    </div>
+
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Other Properties</div>
+                      <table className="w-full text-xs border border-gray-200">
+                        <tbody>
+                          {Object.entries(selectedServer)
+                            .filter(([key, value]) => key !== 'healthNotes' && key !== 'linkedApplications' && !(typeof value === 'string' && isKeyLikeString(value)))
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([key, value]) => (
+                              <tr key={key} className="border-t border-gray-200">
+                                <td className="w-1/3 px-2 py-1 text-gray-500 align-top">{toLabel(key)}</td>
+                                <td className="px-2 py-1 text-gray-700 align-top">{renderServerValue(value)}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal
+          title={`Associated Databases${databaseModalAppName ? ` - ${databaseModalAppName}` : ''}`}
+          open={databaseModalOpen}
+          onCancel={() => setDatabaseModalOpen(false)}
+          footer={null}
+          width={1200}
+          destroyOnClose
+        >
+          <div className="grid grid-cols-12 gap-3" style={{ minHeight: 520 }}>
+            <div className="col-span-4 border border-gray-200 rounded overflow-hidden">
+              <div className="px-3 py-2 text-xs text-gray-500 border-b bg-gray-50">Databases ({databaseList.length})</div>
+              <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+                {databaseListLoading ? (
+                  <div className="p-4 text-sm text-gray-500">Loading databases...</div>
+                ) : !databaseList.length ? (
+                  <div className="p-4 text-sm text-gray-500">No databases associated with this application.</div>
+                ) : (
+                  databaseList.map((database) => (
+                    <button
+                      key={database._id}
+                      className={`w-full text-left px-3 py-2 border-b border-gray-100 hover:bg-blue-50 ${selectedDatabaseId === database._id ? 'bg-blue-50' : ''}`}
+                      onClick={() => setSelectedDatabaseId(database._id)}
+                    >
+                      <div className="text-sm font-medium text-gray-800">{database.name}</div>
+                      <div className="text-xs text-gray-500">{database.databaseClassName || database.normalizedVendor || database.version || 'No class metadata'}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="col-span-8 border border-gray-200 rounded overflow-hidden">
+              <div className="px-3 py-2 text-xs text-gray-500 border-b bg-gray-50">Database Properties</div>
+              <div className="p-3" style={{ maxHeight: 480, overflowY: 'auto' }}>
+                {selectedDatabaseLoading ? (
+                  <div className="text-sm text-gray-500">Loading properties...</div>
+                ) : !selectedDatabase ? (
+                  <div className="text-sm text-gray-500">Select a database to view properties.</div>
+                ) : (
+                  <>
+                    <div className="text-base font-semibold text-gray-800">{selectedDatabase.name}</div>
+                    <div className="text-xs text-gray-500 mb-3">{[selectedDatabase.databaseClassName, selectedDatabase.normalizedVendor || selectedDatabase.vendor, selectedDatabase.version].filter(Boolean).join(' | ') || 'No database metadata'}</div>
+
+                    <div className="mb-3">
+                      <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Health Notes</div>
+                      {selectedDatabase.healthNotes?.length ? (
+                        <div className="space-y-2">
+                          {selectedDatabase.healthNotes.map((note, idx) => (
+                            <div key={`${note.label}-${idx}`} className="border border-gray-200 rounded p-2 bg-gray-50">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Tag color={note.severity === 'critical' ? 'red' : note.severity === 'high' ? 'volcano' : note.severity === 'medium' ? 'gold' : 'blue'}>{note.label}</Tag>
+                                {note.severity ? <span className="text-xs text-gray-500">{note.severity}</span> : null}
+                              </div>
+                              <div className="text-xs text-gray-700">{note.note}</div>
+                              {note.rationale ? <div className="text-xs text-gray-500 mt-1">Why: {note.rationale}</div> : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="text-xs text-gray-500">No health notes</div>}
+                    </div>
+
+                    <div className="mb-3">
+                      <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Linked Applications</div>
+                      {selectedDatabase.linkedApplications?.length ? (
+                        <div className="space-y-1">
+                          {selectedDatabase.linkedApplications.map((app, idx) => (
+                            <div key={`${app.name || app.correlationId || 'app'}-${idx}`} className="text-xs text-gray-700 border border-gray-200 rounded px-2 py-1 bg-gray-50">
+                              {[app.acronym || app.name, app.serviceName, app.correlationId && !isKeyLikeString(String(app.correlationId)) ? `(${app.correlationId})` : ''].filter(Boolean).join(' ')}
+                            </div>
+                          ))}
+                        </div>
+                      ) : <div className="text-xs text-gray-500">No linked applications</div>}
+                    </div>
+
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Other Properties</div>
+                      <table className="w-full text-xs border border-gray-200">
+                        <tbody>
+                          {Object.entries(selectedDatabase)
+                            .filter(([key, value]) => key !== 'healthNotes' && key !== 'linkedApplications' && !(typeof value === 'string' && isKeyLikeString(value)))
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([key, value]) => (
+                              <tr key={key} className="border-t border-gray-200">
+                                <td className="w-1/3 px-2 py-1 text-gray-500 align-top">{toLabel(key)}</td>
+                                <td className="px-2 py-1 text-gray-700 align-top">{renderDatabaseValue(value)}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </Modal>
       </div>
     );
   },

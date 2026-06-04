@@ -20,6 +20,7 @@ async function run() {
 
   // 1. Seed states collection
   const stateDescriptions = {
+    invalid: 'Imported with invalid reference-data links that require correction',
     staged: 'Imported/staged, not yet reviewed',
     draft: 'Work in progress',
     submitted: 'Submitted for approval',

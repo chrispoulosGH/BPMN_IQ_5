@@ -15,6 +15,7 @@ const adminRouter = require('./routes/admin');
 const statesRouter = require('./routes/states');
 const dashboardRouter = require('./routes/dashboard');
 const reportsRouter   = require('./routes/reports');
+const databasesRouter = require('./routes/databases');
 const Session = require('./models/Session');
 const User = require('./models/User');
 
@@ -71,6 +72,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/states', statesRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/reports',   reportsRouter);
+app.use('/api/databases', databasesRouter);
 
 // Connect to MongoDB then start server
 mongoose

@@ -139,7 +139,7 @@ export interface TaskCreatePayload {
 export interface ReferenceData {
   businessFlows: { _id: string; name: string }[];
   products: { _id: string; name: string }[];
-  applications: { _id: string; name: string }[];
+  applications: ApplicationItem[];
   actors: { _id: string; name: string }[];
   channels: { _id: string; name: string }[];
   domains: { _id: string; name: string }[];
@@ -187,6 +187,16 @@ export interface ServerLinkedApplication {
   relationSystemId?: string | null;
 }
 
+export interface ServerHealthNote {
+  label: string;
+  severity?: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  note: string;
+  rationale?: string | null;
+  decisionFactors?: string[];
+  vulnerabilities?: string[];
+  sourceUrl?: string | null;
+}
+
 export interface ServerItem {
   _id: string;
   sourceKey: string;
@@ -231,6 +241,52 @@ export interface ServerItem {
   relationTypes?: string[];
   relationPorts?: string[];
   linkedApplications?: ServerLinkedApplication[];
+  healthNotes?: ServerHealthNote[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DatabaseLinkedApplication {
+  correlationId?: string | null;
+  name?: string | null;
+  acronym?: string | null;
+  apmNumber?: string | null;
+  serviceName?: string | null;
+}
+
+export interface DatabaseHealthNote {
+  label: string;
+  severity?: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  note: string;
+  rationale?: string | null;
+  decisionFactors?: string[];
+  vulnerabilities?: string[];
+  sourceUrl?: string | null;
+}
+
+export interface DatabaseItem {
+  _id: string;
+  sourceKey: string;
+  apmNumber?: string | null;
+  applicationCorrelationId?: string | null;
+  applicationAcronym?: string | null;
+  applicationName?: string | null;
+  applicationInstallStatus?: string | null;
+  serviceName?: string | null;
+  instanceName: string;
+  name: string;
+  databaseClassName?: string | null;
+  applicationOwner?: string | null;
+  lowestLevelOwner?: string | null;
+  lowestLevelOwnerUserName?: string | null;
+  version?: string | null;
+  vendor?: string | null;
+  ownedBy?: string | null;
+  location?: string | null;
+  lifecycleStageStatus?: string | null;
+  normalizedVendor?: string | null;
+  linkedApplications?: DatabaseLinkedApplication[];
+  healthNotes?: DatabaseHealthNote[];
   createdAt?: string;
   updatedAt?: string;
 }

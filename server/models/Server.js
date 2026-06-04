@@ -9,6 +9,16 @@ const linkedApplicationSchema = new mongoose.Schema({
   relationSystemId: { type: String, default: null },
 }, { _id: false });
 
+const healthNoteSchema = new mongoose.Schema({
+  label: { type: String, required: true, trim: true },
+  severity: { type: String, enum: ['info', 'low', 'medium', 'high', 'critical'], default: 'info' },
+  note: { type: String, required: true, trim: true },
+  rationale: { type: String, default: null },
+  decisionFactors: [{ type: String }],
+  vulnerabilities: [{ type: String }],
+  sourceUrl: { type: String, default: null },
+}, { _id: false });
+
 const serverSchema = new mongoose.Schema({
   sourceKey: { type: String, required: true, unique: true, trim: true },
   name: { type: String, required: true, trim: true },
@@ -52,6 +62,7 @@ const serverSchema = new mongoose.Schema({
   relationTypes: [{ type: String }],
   relationPorts: [{ type: String }],
   linkedApplications: [linkedApplicationSchema],
+  healthNotes: [healthNoteSchema],
 }, { timestamps: true });
 
 serverSchema.index({ name: 1 });
@@ -61,5 +72,6 @@ serverSchema.index({ fqdn: 1 });
 serverSchema.index({ ipAddress: 1 });
 serverSchema.index({ 'linkedApplications.correlationId': 1 });
 serverSchema.index({ 'linkedApplications.name': 1 });
+serverSchema.index({ 'healthNotes.label': 1 });
 
 module.exports = mongoose.model('Server', serverSchema);

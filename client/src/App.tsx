@@ -53,6 +53,7 @@ import TaskFactory from './components/TaskFactory';
 import ReferenceFactory from './components/ReferenceFactory';
 import ApplicationFactory from './components/ApplicationFactory';
 import ServerFactory from './components/ServerFactory';
+import DatabaseFactory from './components/DatabaseFactory';
 import BusinessFlowFactory from './components/BusinessFlowFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
 import ActorFactory from './components/ActorFactory';
@@ -62,7 +63,7 @@ import ReportsPanel from './components/ReportsPanel';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
 import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap } from './api';
-import type { CapabilityMatch, TaskAddData, DiagramMetadata } from './types';
+import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem } from './types';
 
 const { Header, Sider, Content } = Layout;
 const { Text, Title } = Typography;
@@ -226,8 +227,81 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     </div>
   );
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  // Tab state — three separate levels
+  const [activeOuterTab, setActiveOuterTab] = useState<string>('analytics');   // outer: analytics | bpmn | factories
+  const [activeAnalyticsTab, setActiveAnalyticsTab] = useState<string>('dashboard'); // inner Analytics sub-tabs
+  const [activeTab, setActiveTab] = useState<string>('diagramFactory');        // inner Factories sub-tabs
+
+  // Factory tab drag-to-reorder
+  const FACTORY_TAB_KEYS = ['diagramFactory','tasks','applications','servers','databases','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'];
+  const [factoryTabOrder, setFactoryTabOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('bpmniq_factory_tab_order');
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        // Ensure all current keys are present (handles new tabs added after save)
+        const merged = [...parsed.filter(k => FACTORY_TAB_KEYS.includes(k)), ...FACTORY_TAB_KEYS.filter(k => !parsed.includes(k))];
+        return merged;
+      }
+    } catch { /* ignore */ }
+    return FACTORY_TAB_KEYS;
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('bpmniq_factory_tab_order', JSON.stringify(factoryTabOrder)); } catch { /* ignore */ }
+  }, [factoryTabOrder]);
+  const factoryDragKeyRef = useRef<string | null>(null);
+  const factoryDropSideRef = useRef<'before' | 'after'>('after');
+  const [factoryDropTarget, setFactoryDropTarget] = useState<{ key: string; side: 'before' | 'after' } | null>(null);
+
+  const fTabLabel = useCallback((key: string, content: React.ReactNode): React.ReactNode => (
+    <div
+      draggable
+      onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; factoryDragKeyRef.current = key; }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (factoryDragKeyRef.current === key) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const side: 'before' | 'after' = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+        factoryDropSideRef.current = side;
+        setFactoryDropTarget(prev => (prev?.key === key && prev?.side === side) ? prev : { key, side });
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setFactoryDropTarget(prev => prev?.key === key ? null : prev);
+        }
+      }}
+      onDrop={(e) => {
+        e.preventDefault(); e.stopPropagation();
+        const from = factoryDragKeyRef.current;
+        const side = factoryDropSideRef.current;
+        setFactoryDropTarget(null);
+        factoryDragKeyRef.current = null;
+        if (!from || from === key) return;
+        setFactoryTabOrder(prev => {
+          const fi = prev.indexOf(from);
+          if (fi === -1) return prev;
+          const next = [...prev];
+          next.splice(fi, 1);
+          const ti = next.indexOf(key);
+          if (ti === -1) return prev;
+          next.splice(side === 'before' ? ti : ti + 1, 0, from);
+          return next;
+        });
+      }}
+      onDragEnd={() => { setFactoryDropTarget(null); factoryDragKeyRef.current = null; }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4, cursor: 'grab', userSelect: 'none',
+        borderLeft: factoryDropTarget?.key === key && factoryDropTarget.side === 'before' ? '3px solid #4f46e5' : '3px solid transparent',
+        borderRight: factoryDropTarget?.key === key && factoryDropTarget.side === 'after' ? '3px solid #4f46e5' : '3px solid transparent',
+        padding: '0 2px',
+        transition: 'border-color 0.08s',
+      }}
+    >
+      {content}
+    </div>
+  ), [factoryDropTarget]);
 
   // Editor state
   const [currentXml, setCurrentXml] = useState<string>(EMPTY_DIAGRAM);
@@ -298,6 +372,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
   // Application names for the assignment popover
   const [allAppNames, setAllAppNames] = useState<string[]>([]);
+  const [allApplications, setAllApplications] = useState<ApplicationItem[]>([]);
+  const [allBusinessFlowNames, setAllBusinessFlowNames] = useState<string[]>([]);
   // Task names for validity checks
   const [allTaskNames, setAllTaskNames] = useState<string[]>([]);
   // Actor names for lane validation
@@ -343,7 +419,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   // Load all application and task names for validity checks
   const refreshReferenceData = useCallback(() => {
     getTaskReference().then((ref) => {
-      setAllAppNames(ref.applications.map((a: any) => a.name).sort());
+      setAllApplications(ref.applications || []);
+      setAllAppNames((ref.applications || []).map((a: any) => a.name).sort());
+      setAllBusinessFlowNames((ref.businessFlows || []).map((flow: any) => flow.name).filter(Boolean).sort());
     }).catch(() => {});
     getTaskNames().then((names) => {
       setAllTaskNames(names);
@@ -372,6 +450,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       setFactorySearch((prev) => ({ ...prev, [tab]: searchTerm }));
       setFactoryAdd((prev) => ({ ...prev, [tab]: '' }));
     }
+    setActiveOuterTab('factories');
     setActiveTab(tab);
   }, [diagramMeta, activeDiagram, canvasDiagramName]);
 
@@ -403,6 +482,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
     setClickedCapabilityNames([]);
     setFactorySearch((prev) => ({ ...prev, capabilities: clickedName }));
+    setActiveOuterTab('factories');
     setActiveTab('capabilities');
   }, []);
 
@@ -427,11 +507,11 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       message.info('No applications found in the current diagram');
       return;
     }
-    if (!allAppNames.length) {
+    if (!allApplications.length) {
       message.warning('Application reference data not loaded');
       return;
     }
-    const results = computeAppMatches(apps, allAppNames);
+    const results = computeAppMatches(apps, allApplications);
     const fuzzy = results.filter((r) => !r.exact);
     if (!fuzzy.length) {
       message.success('All applications already match reference data');
@@ -439,7 +519,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     }
     setAppMatchResults(fuzzy);
     setShowAppMatch(true);
-  }, [allAppNames, message]);
+  }, [allApplications, message]);
 
   /** Handle approved application matches */
   const handleAppMatchApprove = useCallback(async (approved: AppMatchResult[]) => {
@@ -626,7 +706,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
   const openDiagramInCanvas = useCallback(
     async (id: string) => {
-      setActiveTab('bpmn');
+      setActiveOuterTab('bpmn');
       await handleSelectDiagram(id);
     },
     [handleSelectDiagram],
@@ -952,53 +1032,42 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         {/* ─── BPMN Canvas (takes all space, toolbox on left edge) ─── */}
         <Content className="bpmn-content">
           <Tabs
-            activeKey={activeTab}
-            onChange={setActiveTab}
+            activeKey={activeOuterTab}
+            onChange={setActiveOuterTab}
             type="card"
             size="small"
             className="factory-tabs"
             destroyInactiveTabPane={false}
-            renderTabBar={(props, DefaultBar) => {
-              const TAB_H = 24;
-              return (
-                <div style={{ background: '#f1f5f9' }}>
-                  {/* Group label row — each label styled as a parent tab */}
-                  <div style={{ height: TAB_H, position: 'relative', paddingLeft: 8, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
-                    {groupLabels.map(g => {
-                      const isActive = g.keys.includes(activeTab);
-                      return (
-                        <div key={g.label} style={{
-                          position: 'absolute',
-                          left: g.left + 2,
-                          width: g.width - 4,
-                          bottom: 0,
-                          height: TAB_H - 2,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: 10, fontWeight: 800, letterSpacing: 1.5,
-                          textTransform: 'uppercase',
-                          color: isActive ? g.color : '#94a3b8',
-                          background: isActive ? '#ffffff' : '#e8edf4',
-                          border: `1px solid ${isActive ? g.color + 'aa' : '#d1d9e0'}`,
-                          borderBottom: isActive ? '1px solid #ffffff' : `1px solid #d1d9e0`,
-                          borderRadius: '5px 5px 0 0',
-                          boxShadow: isActive ? `0 -1px 4px 0 ${g.color}22` : 'none',
-                          transition: 'all 0.15s',
-                          userSelect: 'none',
-                          zIndex: isActive ? 2 : 1,
-                        }}>
-                          {g.label}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* Actual tab nav */}
-                  <div ref={tabNavWrapRef} style={{ borderTop: '1px solid #d1d9e0', background: '#f1f5f9' }}>
-                    <DefaultBar {...props} />
-                  </div>
-                </div>
-              );
-            }}
+            renderTabBar={(props, DefaultBar) => (
+              <div ref={tabNavWrapRef} style={{ background: '#f1f5f9', borderBottom: '1px solid #d1d9e0' }}>
+                <DefaultBar {...props} />
+              </div>
+            )}
             items={[
+              {
+                key: 'analytics',
+                label: <span><DashboardOutlined /> Analytics</span>,
+                children: (
+                  <Tabs
+                    className="factory-tabs"
+                    defaultActiveKey="dashboard"
+                    activeKey={activeAnalyticsTab}
+                    onChange={setActiveAnalyticsTab}
+                    items={[
+                      {
+                        key: 'dashboard',
+                        label: <span><DashboardOutlined /> Dashboards</span>,
+                        children: <Dashboard />,
+                      },
+                      {
+                        key: 'reports',
+                        label: <span><FileTextOutlined /> Reports</span>,
+                        children: <ReportsPanel />,
+                      },
+                    ]}
+                  />
+                ),
+              },
               {
                 key: 'bpmn',
                 label: <span><PartitionOutlined /> BPMN Canvas</span>,
@@ -1013,9 +1082,23 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         onXmlChange={handleXmlChange}
                         onDirty={handleEditorDirty}
                         allApplicationNames={allAppNames}
+                        allApplications={allApplications}
+                        allBusinessFlowNames={allBusinessFlowNames}
                         allTaskNames={allTaskNames}
                         allActorNames={allActorNames}
                         diagramName={activeDiagram?.name || canvasDiagramName || diagramMeta.businessFlow || activeFileName?.replace(/\.bpmn$/i, '') || undefined}
+                        diagramStatus={activeDiagram?.status || null}
+                        diagramBreadcrumb={(() => {
+                          const parts = [
+                            diagramMeta.lineOfBusiness,
+                            diagramMeta.channel,
+                            diagramMeta.product,
+                            diagramMeta.domain,
+                            diagramMeta.subdomain,
+                            diagramMeta.businessFlow,
+                          ].filter(Boolean);
+                          return parts.length > 1 ? parts.join(' | ') : undefined;
+                        })()}
                         canEditDiagramName={canEditCurrentDiagramName}
                         isInFactory={activeDiagram?.source === 'db'}
                         isAlreadyLoaded={activeDiagram?.source === 'local-match'}
@@ -1071,101 +1154,111 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                   </div>
                 ),
               },
-              tabGroupSep('sep-factories', 'Factories'),
               {
-                key: 'diagramFactory',
-                label: <span><DatabaseOutlined /> BPMN Factory</span>,
-                children: renderScrollablePane(
-                  <BpmnFactory onOpenDiagram={openDiagramInCanvas} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} refreshTick={refreshTick} userRole={user.role} />,
+                key: 'factories',
+                label: <span><ShoppingOutlined /> Factories</span>,
+                children: (
+                  <Tabs
+                    className="factory-tabs"
+                    defaultActiveKey="diagramFactory"
+                    activeKey={activeTab}
+                    onChange={setActiveTab}
+                    items={[
+                      {
+                        key: 'diagramFactory',
+                        label: fTabLabel('diagramFactory', <><DatabaseOutlined /> BPMN Factory</>),
+                        children: renderScrollablePane(
+                          <BpmnFactory onOpenDiagram={openDiagramInCanvas} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} refreshTick={refreshTick} userRole={user.role} />,
+                        ),
+                      },
+                      {
+                        key: 'tasks',
+                        label: fTabLabel('tasks', <><AppstoreOutlined /> Task Factory</>),
+                        children: renderScrollablePane(
+                          <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} />,
+                        ),
+                      },
+                      {
+                        key: 'applications',
+                        label: fTabLabel('applications', <><LaptopOutlined /> Application Factory</>),
+                        children: renderScrollablePane(
+                          <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} readOnly={readOnly} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
+                        ),
+                      },
+                      {
+                        key: 'servers',
+                        label: fTabLabel('servers', <><DeploymentUnitOutlined /> Servers Factory</>),
+                        children: renderScrollablePane(
+                          <ServerFactory defaultSearch={factorySearch.servers} readOnly={readOnly} userRole={user.role} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
+                        ),
+                      },
+                      {
+                        key: 'databases',
+                        label: fTabLabel('databases', <><DatabaseOutlined /> DB Factory</>),
+                        children: renderScrollablePane(
+                          <DatabaseFactory defaultSearch={factorySearch.databases} readOnly={readOnly} userRole={user.role} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
+                        ),
+                      },
+                      {
+                        key: 'capabilities',
+                        label: fTabLabel('capabilities', <><ClusterOutlined /> Capability Factory</>),
+                        children: renderScrollablePane(
+                          <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} defaultSearch={factorySearch.capabilities || ''} />,
+                        ),
+                      },
+                      {
+                        key: 'actors',
+                        label: fTabLabel('actors', <><UserOutlined /> Actor Factory</>),
+                        children: renderScrollablePane(
+                          <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                        ),
+                      },
+                      {
+                        key: 'businessFlows',
+                        label: fTabLabel('businessFlows', <><BranchesOutlined /> Business Flow Factory</>),
+                        children: renderScrollablePane(
+                          <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={openDiagramInCanvas} readOnly={readOnly} userRole={user.role} />,
+                        ),
+                      },
+                      {
+                        key: 'products',
+                        label: fTabLabel('products', <><ShoppingOutlined /> Product Factory</>),
+                        children: renderScrollablePane(
+                          <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                        ),
+                      },
+                      {
+                        key: 'linesOfBusiness',
+                        label: fTabLabel('linesOfBusiness', <><BankOutlined /> LOB Factory</>),
+                        children: renderScrollablePane(
+                          <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                        ),
+                      },
+                      {
+                        key: 'channels',
+                        label: fTabLabel('channels', <><PhoneOutlined /> Channel Factory</>),
+                        children: renderScrollablePane(
+                          <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                        ),
+                      },
+                      {
+                        key: 'domains',
+                        label: fTabLabel('domains', <><GlobalOutlined /> Domain Factory</>),
+                        children: renderScrollablePane(
+                          <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                        ),
+                      },
+                      {
+                        key: 'subdomains',
+                        label: fTabLabel('subdomains', <><ApartmentOutlined /> Subdomain Factory</>),
+                        children: renderScrollablePane(
+                          <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                        ),
+                      },
+                    ].sort((a, b) => factoryTabOrder.indexOf(a.key) - factoryTabOrder.indexOf(b.key))
+                    .flatMap(item => item.key === 'servers' ? [tabGroupSep('sep-factory-servers', 'Servers'), item] : [item])}
+                  />
                 ),
-              },
-              {
-                key: 'tasks',
-                label: <span><AppstoreOutlined /> Task Factory</span>,
-                children: renderScrollablePane(
-                  <TaskFactory defaultSearch={factorySearch.tasks} defaultAddData={typeof factoryAdd.tasks === 'object' ? factoryAdd.tasks as TaskAddData : factoryAdd.tasks ? { name: factoryAdd.tasks } : undefined} onItemAdded={refreshReferenceData} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} />,
-                ),
-              },
-              {
-                key: 'applications',
-                label: <span><LaptopOutlined /> Application Factory</span>,
-                children: renderScrollablePane(
-                  <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} readOnly={readOnly} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
-                ),
-              },
-              {
-                key: 'servers',
-                label: <span><DeploymentUnitOutlined /> Servers Factory</span>,
-                children: renderScrollablePane(
-                  <ServerFactory defaultSearch={factorySearch.servers} readOnly={readOnly} userRole={user.role} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} />,
-                ),
-              },
-              {
-                key: 'capabilities',
-                label: <span><ClusterOutlined /> Capability Factory</span>,
-                children: renderScrollablePane(
-                  <CapabilitiesFactory onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} userRole={user.role} defaultSearch={factorySearch.capabilities || ''} />,
-                ),
-              },
-              {
-                key: 'actors',
-                label: <span><UserOutlined /> Actor Factory</span>,
-                children: renderScrollablePane(
-                  <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
-                ),
-              },
-              {
-                key: 'businessFlows',
-                label: <span><BranchesOutlined /> Business Flow Factory</span>,
-                children: renderScrollablePane(
-                  <BusinessFlowFactory defaultSearch={factorySearch.businessFlows} onItemAdded={refreshReferenceData} onOpenDiagram={openDiagramInCanvas} readOnly={readOnly} userRole={user.role} />,
-                ),
-              },
-              {
-                key: 'products',
-                label: <span><ShoppingOutlined /> Product Factory</span>,
-                children: renderScrollablePane(
-                  <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
-                ),
-              },
-              {
-                key: 'linesOfBusiness',
-                label: <span><BankOutlined /> LOB Factory</span>,
-                children: renderScrollablePane(
-                  <ReferenceFactory collection="linesOfBusiness" title="Line of Business" defaultSearch={factorySearch.linesOfBusiness} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
-                ),
-              },
-              {
-                key: 'channels',
-                label: <span><PhoneOutlined /> Channel Factory</span>,
-                children: renderScrollablePane(
-                  <ReferenceFactory collection="channels" title="Channel" defaultSearch={factorySearch.channels} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
-                ),
-              },
-              {
-                key: 'domains',
-                label: <span><GlobalOutlined /> Domain Factory</span>,
-                children: renderScrollablePane(
-                  <ReferenceFactory collection="domains" title="Domain" defaultSearch={factorySearch.domains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
-                ),
-              },
-              {
-                key: 'subdomains',
-                label: <span><ApartmentOutlined /> Subdomain Factory</span>,
-                children: renderScrollablePane(
-                  <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
-                ),
-              },
-              tabGroupSep('sep-analytics', 'Analytics'),
-              {
-                key: 'dashboard',
-                label: <span><DashboardOutlined /> Dashboards</span>,
-                children: <Dashboard />,
-              },
-              {
-                key: 'reports',
-                label: <span><FileTextOutlined /> Reports</span>,
-                children: <ReportsPanel />,
               },
             ]}
           />

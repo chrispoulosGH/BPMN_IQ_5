@@ -36,31 +36,87 @@ function extractLaneNames(xml) {
   return [...new Set(laneNames)];
 }
 
+function decodeXmlValue(value) {
+  return String(value || '')
+    .replace(/&#(\d+);/g, (_match, codePoint) => String.fromCharCode(Number(codePoint)))
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .trim();
+}
+
+function extractApplicationIdentifiersFromXml(xml) {
+  if (!xml) return [];
+
+  const identifiers = [];
+  const taskBlockRegex = /<bpmn:(?:task|userTask|serviceTask|sendTask|receiveTask|manualTask|businessRuleTask|scriptTask|subProcess)\s+id="([^"]+)"[^>]*>([\s\S]*?)<\/bpmn:(?:task|userTask|serviceTask|sendTask|receiveTask|manualTask|businessRuleTask|scriptTask|subProcess)>/gi;
+  let taskMatch;
+
+  while ((taskMatch = taskBlockRegex.exec(xml)) !== null) {
+    const [, , body] = taskMatch;
+
+    const appAttrRegex = /<(?:bpmniq|ns\d+):(?:A|a)pplication[^>]+name="([^"]+)"/gi;
+    let attrMatch;
+    while ((attrMatch = appAttrRegex.exec(body)) !== null) {
+      const identifier = decodeXmlValue(attrMatch[1]);
+      if (identifier) identifiers.push(identifier);
+    }
+
+    const appElementRegex = /<(?:bpmniq|ns\d+):application\b[^>]*>([\s\S]*?)<\/(?:bpmniq|ns\d+):application>/gi;
+    let appElementMatch;
+    while ((appElementMatch = appElementRegex.exec(body)) !== null) {
+      const appBody = appElementMatch[1];
+      const correlationId = decodeXmlValue((appBody.match(/<(?:bpmniq|ns\d+):correlationIds\b[^>]*>[\s\S]*?<(?:bpmniq|ns\d+):id>([\s\S]*?)<\/(?:bpmniq|ns\d+):id>/i) || [])[1]);
+      const acronym = decodeXmlValue((appBody.match(/<(?:bpmniq|ns\d+):acronym>([\s\S]*?)<\/(?:bpmniq|ns\d+):acronym>/i) || [])[1]);
+      const name = decodeXmlValue((appBody.match(/<(?:bpmniq|ns\d+):name>([\s\S]*?)<\/(?:bpmniq|ns\d+):name>/i) || [])[1]);
+      const identifier = correlationId || acronym || name;
+      if (identifier) identifiers.push(identifier);
+    }
+  }
+
+  return [...new Set(identifiers)];
+}
+
 async function validateDiagramForSubmission(diagram) {
+  const capabilityNames = [...new Set(
+    (diagram.capabilities || [])
+      .map((capability) => String(capability?.capabilityName || '').trim())
+      .filter(Boolean)
+  )];
   const businessFlow = (diagram.name || diagram.businessFlow || '').trim();
   const taskNames = [...new Set((diagram.tasks || []).map((task) => String(task.name || '').trim()).filter(Boolean))];
-  const applicationNames = [...new Set(
-    (diagram.tasks || []).flatMap((task) =>
-      (task.applications || []).map((app) => String(app?.name || '').trim()).filter(Boolean)
-    )
-  )];
+  const xmlApplicationNames = extractApplicationIdentifiersFromXml(diagram.xml || '');
+  const applicationNames = xmlApplicationNames.length
+    ? xmlApplicationNames
+    : [...new Set(
+        (diagram.tasks || []).flatMap((task) =>
+          (task.applications || []).map((app) => String(app?.name || '').trim()).filter(Boolean)
+        )
+      )];
   const laneNames = extractLaneNames(diagram.xml || '');
 
-  const [knownTaskNames, knownApplicationNames, knownActorNames] = await Promise.all([
+  const [knownTaskNames, knownApplications, knownActorNames] = await Promise.all([
     Task.distinct('name', businessFlow ? { businessFlow } : {}),
-    Application.distinct('name'),
+    Application.find({}, { name: 1, acronym: 1, correlationId: 1 }).lean(),
     Actor.distinct('name'),
   ]);
 
   const taskSet = new Set(knownTaskNames.map((name) => String(name || '').toLowerCase().trim()));
-  const applicationSet = new Set(knownApplicationNames.map((name) => String(name || '').toLowerCase().trim()));
+  const applicationSet = new Set(
+    knownApplications.flatMap((application) => [application.correlationId, application.acronym, application.name]
+      .map((value) => String(value || '').toLowerCase().trim())
+      .filter(Boolean))
+  );
   const actorSet = new Set(knownActorNames.map((name) => String(name || '').toLowerCase().trim()));
 
   const invalidTasks = taskNames.filter((name) => !taskSet.has(name.toLowerCase().trim()));
   const invalidApplications = applicationNames.filter((name) => !applicationSet.has(name.toLowerCase().trim()));
   const invalidActors = laneNames.filter((name) => !actorSet.has(name.toLowerCase().trim()));
+  const hasCapabilities = capabilityNames.length > 0;
 
-  return { invalidTasks, invalidApplications, invalidActors };
+  return { hasCapabilities, invalidTasks, invalidApplications, invalidActors };
 }
 
 // GET /api/states — list all valid states
@@ -118,14 +174,16 @@ router.post('/transition', async (req, res) => {
     }
 
     if (collection === 'diagrams' && currentState === 'draft' && targetState === 'submitted') {
-      const { invalidTasks, invalidApplications, invalidActors } = await validateDiagramForSubmission(record);
-      if (invalidTasks.length || invalidApplications.length || invalidActors.length) {
+      const { hasCapabilities, invalidTasks, invalidApplications, invalidActors } = await validateDiagramForSubmission(record);
+      if (!hasCapabilities || invalidTasks.length || invalidApplications.length || invalidActors.length) {
         const problems = [];
+        if (!hasCapabilities) problems.push('at least one associated business capability is required');
         if (invalidTasks.length) problems.push(`invalid tasks: ${invalidTasks.join(', ')}`);
         if (invalidApplications.length) problems.push(`invalid applications: ${invalidApplications.join(', ')}`);
         if (invalidActors.length) problems.push(`invalid actors: ${invalidActors.join(', ')}`);
         return res.status(400).json({
           error: `Cannot submit diagram with invalid objects: ${problems.join(' | ')}`,
+          missingCapabilities: !hasCapabilities,
           invalidTasks,
           invalidApplications,
           invalidActors,

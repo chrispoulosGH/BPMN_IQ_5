@@ -190,6 +190,30 @@ function parseDiagramMetadata(xml) {
   return meta;
 }
 
+function normalizeBusinessFlowLookupValue(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+async function hasMatchingBusinessFlowReference(name) {
+  const normalizedName = normalizeBusinessFlowLookupValue(name);
+  if (!normalizedName) return false;
+  const refs = await BusinessFlow.find({}, { name: 1 }).lean();
+  return refs.some((ref) => normalizeBusinessFlowLookupValue(ref.name) === normalizedName);
+}
+
+async function resolveImportedDiagramStatus(requestedStatus, sourcedFrom, businessFlowName) {
+  const normalizedStatus = String(requestedStatus || '').trim().toLowerCase();
+  const isImportLike = normalizedStatus === 'staged' || Boolean(sourcedFrom);
+  if (!isImportLike) {
+    return requestedStatus || 'Draft';
+  }
+
+  const hasMatchingReference = await hasMatchingBusinessFlowReference(businessFlowName);
+  return hasMatchingReference ? 'staged' : 'invalid';
+}
+
 // GET /api/diagrams — list all (Viewers only see published)
 router.get('/', async (req, res) => {
   try {
@@ -197,6 +221,38 @@ router.get('/', async (req, res) => {
     const filter = (!role || role === 'Viewer') ? { status: 'published' } : {};
     const diagrams = await Diagram.find(filter, '-xml').sort({ updatedAt: -1 });
     res.json(diagrams);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/diagrams/flow-breadcrumbs?names=Flow+A,Flow+B — returns breadcrumb metadata per flow name
+router.get('/flow-breadcrumbs', async (req, res) => {
+  try {
+    const rawNames = req.query.names;
+    if (!rawNames) return res.json([]);
+    const names = String(rawNames).split(',').map(n => n.trim()).filter(Boolean);
+    if (!names.length) return res.json([]);
+    const docs = await Diagram.find(
+      { businessFlow: { $in: names } },
+      { businessFlow: 1, lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1 }
+    ).lean();
+    // De-dupe: keep one record per businessFlow name
+    const seen = new Set();
+    const result = [];
+    for (const d of docs) {
+      if (!d.businessFlow || seen.has(d.businessFlow)) continue;
+      seen.add(d.businessFlow);
+      result.push({
+        name: d.businessFlow,
+        lineOfBusiness: d.lineOfBusiness || null,
+        channel: d.channel || null,
+        product: d.product || null,
+        domain: d.domain || null,
+        subdomain: d.subdomain || null,
+      });
+    }
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -268,20 +324,15 @@ router.post('/', async (req, res) => {
     const diagramName = name;
     const cleanXml = stripTitleAnnotations(xml);
     const tasks = extractTasks(xml);
+    const resolvedStatus = await resolveImportedDiagramStatus(status, sourcedFrom, meta.businessFlow || diagramName);
     const diagram = await Diagram.create({
       name: diagramName, description, xml: cleanXml, tags, capabilities, tasks,
-      status: status || 'Draft',
+      status: resolvedStatus,
       sourcedFrom: sourcedFrom || null,
       createdBy: createdBy || null,
       updatedBy: createdBy || null,
       ...meta,
     });
-    // Ensure a matching BusinessFlow document exists (1:1 with diagram)
-    await BusinessFlow.findOneAndUpdate(
-      { name: diagramName },
-      { $setOnInsert: { name: diagramName, state: 'staged' } },
-      { upsert: true, new: true }
-    );
     res.status(201).json(diagram);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -333,30 +384,17 @@ router.put('/:id', async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });
-    // Keep BusinessFlow in sync if diagram name changed
-    const bfName = diagram.name;
-    if (bfName) {
-      await BusinessFlow.findOneAndUpdate(
-        { name: bfName },
-        { $setOnInsert: { name: bfName, state: 'staged' } },
-        { upsert: true, new: true }
-      );
-    }
     res.json(diagram);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE /api/diagrams/:id — delete diagram and its corresponding BusinessFlow
+// DELETE /api/diagrams/:id — delete diagram
 router.delete('/:id', async (req, res) => {
   try {
     const diagram = await Diagram.findByIdAndDelete(req.params.id);
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });
-    // Cascade: remove the 1:1 BusinessFlow document (if it exists)
-    if (diagram.name) {
-      await BusinessFlow.deleteOne({ name: diagram.name });
-    }
     res.json({ message: 'Diagram deleted.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -381,23 +419,18 @@ router.post('/batch', async (req, res) => {
       const name = meta.businessFlow || fileName?.replace(/\.bpmn$/i, '').replace(/\.xml$/i, '') || 'Untitled';
       const cleanXml = stripTitleAnnotations(xml);
       const tasks = extractTasks(xml);
+      const resolvedStatus = await resolveImportedDiagramStatus('staged', fileName, meta.businessFlow || name);
       const diagram = await Diagram.create({
         name,
         xml: cleanXml,
         tasks,
-        status: 'staged',
+        status: resolvedStatus,
         sourcedFrom: fileName || null,
         createdBy: createdBy || null,
         updatedBy: createdBy || null,
         ...meta,
       });
-      // Ensure a matching BusinessFlow document exists (1:1 with diagram)
-      await BusinessFlow.findOneAndUpdate(
-        { name },
-        { $setOnInsert: { name, state: 'staged' } },
-        { upsert: true, new: true }
-      );
-      results.success.push({ _id: diagram._id, name: diagram.name, fileName });
+      results.success.push({ _id: diagram._id, name: diagram.name, fileName, status: diagram.status });
     } catch (err) {
       results.failed.push({ fileName: file.fileName, error: err.message });
     }

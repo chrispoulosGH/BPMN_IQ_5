@@ -37,7 +37,15 @@ const businessFlowSchema = new mongoose.Schema({
 // Richer schema for Application (ITAP data)
 const applicationSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
-  correlationId: { type: String, default: null },
+  correlationId: {
+    type: String,
+    trim: true,
+    default: null,
+    set: (value) => {
+      const text = String(value || '').trim();
+      return text || null;
+    },
+  },
   shortDescription: { type: String, default: null },
   applicationType: { type: String, default: null },
   businessCriticality: { type: String, default: null },
@@ -61,7 +69,13 @@ const applicationSchema = new mongoose.Schema({
   state: { type: String, enum: VALID_STATES, default: 'published' },
 }, { timestamps: true });
 
-applicationSchema.index({ correlationId: 1 });
+applicationSchema.index(
+  { correlationId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { correlationId: { $type: 'string', $ne: '' } },
+  }
+);
 
 const BusinessFlow = mongoose.model('BusinessFlow', businessFlowSchema);
 const Product = mongoose.model('Product', refSchema);

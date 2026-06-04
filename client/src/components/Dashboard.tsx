@@ -25,6 +25,7 @@ import { getDashboardTaskRisk, getDashboardFlowRisk, getDashboardCostByYear, get
 import type { CapabilityCostByYearItem, CostByYearItem, TaskCostByYearItem } from '../api';
 import Flow3DChart from './Flow3DChart';
 import LobDrilldownTree from './LobDrilldownTree';
+import ServerLocationMap from './ServerLocationMap';
 
 // ─── Types ──────────────────────────────────────────────────
 interface YNCount { yes: number; no: number; unknown: number }
@@ -117,7 +118,7 @@ export default function Dashboard() {
   const [taskData, setTaskData] = useState<TaskProfile[]>([]);
   const [flowData, setFlowData] = useState<FlowProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'tasks' | 'flows' | '3d' | 'caprels' | 'drilltree'>('flows');
+  const [view, setView] = useState<'tasks' | 'flows' | '3d' | 'caprels' | 'drilltree' | 'servermap'>('flows');
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null);
   const [flowCostData, setFlowCostData] = useState<CostByYearItem[]>([]);
   const [taskCostData, setTaskCostData] = useState<TaskCostByYearItem[]>([]);
@@ -158,12 +159,13 @@ export default function Dashboard() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
         <Segmented
           value={view}
-          onChange={(v) => setView(v as 'tasks' | 'flows' | '3d' | 'caprels' | 'drilltree')}
+          onChange={(v) => setView(v as 'tasks' | 'flows' | '3d' | 'caprels' | 'drilltree' | 'servermap')}
           options={[
             { label: 'Business Flow Comparison', value: 'flows' },
             { label: 'Task Comparison', value: 'tasks' },
             { label: 'Capability Cost & Flow', value: 'caprels' },
             { label: 'LOB Drilldown Tree', value: 'drilltree' },
+            { label: 'US Server Map', value: 'servermap' },
             { label: '3D Flow Explorer', value: '3d' },
           ]}
         />
@@ -185,6 +187,8 @@ export default function Dashboard() {
         <CapabilityFlowRelationshipDashboard data={capRelData} costData={capabilityCostData} costYear={COST_YEAR} />
       ) : view === 'drilltree' ? (
         <LobDrilldownTree />
+      ) : view === 'servermap' ? (
+        <ServerLocationMap />
       ) : view === 'flows' ? (
         <FlowDashboard flows={flowData} costData={flowCostData} costYear={COST_YEAR} />
       ) : (
