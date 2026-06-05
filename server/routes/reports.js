@@ -1,6 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const mongoose = require('mongoose');
+const { Application } = require('../models/ReferenceData');
+const Server = require('../models/Server');
+const DatabaseInstance = require('../models/DatabaseInstance');
+const { getNeighborhoodName } = require('../utils/neighborhoodScope');
 
 const YEARS = Array.from({ length: 10 }, (_, i) => 2016 + i);
 
@@ -20,17 +24,351 @@ function heatColor(v, min, max) {
   return `rgba(${r},${g},${b},0.18)`;
 }
 
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function normalizeKey(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function severityColor(severity) {
+  const key = normalizeKey(severity);
+  if (key === 'critical') return '#f85149';
+  if (key === 'high') return '#ff7b72';
+  if (key === 'medium') return '#d29922';
+  if (key === 'low') return '#3fb950';
+  return '#8b949e';
+}
+
+function collectVulnerabilityNotes(healthNotes) {
+  return (Array.isArray(healthNotes) ? healthNotes : []).filter((note) => {
+    const vulnerabilities = Array.isArray(note?.vulnerabilities) ? note.vulnerabilities.filter(Boolean) : [];
+    return vulnerabilities.length > 0;
+  });
+}
+
+function buildApplicationIndex(applications) {
+  const map = new Map();
+  for (const app of applications) {
+    for (const candidate of [app?.correlationId, app?.acronym, app?.name]) {
+      const key = normalizeKey(candidate);
+      if (key && !map.has(key)) map.set(key, app);
+    }
+  }
+  return map;
+}
+
+function assetMatchesApplication(asset, applicationRef, type) {
+  const identifiers = new Set([
+    normalizeKey(applicationRef?.rawName),
+    normalizeKey(applicationRef?.name),
+    normalizeKey(applicationRef?.correlationId),
+    normalizeKey(applicationRef?.acronym),
+  ].filter(Boolean));
+
+  if (!identifiers.size) return false;
+
+  const candidates = new Set();
+  for (const linked of Array.isArray(asset?.linkedApplications) ? asset.linkedApplications : []) {
+    candidates.add(normalizeKey(linked?.name));
+    candidates.add(normalizeKey(linked?.correlationId));
+    candidates.add(normalizeKey(linked?.acronym));
+  }
+
+  if (type === 'database') {
+    candidates.add(normalizeKey(asset?.applicationName));
+    candidates.add(normalizeKey(asset?.applicationCorrelationId));
+    candidates.add(normalizeKey(asset?.applicationAcronym));
+  }
+
+  for (const candidate of candidates) {
+    if (candidate && identifiers.has(candidate)) return true;
+  }
+  return false;
+}
+
+function formatServerFinding(server) {
+  const notes = collectVulnerabilityNotes(server?.healthNotes);
+  if (!notes.length) return null;
+  const detailBits = [server?.hostName, server?.ipAddress, server?.os].map(normalizeText).filter(Boolean);
+  return {
+    key: server?._id || server?.sourceKey || server?.name,
+    title: normalizeText(server?.name) || 'Unnamed Server',
+    subtitle: detailBits.join(' · '),
+    notes,
+  };
+}
+
+function formatDatabaseFinding(database) {
+  const notes = collectVulnerabilityNotes(database?.healthNotes);
+  if (!notes.length) return null;
+  const detailBits = [database?.instanceName, database?.vendor, database?.version].map(normalizeText).filter(Boolean);
+  return {
+    key: database?._id || database?.sourceKey || database?.name,
+    title: normalizeText(database?.name) || normalizeText(database?.instanceName) || 'Unnamed Database',
+    subtitle: detailBits.join(' · '),
+    notes,
+  };
+}
+
+function countFindingItems(findings) {
+  return (Array.isArray(findings) ? findings : []).reduce((sum, finding) => {
+    return sum + (Array.isArray(finding?.notes) ? finding.notes.reduce((noteSum, note) => {
+      const vulnerabilities = Array.isArray(note?.vulnerabilities) ? note.vulnerabilities.filter(Boolean) : [];
+      return noteSum + vulnerabilities.length;
+    }, 0) : 0);
+  }, 0);
+}
+
+function renderAssetFindings(findings, emptyLabel) {
+  if (!findings.length) {
+    return `<div class="empty-state">${escapeHtml(emptyLabel)}</div>`;
+  }
+
+  return findings.map((finding) => `
+    <div class="asset-card">
+      <div class="asset-title">${escapeHtml(finding.title)}</div>
+      ${finding.subtitle ? `<div class="asset-subtitle">${escapeHtml(finding.subtitle)}</div>` : ''}
+      ${finding.notes.map((note) => `
+        <div class="note-card">
+          <div class="note-header">
+            <span class="severity-pill" style="background:${severityColor(note.severity)}">${escapeHtml(note.severity || 'info')}</span>
+            <span class="note-label">${escapeHtml(note.label || 'Vulnerability Note')}</span>
+          </div>
+          <div class="note-body">${escapeHtml(note.note || '')}</div>
+          ${note.vulnerabilities?.length ? `
+            <ul class="vuln-list">
+              ${note.vulnerabilities.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+            </ul>` : ''}
+          }
+          ${note.sourceUrl ? `<div class="note-source">Source: <a href="${escapeHtml(note.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(note.sourceUrl)}</a></div>` : ''}
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+function getAnnualCostTotal(annualCosts) {
+  return (Array.isArray(annualCosts) ? annualCosts : []).reduce((sum, entry) => sum + (entry?.totalCost || 0), 0);
+}
+
+function getBusinessFlowCostTotals(flowDoc) {
+  const tasks = Array.isArray(flowDoc?.tasks) ? flowDoc.tasks : [];
+  const taskCount = tasks.length;
+  const applicationCount = tasks.reduce((sum, task) => sum + ((Array.isArray(task?.applications) ? task.applications : []).length), 0);
+  const totalCost = tasks.reduce((sum, task) => {
+    return sum + (Array.isArray(task?.applications) ? task.applications : []).reduce((appSum, app) => appSum + getAnnualCostTotal(app?.annualCosts), 0);
+  }, 0);
+
+  return { taskCount, applicationCount, totalCost };
+}
+
+function buildCostSummaryPayload(flowDocs) {
+  const flows = (Array.isArray(flowDocs) ? flowDocs : [])
+    .map((doc) => ({
+      name: normalizeText(doc?.name) || 'Unnamed Business Flow',
+      ...getBusinessFlowCostTotals(doc),
+    }))
+    .filter((flow) => flow.totalCost > 0)
+    .sort((a, b) => b.totalCost - a.totalCost || a.name.localeCompare(b.name));
+
+  const totalPortfolioCost = flows.reduce((sum, flow) => sum + flow.totalCost, 0);
+  const totalTaskCount = flows.reduce((sum, flow) => sum + flow.taskCount, 0);
+  const totalApplicationCount = flows.reduce((sum, flow) => sum + flow.applicationCount, 0);
+
+  return {
+    flows,
+    totalPortfolioCost,
+    totalTaskCount,
+    totalApplicationCount,
+  };
+}
+
 /**
  * GET /api/reports/business-flows
  * Returns all business flows that have at least one task with application cost data.
  */
-router.get('/business-flows', async (_req, res) => {
+router.get('/business-flows', async (req, res) => {
   try {
     const db = mongoose.connection;
     const docs = await db.collection('businessflows')
-      .find({ 'tasks.0': { $exists: true } }, { projection: { name: 1, _id: 0 } })
+      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } }, { projection: { name: 1, _id: 0 } })
       .toArray();
     res.json(docs.map(d => d.name).sort());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/reports/cost-summary-data
+ * Returns ranked business flow cost summary data for interactive UI rendering.
+ */
+router.get('/cost-summary-data', async (req, res) => {
+  try {
+    const db = mongoose.connection;
+    const docs = await db.collection('businessflows')
+      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
+      .project({ name: 1, tasks: 1, _id: 0 })
+      .toArray();
+
+    const summary = buildCostSummaryPayload(docs);
+    if (!summary.flows.length) {
+      return res.status(404).json({ error: 'No business flow cost data found.' });
+    }
+
+    res.json({
+      generatedDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      ...summary,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/reports/cost-summary
+ * Generates and returns an HTML summary report ranking all business flows by total cost.
+ */
+router.get('/cost-summary', async (req, res) => {
+  try {
+    const db = mongoose.connection;
+    const docs = await db.collection('businessflows')
+      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
+      .project({ name: 1, tasks: 1, _id: 0 })
+      .toArray();
+
+    const {
+      flows: rankedFlows,
+      totalPortfolioCost,
+      totalTaskCount,
+      totalApplicationCount,
+    } = buildCostSummaryPayload(docs);
+
+    if (!rankedFlows.length) {
+      return res.status(404).json({ error: 'No business flow cost data found.' });
+    }
+
+    const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const topFiveCards = rankedFlows.slice(0, 5).map((flow, index) => `
+      <div class="summary-card">
+        <div class="summary-rank">#${index + 1}</div>
+        <div class="summary-name">${escapeHtml(flow.name)}</div>
+        <div class="summary-value">${fmtM(flow.totalCost)}</div>
+        <div class="summary-meta">${flow.taskCount} tasks · ${flow.applicationCount} app links</div>
+      </div>`).join('');
+
+    const sidebarRows = rankedFlows.map((flow, index) => {
+      const pct = totalPortfolioCost ? (flow.totalCost / totalPortfolioCost * 100) : 0;
+      const detailHref = `/api/reports/cost-by-process?businessFlow=${encodeURIComponent(flow.name)}`;
+      return `
+        <a class="rank-link" href="${detailHref}">
+          <div class="rank-index">${index + 1}</div>
+          <div class="rank-label">${escapeHtml(flow.name)}</div>
+          <div class="rank-bar-bg"><div class="rank-bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
+          <div class="rank-value">${fmtM(flow.totalCost)}</div>
+        </a>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Business Flow Cost Summary Report</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #0d1117; color: #c9d1d9; margin: 0; padding: 24px; }
+  h1 { color: #58a6ff; font-size: 24px; margin: 0 0 4px; }
+  h2 { color: #58a6ff; font-size: 15px; margin: 0 0 12px; }
+  p { margin: 0; }
+  .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
+  .layout { display: grid; grid-template-columns: minmax(340px, 420px) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 12px; }
+  .sidebar { padding: 16px; position: sticky; top: 24px; }
+  .sidebar-note { color: #8b949e; font-size: 12px; margin-bottom: 14px; }
+  .rank-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 120px); overflow-y: auto; padding-right: 4px; }
+  .rank-link { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(110px, 1fr) 88px; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; text-decoration: none; color: inherit; background: #0f1720; border: 1px solid #263040; transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease; }
+  .rank-link:hover { background: #172030; border-color: #3b82f6; transform: translateX(2px); }
+  .rank-index { color: #8b949e; font-size: 12px; font-weight: 700; text-align: center; }
+  .rank-label { color: #e6edf3; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rank-bar-bg { background: #21262d; border-radius: 999px; height: 14px; overflow: hidden; }
+  .rank-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #1d4ed8, #60a5fa); }
+  .rank-value { color: #d29922; text-align: right; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .content { padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+  .hero { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 12px; }
+  .hero-card, .summary-card { background: #0f1720; border: 1px solid #263040; border-radius: 12px; padding: 16px; }
+  .hero-label, .summary-rank { color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .hero-value { color: #e6edf3; font-size: 26px; font-weight: 700; margin-top: 4px; }
+  .hero-value.amber { color: #d29922; }
+  .hero-value.blue { color: #58a6ff; }
+  .hero-value.green { color: #3fb950; }
+  .hero-sub { color: #8b949e; font-size: 11px; margin-top: 4px; }
+  .top-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .summary-name { color: #e6edf3; font-size: 14px; font-weight: 700; margin-top: 8px; }
+  .summary-value { color: #d29922; font-size: 22px; font-weight: 700; margin-top: 6px; }
+  .summary-meta { color: #8b949e; font-size: 11px; margin-top: 4px; }
+  .instruction { color: #8b949e; font-size: 13px; line-height: 1.5; }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { position: static; }
+    .hero { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<h1>Business Flow Cost Summary Report</h1>
+<p class="subtitle">Ranked 10-year cost summary across all business flows · Generated: ${generatedDate}</p>
+
+<div class="layout">
+  <aside class="panel sidebar">
+    <h2>Cost Rank Sidebar</h2>
+    <p class="sidebar-note">Select any business flow to open its detailed Business Flow Cost Report.</p>
+    <div class="rank-list">${sidebarRows}</div>
+  </aside>
+
+  <section class="panel content">
+    <div class="hero">
+      <div class="hero-card">
+        <div class="hero-label">Business Flows</div>
+        <div class="hero-value blue">${rankedFlows.length}</div>
+        <div class="hero-sub">Flows with cost data</div>
+      </div>
+      <div class="hero-card">
+        <div class="hero-label">Portfolio Cost</div>
+        <div class="hero-value amber">${fmtM(totalPortfolioCost)}</div>
+        <div class="hero-sub">10-year aggregate total</div>
+      </div>
+      <div class="hero-card">
+        <div class="hero-label">Coverage</div>
+        <div class="hero-value green">${totalTaskCount}</div>
+        <div class="hero-sub">Tasks · ${totalApplicationCount} application links</div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Top 5 Business Flows by Total Cost</h2>
+      <div class="top-grid">${topFiveCards}</div>
+    </div>
+
+    <div>
+      <h2>How to Use This Report</h2>
+      <p class="instruction">The left sidebar ranks every business flow by its total 10-year cost. Each row is an active link to the existing detailed Business Flow Cost Report for that flow, so this summary acts as the portfolio entry point and the current report remains the drill-down view.</p>
+    </div>
+  </section>
+</div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -46,7 +384,8 @@ router.get('/cost-by-process', async (req, res) => {
 
   try {
     const db  = mongoose.connection;
-    const bf  = await db.collection('businessflows').findOne({ name: bfName });
+    const neighborhoodName = getNeighborhoodName(req);
+    const bf  = await db.collection('businessflows').findOne({ neighborhoodName, name: bfName });
     if (!bf || !bf.tasks?.length) {
       return res.status(404).json({ error: `Business flow "${bfName}" has no task cost data.` });
     }
@@ -54,7 +393,7 @@ router.get('/cost-by-process', async (req, res) => {
     // Lifecycle status lookup
     const allAppNames = [...new Set(bf.tasks.flatMap(t => t.applications.map(a => a.name)))];
     const appDocs = await db.collection('applications')
-      .find({ name: { $in: allAppNames } }, { projection: { name: 1, lifecycleStatus: 1, _id: 0 } })
+      .find({ neighborhoodName, name: { $in: allAppNames } }, { projection: { name: 1, lifecycleStatus: 1, _id: 0 } })
       .toArray();
     const lcMap = Object.fromEntries(appDocs.map(a => [a.name, a.lifecycleStatus || 'unknown']));
 
@@ -174,6 +513,8 @@ router.get('/cost-by-process', async (req, res) => {
 <style>
   * { box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; background: #0d1117; color: #c9d1d9; margin: 0; padding: 24px; }
+  .report-nav { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px; padding: 8px 12px; border-radius: 999px; border: 1px solid #30363d; background: #161b22; color: #8b949e; text-decoration: none; font-size: 12px; font-weight: 600; transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease; }
+  .report-nav:hover { color: #e6edf3; border-color: #58a6ff; background: #172030; }
   h1   { color: #58a6ff; font-size: 22px; margin-bottom: 2px; }
   h2   { color: #58a6ff; font-size: 15px; margin: 28px 0 12px; border-bottom: 1px solid #30363d; padding-bottom: 6px; }
   .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
@@ -224,6 +565,7 @@ router.get('/cost-by-process', async (req, res) => {
 </style>
 </head>
 <body>
+<a class="report-nav" href="/api/reports/cost-summary">&larr; Back to Business Flow Cost Summary Report</a>
 <h1>${bfName} — Cost Report by Business Process</h1>
 <p class="subtitle">Business Flow: ${bfName} &nbsp;·&nbsp; 10-Year Window: 2016–2025 &nbsp;·&nbsp; Generated: ${generatedDate}</p>
 
@@ -237,7 +579,7 @@ router.get('/cost-by-process', async (req, res) => {
 <h2>Top 5 Business Processes by 10-Year Cost</h2>
 <div class="cards">${summaryCards}</div>
 
-<h2>Cost Rank — All Business Processes</h2>
+<h2>Cost Rank — All Tasks in This Business Flow</h2>
 <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px 20px;margin-bottom:32px">
   ${sortedTasks.map(t => {
     const pct = grandTot ? (t.tot / grandTot * 100) : 0;
@@ -262,7 +604,7 @@ router.get('/cost-by-process', async (req, res) => {
   </table>
 </div>
 
-<h2>Detail by Business Process</h2>
+<h2>Detail by Task</h2>
 ${allTaskSections}
 </body>
 </html>`;

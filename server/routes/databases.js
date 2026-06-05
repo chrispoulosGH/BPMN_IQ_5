@@ -1,5 +1,7 @@
 const express = require('express');
 const DatabaseInstance = require('../models/DatabaseInstance');
+const { Application } = require('../models/ReferenceData');
+const { getNeighborhoodName } = require('../utils/neighborhoodScope');
 
 const router = express.Router();
 
@@ -38,9 +40,36 @@ function safeJson(value) {
   }
 }
 
+async function buildNeighborhoodApplicationFilter(req) {
+  const neighborhoodName = getNeighborhoodName(req);
+  const applications = await Application.find(
+    { neighborhoodName },
+    { correlationId: 1, acronym: 1, name: 1, _id: 0 }
+  ).lean();
+
+  const correlationIds = applications.map((item) => String(item.correlationId || '').trim()).filter(Boolean);
+  const acronyms = applications.map((item) => String(item.acronym || '').trim()).filter(Boolean);
+  const names = applications.map((item) => String(item.name || '').trim()).filter(Boolean);
+
+  if (!correlationIds.length && !acronyms.length && !names.length) {
+    return { _id: null };
+  }
+
+  return {
+    $or: [
+      correlationIds.length ? { applicationCorrelationId: { $in: correlationIds } } : null,
+      correlationIds.length ? { 'linkedApplications.correlationId': { $in: correlationIds } } : null,
+      acronyms.length ? { applicationAcronym: { $in: acronyms } } : null,
+      acronyms.length ? { 'linkedApplications.acronym': { $in: acronyms } } : null,
+      names.length ? { applicationName: { $in: names } } : null,
+      names.length ? { 'linkedApplications.name': { $in: names } } : null,
+    ].filter(Boolean),
+  };
+}
+
 router.get('/', async (req, res) => {
   try {
-    const filter = {};
+    const filter = await buildNeighborhoodApplicationFilter(req);
     const debugInput = {
       applicationCorrelationId: req.query.applicationCorrelationId || null,
       applicationName: req.query.applicationName || null,
@@ -89,10 +118,16 @@ router.get('/by-application/:correlationId', async (req, res) => {
   try {
     const correlationId = String(req.params.correlationId || '').trim();
     if (!correlationId) return res.status(400).json({ error: 'correlationId is required' });
+    const appScope = await buildNeighborhoodApplicationFilter(req);
     const query = {
-      $or: [
-        { applicationCorrelationId: correlationId },
-        { 'linkedApplications.correlationId': correlationId },
+      $and: [
+        appScope,
+        {
+          $or: [
+            { applicationCorrelationId: correlationId },
+            { 'linkedApplications.correlationId': correlationId },
+          ],
+        },
       ],
     };
     console.log('[databases:/by-application] correlationId:', correlationId);
@@ -109,7 +144,8 @@ router.get('/by-application/:correlationId', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const item = await DatabaseInstance.findById(req.params.id).lean();
+    const appScope = await buildNeighborhoodApplicationFilter(req);
+    const item = await DatabaseInstance.findOne({ $and: [appScope, { _id: req.params.id }] }).lean();
     if (!item) return res.status(404).json({ error: 'Database not found' });
     res.json(item);
   } catch (err) {

@@ -50,6 +50,8 @@ interface TaskProfile {
   pciData: YNCount;
   pciDataStored: YNCount;
   soxFsa: YNCount;
+  serverVulnerabilities: number;
+  dbVulnerabilities: number;
   riskScore: number;
 }
 
@@ -69,6 +71,8 @@ interface FlowProfile {
   pciData: YNCount;
   pciDataStored: YNCount;
   soxFsa: YNCount;
+  serverVulnerabilities: number;
+  dbVulnerabilities: number;
   riskScore: number;
 }
 
@@ -104,12 +108,24 @@ const COMPLIANCE_LABELS: Record<string, string> = {
 
 const COLORS = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2', '#eb2f96', '#fa8c16', '#a0d911', '#2f54eb'];
 const RISK_COLORS = { low: '#52c41a', medium: '#faad14', high: '#fa541c', critical: '#f5222d' };
+const VULNERABILITY_LABELS: Record<string, string> = {
+  serverVulnerabilities: 'Server Vulns',
+  dbVulnerabilities: 'DB Vulns',
+};
 
 function riskLevel(score: number): { label: string; color: string } {
   if (score <= 5) return { label: 'Low', color: RISK_COLORS.low };
   if (score <= 15) return { label: 'Medium', color: RISK_COLORS.medium };
   if (score <= 30) return { label: 'High', color: RISK_COLORS.high };
   return { label: 'Critical', color: RISK_COLORS.critical };
+}
+
+function sortDescBy<T>(items: T[], selector: (item: T) => number): T[] {
+  return [...items].sort((a, b) => selector(b) - selector(a));
+}
+
+function complianceYesTotal(item: Record<string, any>): number {
+  return COMPLIANCE_FIELDS.reduce((sum, field) => sum + ((item[field] as YNCount)?.yes || 0), 0);
 }
 
 // ─── Component ──────────────────────────────────────────────
@@ -166,7 +182,7 @@ export default function Dashboard() {
             { label: 'Capability Cost & Flow', value: 'caprels' },
             { label: 'LOB Drilldown Tree', value: 'drilltree' },
             { label: 'US Server Map', value: 'servermap' },
-            { label: '3D Flow Explorer', value: '3d' },
+            { label: 'YoY Business Flow Cost', value: '3d' },
           ]}
         />
         {view === 'tasks' && (
@@ -462,12 +478,13 @@ function CapabilityFlowRelationshipDashboard({ data, costData, costYear }: { dat
 function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskProfile[]; allTasks: TaskProfile[]; costData: TaskCostByYearItem[]; costYear: number }) {
   if (!tasks.length) return <Empty description="No tasks with applications found" />;
 
-  // Top 20 tasks by risk for bar chart
-  const topTasks = [...tasks].sort((a, b) => b.riskScore - a.riskScore).slice(0, 20);
+  const topTasksByRisk = sortDescBy(tasks, (task) => task.riskScore).slice(0, 20);
+  const topTasksByCompliance = sortDescBy(tasks, (task) => complianceYesTotal(task)).slice(0, 20);
+  const topTasksByServerVulns = sortDescBy(tasks, (task) => task.serverVulnerabilities).slice(0, 20);
+  const topTasksByDbVulns = sortDescBy(tasks, (task) => task.dbVulnerabilities).slice(0, 20);
 
-  // Cost bar chart data (already top-20 sorted by totalCost from server)
   const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(1) + 'M';
-  const costBarData = costData.map((t) => ({
+  const costBarData = sortDescBy(costData, (task) => task.totalCost).slice(0, 20).map((t) => ({
     name: t.name.length > 25 ? t.name.slice(0, 22) + '...' : t.name,
     fullName: t.name,
     flow: t.businessFlow,
@@ -477,7 +494,7 @@ function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskPro
   }));
 
   // Risk score bar chart data
-  const riskBarData = topTasks.map((t) => ({
+  const riskBarData = topTasksByRisk.map((t) => ({
     name: t.name.length > 25 ? t.name.slice(0, 22) + '...' : t.name,
     fullName: t.name,
     riskScore: t.riskScore,
@@ -485,16 +502,26 @@ function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskPro
   }));
 
   // Compliance comparison data (stacked bar showing yes count per compliance field)
-  const complianceBarData = topTasks.map((t) => {
+  const complianceBarData = topTasksByCompliance.map((t) => {
     const row: any = { name: t.name.length > 25 ? t.name.slice(0, 22) + '...' : t.name, fullName: t.name };
     for (const field of COMPLIANCE_FIELDS) {
       row[field] = (t[field] as YNCount).yes;
     }
     return row;
   });
+  const serverVulnerabilityBarData = topTasksByServerVulns.map((t) => ({
+    name: t.name.length > 25 ? t.name.slice(0, 22) + '...' : t.name,
+    fullName: t.name,
+    serverVulnerabilities: t.serverVulnerabilities,
+  }));
+  const dbVulnerabilityBarData = topTasksByDbVulns.map((t) => ({
+    name: t.name.length > 25 ? t.name.slice(0, 22) + '...' : t.name,
+    fullName: t.name,
+    dbVulnerabilities: t.dbVulnerabilities,
+  }));
 
   // Radar data for top 5 tasks
-  const radarTasks = topTasks.slice(0, 5);
+  const radarTasks = topTasksByRisk.slice(0, 5);
   const [radarTaskSelected, setRadarTaskSelected] = useState<string[]>([]);
   const radarTasksFiltered = radarTaskSelected.length > 0
     ? allTasks.filter((t) => radarTaskSelected.includes(t.name)).slice(0, 5)
@@ -587,7 +614,7 @@ function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskPro
       </Card>
 
       {/* Compliance Stacked Bar */}
-      <Card title="Compliance Flags per Task (Top 20 by Risk)" size="small" style={{ marginBottom: 24 }}>
+      <Card title="Compliance Flags per Task (Top 20 by Compliance)" size="small" style={{ marginBottom: 24 }}>
         <ResponsiveContainer width="100%" height={350}>
           <BarChart data={complianceBarData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -601,6 +628,51 @@ function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskPro
           </BarChart>
         </ResponsiveContainer>
       </Card>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} md={12}>
+          <Card title="Server Vulnerabilities per Task (Top 20 by Server Vulnerabilities)" size="small">
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={serverVulnerabilityBarData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" interval={0} height={80} tick={{ fontSize: 11 }} />
+                <YAxis />
+                <Tooltip content={({ payload }) => {
+                  if (!payload?.length) return null;
+                  const d = payload[0].payload;
+                  return <div style={{ background: '#fff', border: '1px solid #ccc', padding: 8, borderRadius: 4 }}>
+                    <div style={{ fontWeight: 600 }}>{d.fullName}</div>
+                    <div>Server Vulnerabilities: {d.serverVulnerabilities}</div>
+                  </div>;
+                }} />
+                <Legend />
+                <Bar dataKey="serverVulnerabilities" name={VULNERABILITY_LABELS.serverVulnerabilities} fill="#ff7a45" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
+          <Card title="DB Vulnerabilities per Task (Top 20 by DB Vulnerabilities)" size="small">
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={dbVulnerabilityBarData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" interval={0} height={80} tick={{ fontSize: 11 }} />
+                <YAxis />
+                <Tooltip content={({ payload }) => {
+                  if (!payload?.length) return null;
+                  const d = payload[0].payload;
+                  return <div style={{ background: '#fff', border: '1px solid #ccc', padding: 8, borderRadius: 4 }}>
+                    <div style={{ fontWeight: 600 }}>{d.fullName}</div>
+                    <div>DB Vulnerabilities: {d.dbVulnerabilities}</div>
+                  </div>;
+                }} />
+                <Legend />
+                <Bar dataKey="dbVulnerabilities" name={VULNERABILITY_LABELS.dbVulnerabilities} fill="#36cfc9" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+      </Row>
 
       {/* Criticality Pie + Radar Row */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
@@ -706,6 +778,8 @@ function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskPro
             { title: 'SOX', key: 'sox', width: 55, render: (_, r) => r.soxFsa.yes || '-' },
             { title: 'Cust.', key: 'cf', width: 55, render: (_, r) => r.customerFacing.yes || '-' },
             { title: 'Inet.', key: 'if', width: 55, render: (_, r) => r.internetFacing.yes || '-' },
+            { title: 'Srv Vulns', dataIndex: 'serverVulnerabilities', key: 'sv', width: 90, sorter: (a, b) => a.serverVulnerabilities - b.serverVulnerabilities },
+            { title: 'DB Vulns', dataIndex: 'dbVulnerabilities', key: 'dv', width: 90, sorter: (a, b) => a.dbVulnerabilities - b.dbVulnerabilities },
           ]}
         />
       </Card>
@@ -717,11 +791,13 @@ function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskPro
 function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; costData: CostByYearItem[]; costYear: number }) {
   if (!flows.length) return <Empty description="No business flows with tasks/applications found" />;
 
-  const top20 = flows.slice(0, 20); // already sorted by risk
+  const topFlowsByRisk = sortDescBy(flows, (flow) => flow.riskScore).slice(0, 20);
+  const topFlowsByCompliance = sortDescBy(flows, (flow) => complianceYesTotal(flow)).slice(0, 20);
+  const topFlowsByServerVulns = sortDescBy(flows, (flow) => flow.serverVulnerabilities).slice(0, 20);
+  const topFlowsByDbVulns = sortDescBy(flows, (flow) => flow.dbVulnerabilities).slice(0, 20);
 
-  // Cost bar chart data (top-20 by cost, sorted by server)
   const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(1) + 'M';
-  const costBarData = costData.map((f) => ({
+  const costBarData = sortDescBy(costData, (flow) => flow.totalCost).slice(0, 20).map((f) => ({
     name: f.name.length > 25 ? f.name.slice(0, 22) + '...' : f.name,
     fullName: f.name,
     opCost: f.opCost,
@@ -730,7 +806,7 @@ function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; co
   }));
 
   // Risk bar data
-  const riskBarData = top20.map((f) => ({
+  const riskBarData = topFlowsByRisk.map((f) => ({
     name: f.name.length > 25 ? f.name.slice(0, 22) + '...' : f.name,
     fullName: f.name,
     riskScore: f.riskScore,
@@ -739,13 +815,23 @@ function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; co
   }));
 
   // Compliance bar data
-  const complianceBarData = top20.map((f) => {
+  const complianceBarData = topFlowsByCompliance.map((f) => {
     const row: any = { name: f.name.length > 25 ? f.name.slice(0, 22) + '...' : f.name, fullName: f.name };
     for (const field of COMPLIANCE_FIELDS) {
       row[field] = (f[field] as YNCount).yes;
     }
     return row;
   });
+  const serverVulnerabilityBarData = topFlowsByServerVulns.map((f) => ({
+    name: f.name.length > 25 ? f.name.slice(0, 22) + '...' : f.name,
+    fullName: f.name,
+    serverVulnerabilities: f.serverVulnerabilities,
+  }));
+  const dbVulnerabilityBarData = topFlowsByDbVulns.map((f) => ({
+    name: f.name.length > 25 ? f.name.slice(0, 22) + '...' : f.name,
+    fullName: f.name,
+    dbVulnerabilities: f.dbVulnerabilities,
+  }));
 
   // Criticality pie — filterable by flow
   const [critFlows, setCritFlows] = useState<string[]>([]);
@@ -765,7 +851,7 @@ function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; co
   const [radarSelected, setRadarSelected] = useState<string[]>([]);
   const radarFlows = radarSelected.length > 0
     ? flows.filter((f) => radarSelected.includes(f.name)).slice(0, 5)
-    : top20.slice(0, 5);
+    : topFlowsByRisk.slice(0, 5);
   const radarData = COMPLIANCE_FIELDS.map((field) => {
     const point: any = { subject: COMPLIANCE_LABELS[field] };
     radarFlows.forEach((f, i) => {
@@ -838,7 +924,7 @@ function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; co
       </Card>
 
       {/* Compliance Stacked Bar */}
-      <Card title="Compliance Flags per Business Flow (Top 20)" size="small" style={{ marginBottom: 24 }}>
+      <Card title="Compliance Flags per Business Flow (Top 20 by Compliance)" size="small" style={{ marginBottom: 24 }}>
         <ResponsiveContainer width="100%" height={350}>
           <BarChart data={complianceBarData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -852,6 +938,51 @@ function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; co
           </BarChart>
         </ResponsiveContainer>
       </Card>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} md={12}>
+          <Card title="Server Vulnerabilities per Business Flow (Top 20 by Server Vulnerabilities)" size="small">
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={serverVulnerabilityBarData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" interval={0} height={80} tick={{ fontSize: 11 }} />
+                <YAxis />
+                <Tooltip content={({ payload }) => {
+                  if (!payload?.length) return null;
+                  const d = payload[0].payload;
+                  return <div style={{ background: '#fff', border: '1px solid #ccc', padding: 8, borderRadius: 4 }}>
+                    <div style={{ fontWeight: 600 }}>{d.fullName}</div>
+                    <div>Server Vulnerabilities: {d.serverVulnerabilities}</div>
+                  </div>;
+                }} />
+                <Legend />
+                <Bar dataKey="serverVulnerabilities" name={VULNERABILITY_LABELS.serverVulnerabilities} fill="#ff7a45" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
+          <Card title="DB Vulnerabilities per Business Flow (Top 20 by DB Vulnerabilities)" size="small">
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={dbVulnerabilityBarData} margin={{ top: 5, right: 30, left: 10, bottom: 80 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" interval={0} height={80} tick={{ fontSize: 11 }} />
+                <YAxis />
+                <Tooltip content={({ payload }) => {
+                  if (!payload?.length) return null;
+                  const d = payload[0].payload;
+                  return <div style={{ background: '#fff', border: '1px solid #ccc', padding: 8, borderRadius: 4 }}>
+                    <div style={{ fontWeight: 600 }}>{d.fullName}</div>
+                    <div>DB Vulnerabilities: {d.dbVulnerabilities}</div>
+                  </div>;
+                }} />
+                <Legend />
+                <Bar dataKey="dbVulnerabilities" name={VULNERABILITY_LABELS.dbVulnerabilities} fill="#36cfc9" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </Col>
+      </Row>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         {/* Criticality Pie */}
@@ -958,6 +1089,8 @@ function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; co
             { title: 'SOX', key: 'sox', width: 55, render: (_, r) => r.soxFsa.yes || '-' },
             { title: 'Cust.', key: 'cf', width: 55, render: (_, r) => r.customerFacing.yes || '-' },
             { title: 'Inet.', key: 'if', width: 55, render: (_, r) => r.internetFacing.yes || '-' },
+            { title: 'Srv Vulns', dataIndex: 'serverVulnerabilities', key: 'sv', width: 90, sorter: (a, b) => a.serverVulnerabilities - b.serverVulnerabilities },
+            { title: 'DB Vulns', dataIndex: 'dbVulnerabilities', key: 'dv', width: 90, sorter: (a, b) => a.dbVulnerabilities - b.dbVulnerabilities },
           ]}
         />
       </Card>

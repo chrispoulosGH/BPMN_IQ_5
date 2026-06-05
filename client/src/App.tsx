@@ -12,6 +12,7 @@ import {
   Select,
   App as AntApp,
   Spin,
+  Tag,
 } from 'antd';
 import {
   SaveOutlined,
@@ -54,6 +55,7 @@ import ReferenceFactory from './components/ReferenceFactory';
 import ApplicationFactory from './components/ApplicationFactory';
 import ServerFactory from './components/ServerFactory';
 import DatabaseFactory from './components/DatabaseFactory';
+import NeighborhoodFactory from './components/NeighborhoodFactory';
 import BusinessFlowFactory from './components/BusinessFlowFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
 import ActorFactory from './components/ActorFactory';
@@ -62,8 +64,9 @@ import Dashboard from './components/Dashboard';
 import ReportsPanel from './components/ReportsPanel';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
-import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap } from './api';
-import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem } from './types';
+import { encodeExactFactorySearch } from './utils/factorySearch';
+import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, setApiNeighborhoodScope } from './api';
+import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem, FactoryNeighborhoodSummary } from './types';
 
 const { Header, Sider, Content } = Layout;
 const { Text, Title } = Typography;
@@ -216,10 +219,14 @@ export default function App() {
 
 function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: string; displayName: string; role?: string | null; capabilities?: { function: string; permission: string }[] }; onLogout: () => void }) {
   const { message } = AntApp.useApp();
+  const DEFAULT_NEIGHBORHOOD_NAME = 'AT&T Journey';
   const CURRENT_USER = user.userId;
   const hasAdminAccess = user.capabilities?.some(c => c.function === 'Admin') ?? false;
   const readOnly = !(user.capabilities?.some(c => c.permission !== 'Read'));
   const [showAdmin, setShowAdmin] = useState(false);
+  const [neighborhoodTabs, setNeighborhoodTabs] = useState<FactoryNeighborhoodSummary[]>([]);
+  const [activeNeighborhoodTab, setActiveNeighborhoodTab] = useState<string>(DEFAULT_NEIGHBORHOOD_NAME);
+  const [loadingNeighborhoodTabs, setLoadingNeighborhoodTabs] = useState(false);
 
   const renderScrollablePane = (child: React.ReactNode) => (
     <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
@@ -228,7 +235,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   );
 
   // Tab state — three separate levels
-  const [activeOuterTab, setActiveOuterTab] = useState<string>('analytics');   // outer: analytics | bpmn | factories
+  const [activeOuterTab, setActiveOuterTab] = useState<string>('analytics');   // outer: analytics | bpmn | neighborhoods
   const [activeAnalyticsTab, setActiveAnalyticsTab] = useState<string>('dashboard'); // inner Analytics sub-tabs
   const [activeTab, setActiveTab] = useState<string>('diagramFactory');        // inner Factories sub-tabs
 
@@ -253,6 +260,31 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const factoryDragKeyRef = useRef<string | null>(null);
   const factoryDropSideRef = useRef<'before' | 'after'>('after');
   const [factoryDropTarget, setFactoryDropTarget] = useState<{ key: string; side: 'before' | 'after' } | null>(null);
+
+  const loadNeighborhoodTabs = useCallback(async () => {
+    setLoadingNeighborhoodTabs(true);
+    try {
+      const data = await getFactoryNeighborhoods();
+      setNeighborhoodTabs(data);
+      setActiveNeighborhoodTab((current) => {
+        if (current && data.some((item) => item.name === current)) return current;
+        if (data.some((item) => item.name === DEFAULT_NEIGHBORHOOD_NAME)) return DEFAULT_NEIGHBORHOOD_NAME;
+        return data[0]?.name ?? DEFAULT_NEIGHBORHOOD_NAME;
+      });
+    } catch (error: any) {
+      message.error(error.response?.data?.error || error.message || 'Failed to load neighborhoods');
+    } finally {
+      setLoadingNeighborhoodTabs(false);
+    }
+  }, [DEFAULT_NEIGHBORHOOD_NAME, message]);
+
+  useEffect(() => {
+    loadNeighborhoodTabs();
+  }, [loadNeighborhoodTabs]);
+
+  useEffect(() => {
+    setApiNeighborhoodScope(activeNeighborhoodTab);
+  }, [activeNeighborhoodTab]);
 
   const fTabLabel = useCallback((key: string, content: React.ReactNode): React.ReactNode => (
     <div
@@ -345,7 +377,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       };
       const next = [
         { s: span('bpmn', 'bpmn'),                keys: ['bpmn'],                                                                                                               label: 'Canvas',    color: '#0891b2' },
-        { s: span('diagramFactory', 'subdomains'), keys: ['diagramFactory','tasks','applications','servers','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'], label: 'Factories', color: '#4f46e5' },
+        { s: span('diagramFactory', 'subdomains'), keys: ['diagramFactory','tasks','applications','servers','databases','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'], label: 'Neighborhoods', color: '#4f46e5' },
         { s: span('dashboard', 'reports'),         keys: ['dashboard','reports'],                                                                                               label: 'Analytics', color: '#d97706' },
       ].filter(g => g.s).map(g => ({ ...g.s!, label: g.label, color: g.color, keys: g.keys }));
       setGroupLabels(next);
@@ -413,6 +445,50 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     return selectedCaps.some((c) => !savedIds.has(c.capabilityId));
   })();
   const hasUnsavedChanges = isDirty || capsChanged;
+  const quickSaveLabel = activeDiagram ? 'Quick save current diagram to MongoDB' : 'Save current diagram to MongoDB';
+  const getBpmnRibbonGroups = () => [
+    {
+      key: 'file',
+      title: 'File',
+      actions: [
+        { key: 'open', tooltip: 'Open BPMN file', icon: <UploadOutlined />, onClick: handleUploadLocal },
+        { key: 'download', tooltip: 'Download BPMN file', icon: <DownloadOutlined />, onClick: handleDownloadLocal },
+        { key: 'save-server', tooltip: 'Save BPMN file to server', icon: <SaveOutlined />, onClick: handleSaveToServer, disabled: readOnly },
+        {
+          key: 'quick-save-db',
+          tooltip: quickSaveLabel,
+          icon: <CloudUploadOutlined />,
+          onClick: handleQuickSaveDb,
+          disabled: readOnly || !canSaveCurrentDiagramToDb,
+          type: hasUnsavedChanges && activeDiagram ? 'primary' : 'text',
+        },
+        {
+          key: 'save-db',
+          tooltip: 'Open save to MongoDB dialog',
+          icon: <DatabaseOutlined />,
+          onClick: () => setShowSaveDb(true),
+          disabled: readOnly || !canSaveCurrentDiagramToDb,
+        },
+      ],
+    },
+    {
+      key: 'view',
+      title: 'View',
+      actions: [
+        { key: 'zoom-in', tooltip: 'Zoom in', icon: <ZoomInOutlined />, onClick: () => editorRef.current?.zoomIn() },
+        { key: 'zoom-out', tooltip: 'Zoom out', icon: <ZoomOutOutlined />, onClick: () => editorRef.current?.zoomOut() },
+        { key: 'fit', tooltip: 'Fit diagram to view', icon: <ExpandOutlined />, onClick: () => editorRef.current?.fitViewport() },
+      ],
+    },
+    {
+      key: 'resolve',
+      title: 'Resolve',
+      actions: [
+        { key: 'match-apps', tooltip: 'Match applications to reference data', icon: <LaptopOutlined />, onClick: runAppFuzzyMatch },
+        { key: 'match-tasks', tooltip: 'Match tasks to reference data', icon: <AppstoreOutlined />, onClick: runTaskFuzzyMatch },
+      ],
+    },
+  ] as const;
 
   const refresh = useCallback(() => setRefreshTick((t) => t + 1), []);
 
@@ -447,10 +523,10 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       }
       setFactorySearch((prev) => ({ ...prev, [tab]: '' }));
     } else {
-      setFactorySearch((prev) => ({ ...prev, [tab]: searchTerm }));
+      setFactorySearch((prev) => ({ ...prev, [tab]: encodeExactFactorySearch(searchTerm) }));
       setFactoryAdd((prev) => ({ ...prev, [tab]: '' }));
     }
-    setActiveOuterTab('factories');
+    setActiveOuterTab('neighborhoods');
     setActiveTab(tab);
   }, [diagramMeta, activeDiagram, canvasDiagramName]);
 
@@ -482,7 +558,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
     setClickedCapabilityNames([]);
     setFactorySearch((prev) => ({ ...prev, capabilities: clickedName }));
-    setActiveOuterTab('factories');
+    setActiveOuterTab('neighborhoods');
     setActiveTab('capabilities');
   }, []);
 
@@ -960,60 +1036,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         <Space size={4} className="toolbar-actions">
           <div className="toolbar-divider" />
 
-          <Tooltip title="Open .bpmn from computer">
-            <Button type="text" icon={<UploadOutlined />} onClick={handleUploadLocal} className="toolbar-btn" />
-          </Tooltip>
-          <Tooltip title="Download .bpmn to computer">
-            <Button type="text" icon={<DownloadOutlined />} onClick={handleDownloadLocal} className="toolbar-btn" />
-          </Tooltip>
-          <Tooltip title="Save .bpmn to server directory">
-            <Button type="text" icon={<SaveOutlined />} onClick={handleSaveToServer} className="toolbar-btn" disabled={readOnly} />
-          </Tooltip>
-
-          <div className="toolbar-divider" />
-
-          <Tooltip title={activeDiagram ? 'Quick save to MongoDB' : 'Save to MongoDB…'}>
-            <Button
-              type={hasUnsavedChanges && activeDiagram ? 'primary' : 'default'}
-              icon={<CloudUploadOutlined />}
-              onClick={handleQuickSaveDb}
-              className="toolbar-btn"
-              disabled={readOnly || !canSaveCurrentDiagramToDb}
-            />
-          </Tooltip>
-          <Tooltip title="Save to MongoDB…">
-            <Button
-              type="text"
-              icon={<DatabaseOutlined />}
-              onClick={() => setShowSaveDb(true)}
-              className="toolbar-btn"
-              disabled={readOnly || !canSaveCurrentDiagramToDb}
-            />
-          </Tooltip>
-
-          <div className="toolbar-divider" />
-
-          <Tooltip title="Zoom In">
-            <Button type="text" icon={<ZoomInOutlined />} onClick={() => editorRef.current?.zoomIn()} className="toolbar-btn" />
-          </Tooltip>
-          <Tooltip title="Zoom Out">
-            <Button type="text" icon={<ZoomOutOutlined />} onClick={() => editorRef.current?.zoomOut()} className="toolbar-btn" />
-          </Tooltip>
-          <Tooltip title="Fit to View">
-            <Button type="text" icon={<ExpandOutlined />} onClick={() => editorRef.current?.fitViewport()} className="toolbar-btn" />
-          </Tooltip>
-
-          <div className="toolbar-divider" />
-
-          <Tooltip title="Match Applications to Reference Data">
-            <Button type="text" icon={<LaptopOutlined />} onClick={runAppFuzzyMatch} className="toolbar-btn" />
-          </Tooltip>
-          <Tooltip title="Match Task Names to Reference Data">
-            <Button type="text" icon={<AppstoreOutlined />} onClick={runTaskFuzzyMatch} className="toolbar-btn" />
-          </Tooltip>
-
-          <div className="toolbar-divider" />
-
           <Tooltip title={`Signed in as ${user.userId}`}>
             <span className="text-gray-400 text-xs mr-1"><UserOutlined /> {user.userId}</span>
           </Tooltip>
@@ -1072,9 +1094,31 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 key: 'bpmn',
                 label: <span><PartitionOutlined /> BPMN Canvas</span>,
                 children: (
-                  <div className="flex flex-col h-full w-full">
-                    {/* Canvas area */}
-                    <div className="flex-1 min-h-0 relative">
+                  <div className="flex h-full w-full min-h-0">
+                    <div className="bpmn-ribbon w-[92px] shrink-0 px-2 py-3 overflow-y-auto">
+                      <div className="flex flex-col gap-3">
+                        {getBpmnRibbonGroups().map((group) => (
+                          <div key={group.key} className="bpmn-ribbon-group px-2 py-2">
+                            <div className="bpmn-ribbon-title mb-2 text-center text-[10px] font-semibold uppercase tracking-[0.14em]">{group.title}</div>
+                            <div className="flex flex-col items-center gap-1.5">
+                              {group.actions.map((action) => (
+                                <Tooltip key={action.key} title={action.tooltip} placement="right">
+                                  <Button
+                                    type={action.type ?? 'text'}
+                                    icon={action.icon}
+                                    onClick={action.onClick}
+                                    disabled={action.disabled}
+                                    className="bpmn-ribbon-btn flex h-9 w-9 items-center justify-center rounded-lg border-0"
+                                  />
+                                </Tooltip>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 min-h-0 min-w-0 relative">
                       <BpmnEditor
                         ref={editorRef}
                         xml={currentXml}
@@ -1155,20 +1199,45 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 ),
               },
               {
-                key: 'factories',
-                label: <span><ShoppingOutlined /> Factories</span>,
-                children: (
+                key: 'neighborhoods',
+                label: <span><ShoppingOutlined /> Neighborhoods</span>,
+                children: loadingNeighborhoodTabs ? (
+                  <div className="flex min-h-[240px] items-center justify-center">
+                    <Spin size="large" tip="Loading neighborhoods..." />
+                  </div>
+                ) : (
                   <Tabs
-                    className="factory-tabs"
-                    defaultActiveKey="diagramFactory"
-                    activeKey={activeTab}
-                    onChange={setActiveTab}
-                    items={[
+                    activeKey={activeNeighborhoodTab}
+                    onChange={setActiveNeighborhoodTab}
+                    items={(neighborhoodTabs.length ? neighborhoodTabs : [{ name: DEFAULT_NEIGHBORHOOD_NAME, factoryCount: 0 } as FactoryNeighborhoodSummary]).map((neighborhood) => ({
+                      key: neighborhood.name,
+                      label: `${neighborhood.name}${typeof neighborhood.factoryCount === 'number' ? ` (${neighborhood.factoryCount})` : ''}`,
+                      children: (
+                        <div className="flex h-full min-h-0 flex-col">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
+                            <Tag color="blue" style={{ marginInlineEnd: 0 }}>Neighborhood Scope</Tag>
+                            <span style={{ fontWeight: 700, color: '#0f172a' }}>{neighborhood.name}</span>
+                            <span style={{ fontSize: 12, color: '#64748b' }}>All factory data in this view is filtered to the selected neighborhood.</span>
+                            <div style={{ marginLeft: 'auto' }}>
+                              <NeighborhoodFactory
+                                canManageFactories={hasAdminAccess}
+                                fixedNeighborhoodName={neighborhood.name}
+                                onNeighborhoodsChanged={loadNeighborhoodTabs}
+                                mode="action"
+                              />
+                            </div>
+                          </div>
+                          <Tabs
+                            className="factory-tabs"
+                            defaultActiveKey="diagramFactory"
+                            activeKey={activeTab}
+                            onChange={setActiveTab}
+                            items={[
                       {
                         key: 'diagramFactory',
                         label: fTabLabel('diagramFactory', <><DatabaseOutlined /> BPMN Factory</>),
                         children: renderScrollablePane(
-                          <BpmnFactory onOpenDiagram={openDiagramInCanvas} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} refreshTick={refreshTick} userRole={user.role} />,
+                          <BpmnFactory defaultSearch={factorySearch.diagramFactory} onOpenDiagram={openDiagramInCanvas} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }} readOnly={readOnly} refreshTick={refreshTick} userRole={user.role} />,
                         ),
                       },
                       {
@@ -1210,7 +1279,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         key: 'actors',
                         label: fTabLabel('actors', <><UserOutlined /> Actor Factory</>),
                         children: renderScrollablePane(
-                          <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                          <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} defaultSearch={factorySearch.actors} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
                         ),
                       },
                       {
@@ -1255,8 +1324,12 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                           <ReferenceFactory collection="subdomains" title="Subdomain" defaultSearch={factorySearch.subdomains} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
                         ),
                       },
-                    ].sort((a, b) => factoryTabOrder.indexOf(a.key) - factoryTabOrder.indexOf(b.key))
-                    .flatMap(item => item.key === 'servers' ? [tabGroupSep('sep-factory-servers', 'Servers'), item] : [item])}
+                            ].sort((a, b) => factoryTabOrder.indexOf(a.key) - factoryTabOrder.indexOf(b.key))
+                            .flatMap(item => item.key === 'servers' ? [tabGroupSep('sep-factory-servers', 'Servers'), item] : [item])}
+                          />
+                        </div>
+                      ),
+                    }))}
                   />
                 ),
               },

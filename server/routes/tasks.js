@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
 const { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
+const { getNeighborhoodName, buildNeighborhoodFilter, withNeighborhood } = require('../utils/neighborhoodScope');
 
 const APPLICATION_FIELDS = [
   'name',
@@ -48,15 +49,16 @@ function duplicateErrorMessage(err) {
 const refModels = { businessFlows: BusinessFlow, products: Product, applications: Application, actors: Actor, channels: Channel, domains: Domain, subdomains: Subdomain, linesOfBusiness: LineOfBusiness };
 
 router.get('/reference', async (_req, res) => {
+  const req = _req;
   const [businessFlows, products, applications, actors, channels, domains, subdomains, linesOfBusiness] = await Promise.all([
-    BusinessFlow.find().sort('name').lean(),
-    Product.find().sort('name').lean(),
-    Application.find().sort('name').lean(),
-    Actor.find().sort('name').lean(),
-    Channel.find().sort('name').lean(),
-    Domain.find().sort('name').lean(),
-    Subdomain.find().sort('name').lean(),
-    LineOfBusiness.find().sort('name').lean(),
+    BusinessFlow.find(withNeighborhood(req)).sort('name').lean(),
+    Product.find(withNeighborhood(req)).sort('name').lean(),
+    Application.find(withNeighborhood(req)).sort('name').lean(),
+    Actor.find(withNeighborhood(req)).sort('name').lean(),
+    Channel.find(withNeighborhood(req)).sort('name').lean(),
+    Domain.find(withNeighborhood(req)).sort('name').lean(),
+    Subdomain.find(withNeighborhood(req)).sort('name').lean(),
+    LineOfBusiness.find(withNeighborhood(req)).sort('name').lean(),
   ]);
   res.json({ businessFlows, products, applications, actors, channels, domains, subdomains, linesOfBusiness });
 });
@@ -66,7 +68,12 @@ router.get('/reference/applications/by-correlation/:correlationId', async (req, 
   const correlationId = String(req.params.correlationId || '').trim();
   if (!correlationId) return res.status(400).json({ error: 'correlationId is required' });
 
-  const item = await Application.findOne({ correlationId }).lean();
+  const item = await Application.findOne({
+    $and: [
+      buildNeighborhoodFilter(getNeighborhoodName(req)),
+      { correlationId },
+    ],
+  }).lean();
   if (!item) return res.status(404).json({ error: 'Application not found' });
   res.json(item);
 });
@@ -74,7 +81,7 @@ router.get('/reference/applications/by-correlation/:correlationId', async (req, 
 router.get('/reference/:collection', async (req, res) => {
   const Model = refModels[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
-  const items = await Model.find().sort('name').lean();
+  const items = await Model.find(withNeighborhood(req)).sort('name').lean();
   res.json(items);
 });
 
@@ -84,8 +91,8 @@ router.post('/reference/:collection', async (req, res) => {
   try {
     const isApplications = req.params.collection === 'applications';
     const data = isApplications
-      ? pickFields(req.body, APPLICATION_FIELDS)
-      : { name: req.body.name };
+      ? { neighborhoodName: getNeighborhoodName(req), ...pickFields(req.body, APPLICATION_FIELDS) }
+      : { neighborhoodName: getNeighborhoodName(req), name: req.body.name };
 
     if (!isApplications) {
       if (req.body.owner !== undefined) data.owner = req.body.owner;
@@ -111,7 +118,12 @@ router.put('/reference/:collection/:id', async (req, res) => {
 
     if (!isApplications && req.body.owner !== undefined) update.owner = req.body.owner;
 
-    const item = await Model.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+    const item = await Model.findOneAndUpdate({
+      $and: [
+        buildNeighborhoodFilter(getNeighborhoodName(req)),
+        { _id: req.params.id },
+      ],
+    }, update, { new: true, runValidators: true });
     if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);
   } catch (err) {
@@ -123,7 +135,12 @@ router.put('/reference/:collection/:id', async (req, res) => {
 router.delete('/reference/:collection/:id', async (req, res) => {
   const Model = refModels[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
-  const item = await Model.findByIdAndDelete(req.params.id);
+  const item = await Model.findOneAndDelete({
+    $and: [
+      buildNeighborhoodFilter(getNeighborhoodName(req)),
+      { _id: req.params.id },
+    ],
+  });
   if (!item) return res.status(404).json({ error: 'Not found' });
   res.json({ success: true });
 });
@@ -133,28 +150,40 @@ router.delete('/reference/:collection/:id', async (req, res) => {
 // GET /api/tasks/names — distinct task names for autocomplete (must be before /:id)
 // Optional ?businessFlow=X to scope to a specific business flow
 router.get('/names', async (req, res) => {
-  const filter = req.query.businessFlow ? { businessFlow: req.query.businessFlow } : {};
+  const filter = withNeighborhood(req, req.query.businessFlow ? { businessFlow: req.query.businessFlow } : {});
   const names = await Task.distinct('name', filter);
   res.json(names.sort());
 });
 
 // List tasks (with optional filters)
 router.get('/', async (req, res) => {
-  const filter = {};
-  if (req.query.businessFlow) filter.businessFlow = req.query.businessFlow;
-  if (req.query.product) filter.product = req.query.product;
-  if (req.query.actor) filter.actor = req.query.actor;
-  if (req.query.channel) filter.channel = req.query.channel;
-  if (req.query.domain) filter.domain = req.query.domain;
-  if (req.query.search) filter.name = { $regex: req.query.search, $options: 'i' };
+  const extraFilter = {};
+  if (req.query.businessFlow) extraFilter.businessFlow = req.query.businessFlow;
+  if (req.query.product) extraFilter.product = req.query.product;
+  if (req.query.actor) extraFilter.actor = req.query.actor;
+  if (req.query.channel) extraFilter.channel = req.query.channel;
+  if (req.query.domain) extraFilter.domain = req.query.domain;
+  if (req.query.search) {
+    if (String(req.query.exact || '') === '1') {
+      extraFilter.name = String(req.query.search);
+    } else {
+      extraFilter.name = { $regex: req.query.search, $options: 'i' };
+    }
+  }
 
+  const filter = withNeighborhood(req, extraFilter);
   const tasks = await Task.find(filter).sort({ businessFlow: 1, sequence: 1, name: 1 }).lean();
   res.json(tasks);
 });
 
 // Get single task
 router.get('/:id', async (req, res) => {
-  const task = await Task.findById(req.params.id).lean();
+  const task = await Task.findOne({
+    $and: [
+      buildNeighborhoodFilter(getNeighborhoodName(req)),
+      { _id: req.params.id },
+    ],
+  }).lean();
   if (!task) return res.status(404).json({ error: 'Task not found' });
   res.json(task);
 });
@@ -162,7 +191,7 @@ router.get('/:id', async (req, res) => {
 // Create task
 router.post('/', async (req, res) => {
   try {
-    const task = await Task.create(req.body);
+    const task = await Task.create({ ...req.body, neighborhoodName: getNeighborhoodName(req) });
     res.status(201).json(task);
   } catch (err) {
     if (err.code === 11000) {
@@ -175,7 +204,12 @@ router.post('/', async (req, res) => {
 // Update task
 router.put('/:id', async (req, res) => {
   try {
-    const task = await Task.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true, runValidators: true });
+    const task = await Task.findOneAndUpdate({
+      $and: [
+        buildNeighborhoodFilter(getNeighborhoodName(req)),
+        { _id: req.params.id },
+      ],
+    }, { $set: req.body }, { new: true, runValidators: true });
     if (!task) return res.status(404).json({ error: 'Task not found' });
     res.json(task);
   } catch (err) {
@@ -188,7 +222,12 @@ router.put('/:id', async (req, res) => {
 
 // Delete task
 router.delete('/:id', async (req, res) => {
-  const task = await Task.findByIdAndDelete(req.params.id);
+  const task = await Task.findOneAndDelete({
+    $and: [
+      buildNeighborhoodFilter(getNeighborhoodName(req)),
+      { _id: req.params.id },
+    ],
+  });
   if (!task) return res.status(404).json({ error: 'Task not found' });
   res.json({ success: true });
 });
@@ -201,7 +240,7 @@ router.post('/validate', async (req, res) => {
   if (!Array.isArray(taskNames)) return res.status(400).json({ error: 'taskNames must be an array' });
 
   // Get distinct task names scoped to the businessFlow if provided, otherwise all
-  const filter = businessFlow ? { businessFlow } : {};
+  const filter = withNeighborhood(req, businessFlow ? { businessFlow } : {});
   const knownNames = await Task.distinct('name', filter);
   const knownSet = new Set(knownNames.map((n) => n.toLowerCase().trim()));
 

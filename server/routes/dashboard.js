@@ -4,17 +4,54 @@ const Task = require('../models/Task');
 const { Application, BusinessFlow } = require('../models/ReferenceData');
 const Diagram = require('../models/Diagram');
 const Server = require('../models/Server');
+const DatabaseInstance = require('../models/DatabaseInstance');
+const { getNeighborhoodName, withNeighborhood } = require('../utils/neighborhoodScope');
+
+function buildNeighborhoodApplicationKeys(applications) {
+  return {
+    correlationIds: applications.map((app) => normalizeIdentifier(app?.correlationId)).filter(Boolean),
+    acronyms: applications.map((app) => normalizeIdentifier(app?.acronym)).filter(Boolean),
+    names: applications.map((app) => normalizeIdentifier(app?.name)).filter(Boolean),
+  };
+}
+
+function buildServerScopeQuery(applications) {
+  const keys = buildNeighborhoodApplicationKeys(applications);
+  const orConditions = [
+    keys.correlationIds.length ? { 'linkedApplications.correlationId': { $in: keys.correlationIds } } : null,
+    keys.acronyms.length ? { 'linkedApplications.acronym': { $in: keys.acronyms } } : null,
+    keys.names.length ? { 'linkedApplications.name': { $in: keys.names } } : null,
+  ].filter(Boolean);
+
+  return orConditions.length ? { $or: orConditions } : { _id: null };
+}
+
+function buildDatabaseScopeQuery(applications) {
+  const keys = buildNeighborhoodApplicationKeys(applications);
+  const orConditions = [
+    keys.correlationIds.length ? { applicationCorrelationId: { $in: keys.correlationIds } } : null,
+    keys.correlationIds.length ? { 'linkedApplications.correlationId': { $in: keys.correlationIds } } : null,
+    keys.acronyms.length ? { applicationAcronym: { $in: keys.acronyms } } : null,
+    keys.acronyms.length ? { 'linkedApplications.acronym': { $in: keys.acronyms } } : null,
+    keys.names.length ? { applicationName: { $in: keys.names } } : null,
+    keys.names.length ? { 'linkedApplications.name': { $in: keys.names } } : null,
+  ].filter(Boolean);
+
+  return orConditions.length ? { $or: orConditions } : { _id: null };
+}
 
 /**
  * GET /api/dashboard/task-risk
  * Returns aggregated risk/compliance profile for each task,
  * joining task.applications → Application collection attributes.
  */
-router.get('/task-risk', async (_req, res) => {
+router.get('/task-risk', async (req, res) => {
   try {
-    const [tasks, apps] = await Promise.all([
-      Task.find().lean(),
-      Application.find().lean(),
+    const apps = await Application.find(withNeighborhood(req)).lean();
+    const [tasks, servers, databases] = await Promise.all([
+      Task.find(withNeighborhood(req)).lean(),
+      Server.find(buildServerScopeQuery(apps), { linkedApplications: 1, healthNotes: 1 }).lean(),
+      DatabaseInstance.find(buildDatabaseScopeQuery(apps), { applicationCorrelationId: 1, applicationName: 1, applicationAcronym: 1, linkedApplications: 1, healthNotes: 1 }).lean(),
     ]);
 
     // Build app lookup by lowercase name
@@ -22,12 +59,14 @@ router.get('/task-risk', async (_req, res) => {
     for (const app of apps) {
       appMap.set(app.name.toLowerCase().trim(), app);
     }
+    const appInfrastructureMap = buildApplicationInfrastructureMap(apps, servers, databases);
 
     // Aggregate per task
     const taskProfiles = tasks.map((task) => {
       const resolvedApps = (task.applications || [])
         .map((name) => appMap.get(name.toLowerCase().trim()))
         .filter(Boolean);
+      const infrastructure = sumInfrastructureForApps(resolvedApps, appInfrastructureMap);
 
       return {
         _id: task._id,
@@ -49,6 +88,8 @@ router.get('/task-risk', async (_req, res) => {
         pciData: countYN(resolvedApps, 'pciData'),
         pciDataStored: countYN(resolvedApps, 'pciDataStored'),
         soxFsa: countYN(resolvedApps, 'soxFsa'),
+        serverVulnerabilities: infrastructure.serverVulnerabilities,
+        dbVulnerabilities: infrastructure.dbVulnerabilities,
         // Composite risk score (higher = more regulated)
         riskScore: computeRiskScore(resolvedApps),
       };
@@ -64,17 +105,20 @@ router.get('/task-risk', async (_req, res) => {
  * GET /api/dashboard/flow-risk
  * Aggregates task-level data up to business flow level.
  */
-router.get('/flow-risk', async (_req, res) => {
+router.get('/flow-risk', async (req, res) => {
   try {
-    const [tasks, apps] = await Promise.all([
-      Task.find().lean(),
-      Application.find().lean(),
+    const apps = await Application.find(withNeighborhood(req)).lean();
+    const [tasks, servers, databases] = await Promise.all([
+      Task.find(withNeighborhood(req)).lean(),
+      Server.find(buildServerScopeQuery(apps), { linkedApplications: 1, healthNotes: 1 }).lean(),
+      DatabaseInstance.find(buildDatabaseScopeQuery(apps), { applicationCorrelationId: 1, applicationName: 1, applicationAcronym: 1, linkedApplications: 1, healthNotes: 1 }).lean(),
     ]);
 
     const appMap = new Map();
     for (const app of apps) {
       appMap.set(app.name.toLowerCase().trim(), app);
     }
+    const appInfrastructureMap = buildApplicationInfrastructureMap(apps, servers, databases);
 
     // Group tasks by businessFlow
     const flowMap = new Map();
@@ -97,6 +141,7 @@ router.get('/flow-risk', async (_req, res) => {
       const resolvedApps = [...allAppNames]
         .map((n) => appMap.get(n))
         .filter(Boolean);
+      const infrastructure = sumInfrastructureForApps(resolvedApps, appInfrastructureMap);
 
       flowProfiles.push({
         name: flowName,
@@ -114,6 +159,8 @@ router.get('/flow-risk', async (_req, res) => {
         pciData: countYN(resolvedApps, 'pciData'),
         pciDataStored: countYN(resolvedApps, 'pciDataStored'),
         soxFsa: countYN(resolvedApps, 'soxFsa'),
+        serverVulnerabilities: infrastructure.serverVulnerabilities,
+        dbVulnerabilities: infrastructure.dbVulnerabilities,
         riskScore: computeRiskScore(resolvedApps),
       });
     }
@@ -130,9 +177,9 @@ router.get('/flow-risk', async (_req, res) => {
  * GET /api/dashboard/capability-flow-relationships
  * Builds capability-to-business-flow relationship strengths from diagram data.
  */
-router.get('/capability-flow-relationships', async (_req, res) => {
+router.get('/capability-flow-relationships', async (req, res) => {
   try {
-    const diagrams = await Diagram.find({}, { name: 1, businessFlow: 1, capabilities: 1 }).lean();
+    const diagrams = await Diagram.find(withNeighborhood(req), { name: 1, businessFlow: 1, capabilities: 1 }).lean();
 
     const capabilityCounts = new Map();
     const flowCounts = new Map();
@@ -195,14 +242,14 @@ router.get('/capability-flow-relationships', async (_req, res) => {
  * Returns a hierarchical drilldown tree:
  * LOB -> Channel -> Product -> Domain -> Subdomain -> Business Flow -> Task -> Application
  */
-router.get('/lob-drilldown-tree', async (_req, res) => {
+router.get('/lob-drilldown-tree', async (req, res) => {
   try {
     const [diagrams, applications] = await Promise.all([
       Diagram.find(
-        {},
+        withNeighborhood(req),
         { lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1, businessFlow: 1, name: 1, tasks: 1 }
       ).lean(),
-      Application.find({}, { acronym: 1, correlationId: 1 }).lean(),
+      Application.find(withNeighborhood(req), { acronym: 1, correlationId: 1 }).lean(),
     ]);
 
     const appCorrelationByIdentifier = new Map();
@@ -281,10 +328,11 @@ router.get('/lob-drilldown-tree', async (_req, res) => {
  * GET /api/dashboard/server-location-points
  * Returns lightweight server data needed for geographic map rendering.
  */
-router.get('/server-location-points', async (_req, res) => {
+router.get('/server-location-points', async (req, res) => {
   try {
+    const apps = await Application.find(withNeighborhood(req)).lean();
     const rows = await Server.find(
-      {},
+      buildServerScopeQuery(apps),
       {
         name: 1,
         hostName: 1,
@@ -367,6 +415,83 @@ function countYN(apps, field) {
   return { yes, no, unknown };
 }
 
+function normalizeIdentifier(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function countVulnerabilityItems(healthNotes) {
+  return (Array.isArray(healthNotes) ? healthNotes : []).reduce((sum, note) => {
+    const vulnerabilities = Array.isArray(note?.vulnerabilities) ? note.vulnerabilities.filter(Boolean) : [];
+    return sum + vulnerabilities.length;
+  }, 0);
+}
+
+function buildApplicationInfrastructureMap(apps, servers, databases) {
+  const appByIdentifier = new Map();
+  const infrastructureByAppId = new Map();
+
+  for (const app of apps) {
+    const appId = String(app._id);
+    infrastructureByAppId.set(appId, { serverVulnerabilities: 0, dbVulnerabilities: 0 });
+    for (const value of [app.name, app.acronym, app.correlationId]) {
+      const key = normalizeIdentifier(value);
+      if (key && !appByIdentifier.has(key)) appByIdentifier.set(key, appId);
+    }
+  }
+
+  const addCounts = (appIds, field, count) => {
+    if (!count) return;
+    for (const appId of appIds) {
+      const row = infrastructureByAppId.get(appId);
+      if (!row) continue;
+      row[field] += count;
+    }
+  };
+
+  for (const server of servers) {
+    const appIds = new Set();
+    for (const linked of server.linkedApplications || []) {
+      for (const value of [linked?.name, linked?.acronym, linked?.correlationId]) {
+        const appId = appByIdentifier.get(normalizeIdentifier(value));
+        if (appId) appIds.add(appId);
+      }
+    }
+    addCounts(appIds, 'serverVulnerabilities', countVulnerabilityItems(server.healthNotes));
+  }
+
+  for (const database of databases) {
+    const appIds = new Set();
+    for (const value of [database.applicationName, database.applicationAcronym, database.applicationCorrelationId]) {
+      const appId = appByIdentifier.get(normalizeIdentifier(value));
+      if (appId) appIds.add(appId);
+    }
+    for (const linked of database.linkedApplications || []) {
+      for (const value of [linked?.name, linked?.acronym, linked?.correlationId]) {
+        const appId = appByIdentifier.get(normalizeIdentifier(value));
+        if (appId) appIds.add(appId);
+      }
+    }
+    addCounts(appIds, 'dbVulnerabilities', countVulnerabilityItems(database.healthNotes));
+  }
+
+  return infrastructureByAppId;
+}
+
+function sumInfrastructureForApps(apps, infrastructureMap) {
+  const totals = { serverVulnerabilities: 0, dbVulnerabilities: 0 };
+  const seen = new Set();
+  for (const app of apps) {
+    const appId = String(app?._id || '');
+    if (!appId || seen.has(appId)) continue;
+    seen.add(appId);
+    const row = infrastructureMap.get(appId);
+    if (!row) continue;
+    totals.serverVulnerabilities += row.serverVulnerabilities || 0;
+    totals.dbVulnerabilities += row.dbVulnerabilities || 0;
+  }
+  return totals;
+}
+
 function computeRiskScore(apps) {
   let score = 0;
   for (const app of apps) {
@@ -397,11 +522,11 @@ function computeRiskScore(apps) {
  * - points: array of { appName, businessCriticality, lifecycleStatus, task, businessFlow, taskOrder }
  * - taskOrders: { [diagramName]: string[] } — tasks in execution order per diagram
  */
-router.get('/flow-3d', async (_req, res) => {
+router.get('/flow-3d', async (req, res) => {
   try {
     const [apps, diagrams] = await Promise.all([
-      Application.find().lean(),
-      Diagram.find({}, { name: 1, tasks: 1 }).lean(),
+      Application.find(withNeighborhood(req)).lean(),
+      Diagram.find(withNeighborhood(req), { name: 1, tasks: 1 }).lean(),
     ]);
 
     // App lookup by lowercase name
@@ -514,11 +639,11 @@ router.get('/flow-3d', async (_req, res) => {
  * One point per task × year combination (summed across all apps in that task).
  * Source: businessflows collection → tasks[].applications[].annualCosts[]
  */
-router.get('/flow-cost-3d', async (_req, res) => {
+router.get('/flow-cost-3d', async (req, res) => {
   try {
     const db = require('mongoose').connection;
     const bfDocs = await db.collection('businessflows')
-      .find({ 'tasks.0': { $exists: true } })
+      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
       .toArray();
 
     const businessFlows = [];
@@ -575,7 +700,7 @@ router.get('/cost-by-year', async (req, res) => {
   try {
     const db = require('mongoose').connection;
     const bfDocs = await db.collection('businessflows')
-      .find({ 'tasks.0': { $exists: true } })
+      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
       .toArray();
 
     const flowMap = new Map();
@@ -629,9 +754,9 @@ router.get('/capability-cost-by-year', async (req, res) => {
     const db = require('mongoose').connection;
     const [bfDocs, diagramDocs] = await Promise.all([
       db.collection('businessflows')
-        .find({ 'tasks.0': { $exists: true } })
+        .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
         .toArray(),
-      Diagram.find({}, { name: 1, businessFlow: 1, capabilities: 1 }).lean(),
+      Diagram.find(withNeighborhood(req), { name: 1, businessFlow: 1, capabilities: 1 }).lean(),
     ]);
 
     const flowCostMap = new Map();

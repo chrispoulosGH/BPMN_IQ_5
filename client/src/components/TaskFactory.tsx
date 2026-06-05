@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant
 import type { TaskRecord, TaskCreatePayload, ReferenceData, TaskAddData } from '../types';
 import { getTasks, getTaskReference, createTask, updateTask, deleteTask } from '../api';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
+import { parseFactorySearch } from '../utils/factorySearch';
 
 interface TaskFactoryProps {
   defaultSearch?: string;
@@ -58,6 +59,11 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
     setLoading(true);
     try {
       const cleanFilters = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+      const parsedSearch = parseFactorySearch(cleanFilters.search);
+      if (parsedSearch.term) {
+        cleanFilters.search = parsedSearch.term;
+        if (parsedSearch.exact) cleanFilters.exact = '1';
+      }
       const data = await getTasks(cleanFilters);
       setTasks(data);
     } catch (e: any) {

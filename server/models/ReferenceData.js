@@ -1,12 +1,16 @@
 const mongoose = require('mongoose');
 const { VALID_STATES } = require('../services/stateTransitions');
+const { DEFAULT_NEIGHBORHOOD_NAME } = require('../utils/neighborhoodScope');
 
 // Shared schema for simple name-only reference collections
 const refSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true, trim: true },
+  neighborhoodName: { type: String, required: true, trim: true, default: DEFAULT_NEIGHBORHOOD_NAME, index: true },
+  name: { type: String, required: true, trim: true },
   owner: { type: String, trim: true, default: null },
   state: { type: String, enum: VALID_STATES, default: 'published' },
 }, { timestamps: true });
+
+refSchema.index({ neighborhoodName: 1, name: 1 }, { unique: true });
 
 // Sub-schemas for BusinessFlow task→application cost embedding
 const annualCostSchema = new mongoose.Schema({
@@ -28,15 +32,19 @@ const bfTaskSchema = new mongoose.Schema({
 
 // Richer schema for BusinessFlow (extends refSchema fields)
 const businessFlowSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true, trim: true },
+  neighborhoodName: { type: String, required: true, trim: true, default: DEFAULT_NEIGHBORHOOD_NAME, index: true },
+  name: { type: String, required: true, trim: true },
   owner: { type: String, trim: true, default: null },
   state: { type: String, enum: VALID_STATES, default: 'published' },
   tasks: [bfTaskSchema],
 }, { timestamps: true });
 
+businessFlowSchema.index({ neighborhoodName: 1, name: 1 }, { unique: true });
+
 // Richer schema for Application (ITAP data)
 const applicationSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true, trim: true },
+  neighborhoodName: { type: String, required: true, trim: true, default: DEFAULT_NEIGHBORHOOD_NAME, index: true },
+  name: { type: String, required: true, trim: true },
   correlationId: {
     type: String,
     trim: true,
@@ -69,11 +77,13 @@ const applicationSchema = new mongoose.Schema({
   state: { type: String, enum: VALID_STATES, default: 'published' },
 }, { timestamps: true });
 
+applicationSchema.index({ neighborhoodName: 1, name: 1 }, { unique: true });
+
 applicationSchema.index(
-  { correlationId: 1 },
+  { neighborhoodName: 1, correlationId: 1 },
   {
     unique: true,
-    partialFilterExpression: { correlationId: { $type: 'string', $ne: '' } },
+    partialFilterExpression: { correlationId: { $type: 'string' } },
   }
 );
 

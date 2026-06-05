@@ -3,6 +3,7 @@ import { Table, Input, Button, App as AntApp, Space, Tooltip, Tag, Select, Typog
 import { EditOutlined, DeleteOutlined, SearchOutlined, FolderOpenOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { DiagramMeta } from '../types';
 import { getDiagrams, getDiagram, deleteDiagram, updateDiagram, batchImportDiagrams, transitionState } from '../api';
+import { matchesFactorySearch } from '../utils/factorySearch';
 
 // State transition rules (mirrors server/services/stateTransitions.js)
 const STATE_TRANSITIONS = [
@@ -59,6 +60,7 @@ function ResizableHeaderCell({ width, onResize, ...restProps }: any) {
 }
 
 interface BpmnFactoryProps {
+  defaultSearch?: string;
   onOpenDiagram?: (id: string) => void;
   onNavigateToFactory?: (tab: string, search: string) => void;
   readOnly?: boolean;
@@ -66,7 +68,7 @@ interface BpmnFactoryProps {
   userRole?: string | null;
 }
 
-export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOnly, refreshTick, userRole }: BpmnFactoryProps) {
+export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateToFactory, readOnly, refreshTick, userRole }: BpmnFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const canImportExport = userRole === 'Administrator' || userRole === 'Super';
   const [diagrams, setDiagrams] = useState<DiagramMeta[]>([]);
@@ -94,6 +96,10 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
   }, [message]);
 
   useEffect(() => { loadDiagrams(); }, [loadDiagrams, refreshTick]);
+
+  useEffect(() => {
+    if (defaultSearch !== undefined) setSearch(defaultSearch);
+  }, [defaultSearch]);
 
   // Reset table filter count when search or data changes
   useEffect(() => { setTableFilteredCount(null); }, [search, diagrams]);
@@ -222,24 +228,20 @@ export default function BpmnFactory({ onOpenDiagram, onNavigateToFactory, readOn
 
   const filtered = search
     ? diagrams.filter((d) => {
-        const s = search.toLowerCase();
-        return (
-          (d.name || '').toLowerCase().includes(s) ||
-          (d.lineOfBusiness || '').toLowerCase().includes(s) ||
-          (d.channel || '').toLowerCase().includes(s) ||
-          (d.domain || '').toLowerCase().includes(s) ||
-          (d.subdomain || '').toLowerCase().includes(s) ||
-          (d.product || '').toLowerCase().includes(s) ||
-          (d.businessFlow || '').toLowerCase().includes(s) ||
-          (d.status || '').toLowerCase().includes(s) ||
-          (d.createdBy || '').toLowerCase().includes(s) ||
-          (d.updatedBy || '').toLowerCase().includes(s) ||
-          (d.sourcedFrom || '').toLowerCase().includes(s) ||
-          (d.tasks || []).some((t) =>
-            (t.name || '').toLowerCase().includes(s) ||
-            (t.applications || []).some((a) => (a.name || '').toLowerCase().includes(s))
-          )
-        );
+        return matchesFactorySearch([
+          d.name,
+          d.lineOfBusiness,
+          d.channel,
+          d.domain,
+          d.subdomain,
+          d.product,
+          d.businessFlow,
+          d.status,
+          d.createdBy,
+          d.updatedBy,
+          d.sourcedFrom,
+          ...(d.tasks || []).flatMap((t) => [t.name, ...(t.applications || []).map((a) => a.name)]),
+        ], search);
       })
     : diagrams;
 

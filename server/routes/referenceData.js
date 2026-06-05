@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, BusinessCapability } = require('../models/ReferenceData');
+const { getNeighborhoodName, buildNeighborhoodFilter, withNeighborhood } = require('../utils/neighborhoodScope');
 
 const models = {
   applications: Application,
@@ -17,7 +18,7 @@ const models = {
 router.get('/:collection', async (req, res) => {
   const Model = models[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
-  const items = await Model.find().sort('name').lean();
+  const items = await Model.find(withNeighborhood(req)).sort('name').lean();
   res.json(items);
 });
 
@@ -33,12 +34,12 @@ router.post('/:collection', async (req, res) => {
       data = { name: name.trim(), domainName: req.body.domainName, aspect: req.body.aspect, briefDescription: req.body.briefDescription, tmfVersion: req.body.tmfVersion };
     } else if (req.params.collection === 'applications') {
       const APP_FIELDS = ['acronym','correlationId','shortDescription','applicationType','businessCriticality','discoverySource','installType','cpniIndicator','customerFacing','handleSpi','internetFacing','pciData','soxFsa','storeSpi','applPurpose','lifecycle','lifecycleStatus','businessPurpose','pciDataStored','userInterface','owner'];
-      data = { name: name.trim(), state: req.body.state || 'draft' };
+      data = { neighborhoodName: getNeighborhoodName(req), name: name.trim(), state: req.body.state || 'draft' };
       for (const f of APP_FIELDS) {
         if (f in req.body) data[f] = req.body[f] || null;
       }
     } else {
-      data = { name: name.trim() };
+      data = { neighborhoodName: getNeighborhoodName(req), name: name.trim() };
     }
     const item = await Model.create(data);
     res.status(201).json(item);
@@ -67,7 +68,12 @@ router.put('/:collection/:id', async (req, res) => {
     } else {
       update = { name: name.trim() };
     }
-    const item = await Model.findByIdAndUpdate(req.params.id, update, { new: true });
+    const item = await Model.findOneAndUpdate({
+      $and: [
+        buildNeighborhoodFilter(getNeighborhoodName(req)),
+        { _id: req.params.id },
+      ],
+    }, update, { new: true });
     if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);
   } catch (e) {
@@ -80,7 +86,12 @@ router.put('/:collection/:id', async (req, res) => {
 router.delete('/:collection/:id', async (req, res) => {
   const Model = models[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
-  const item = await Model.findByIdAndDelete(req.params.id);
+  const item = await Model.findOneAndDelete({
+    $and: [
+      buildNeighborhoodFilter(getNeighborhoodName(req)),
+      { _id: req.params.id },
+    ],
+  });
   if (!item) return res.status(404).json({ error: 'Not found' });
   res.json({ success: true });
 });

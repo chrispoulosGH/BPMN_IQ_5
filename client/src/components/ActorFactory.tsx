@@ -3,15 +3,17 @@ import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form, Tag, 
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { getActors, createActor, updateActor, deleteActor, type ActorItem } from '../api';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
+import { matchesFactorySearch } from '../utils/factorySearch';
 
 interface ActorFactoryProps {
+  defaultSearch?: string;
   defaultAdd?: string;
   onItemAdded?: () => void;
   readOnly?: boolean;
   userRole?: string | null;
 }
 
-export default function ActorFactory({ defaultAdd, onItemAdded, readOnly, userRole }: ActorFactoryProps) {
+export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, readOnly, userRole }: ActorFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ActorItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -34,6 +36,10 @@ export default function ActorFactory({ defaultAdd, onItemAdded, readOnly, userRo
   }, [message]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
+
+  useEffect(() => {
+    if (defaultSearch !== undefined) setSearch(defaultSearch);
+  }, [defaultSearch]);
 
   // Open Add modal when navigated from BpmnEditor properties panel
   useEffect(() => {
@@ -104,9 +110,7 @@ export default function ActorFactory({ defaultAdd, onItemAdded, readOnly, userRo
 
   const filtered = search
     ? items.filter((i) =>
-        i.name.toLowerCase().includes(search.toLowerCase()) ||
-        (i.role || '').toLowerCase().includes(search.toLowerCase()) ||
-        (i.description || '').toLowerCase().includes(search.toLowerCase())
+        matchesFactorySearch([i.name, i.role, i.description], search)
       )
     : items;
 

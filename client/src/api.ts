@@ -1,8 +1,16 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem } from './types';
-export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem };
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow } from './types';
+export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow };
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
+
+export const setApiNeighborhoodScope = (neighborhoodName?: string | null) => {
+  if (neighborhoodName && neighborhoodName.trim()) {
+    api.defaults.headers.common['x-neighborhood-name'] = neighborhoodName.trim();
+    return;
+  }
+  delete api.defaults.headers.common['x-neighborhood-name'];
+};
 
 // Notify listeners when session expires (401)
 let onSessionExpired: (() => void) | null = null;
@@ -142,6 +150,35 @@ export const getApplicationDatabases = (correlationId: string): Promise<Database
 
 export const getDatabase = (id: string): Promise<DatabaseItem> =>
   api.get(`/databases/${encodeURIComponent(id)}`).then((r) => r.data);
+
+// ── Custom Factories / Neighborhoods ──────────────────────
+export const getFactoryNeighborhoods = (): Promise<FactoryNeighborhoodSummary[]> =>
+  api.get('/custom-factories/neighborhoods').then((r) => r.data);
+
+export const createFactoryNeighborhood = (name: string): Promise<FactoryNeighborhoodSummary> =>
+  api.post('/custom-factories/neighborhoods', { name }).then((r) => r.data);
+
+export const getCustomFactories = (neighborhoodName?: string): Promise<CustomFactory[]> =>
+  api.get('/custom-factories', { params: neighborhoodName ? { neighborhoodName } : undefined }).then((r) => r.data);
+
+export const getCustomFactory = (id: string): Promise<CustomFactory> =>
+  api.get(`/custom-factories/${encodeURIComponent(id)}`).then((r) => r.data);
+
+export const uploadCustomFactory = (params: { neighborhoodName: string; factoryName: string; file: File }): Promise<CustomFactory> => {
+  const body = new FormData();
+  body.append('neighborhoodName', params.neighborhoodName);
+  body.append('factoryName', params.factoryName);
+  body.append('file', params.file);
+  return api.post('/custom-factories/upload', body, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then((r) => r.data);
+};
+
+export const updateCustomFactoryRow = (factoryId: string, rowId: string, payload: { values: Record<string, unknown>; owner?: string; state?: string }): Promise<CustomFactory> =>
+  api.put(`/custom-factories/${encodeURIComponent(factoryId)}/rows/${encodeURIComponent(rowId)}`, payload).then((r) => r.data);
+
+export const deleteCustomFactoryRow = (factoryId: string, rowId: string): Promise<CustomFactory> =>
+  api.delete(`/custom-factories/${encodeURIComponent(factoryId)}/rows/${encodeURIComponent(rowId)}`).then((r) => r.data);
 
 // ── Capabilities CRUD (for CapabilitiesFactory) ─────────────
 export const getCapabilities = (): Promise<CapabilityItem[]> =>

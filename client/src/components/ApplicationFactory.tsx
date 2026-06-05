@@ -5,6 +5,7 @@ import type { ApplicationItem, ServerItem } from '../types';
 import { getRefItems, createApplication, updateApplication, getApplicationServers } from '../api';
 import type { ColumnsType } from 'antd/es/table';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
+import { matchesFactorySearch } from '../utils/factorySearch';
 
 interface ApplicationFactoryProps {
   defaultSearch?: string;
@@ -113,13 +114,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
 
   const filtered = search
     ? items.filter((i) => {
-        const s = search.toLowerCase();
-        return (
-          i.name.toLowerCase().includes(s) ||
-          (i.acronym && i.acronym.toLowerCase().includes(s)) ||
-          (i.correlationId && i.correlationId.toLowerCase().includes(s)) ||
-          (i.shortDescription && i.shortDescription.toLowerCase().includes(s))
-        );
+        return matchesFactorySearch([i.name, i.acronym, i.correlationId, i.shortDescription], search);
       })
     : items;
 

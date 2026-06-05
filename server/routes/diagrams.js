@@ -218,7 +218,11 @@ async function resolveImportedDiagramStatus(requestedStatus, sourcedFrom, busine
 router.get('/', async (req, res) => {
   try {
     const role = req.currentUser?.role;
-    const filter = (!role || role === 'Viewer') ? { status: 'published' } : {};
+    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+    const neighborhoodName = getNeighborhoodName(req);
+    const filter = (!role || role === 'Viewer')
+      ? { $and: [buildNeighborhoodFilter(neighborhoodName), { status: 'published' }] }
+      : buildNeighborhoodFilter(neighborhoodName);
     const diagrams = await Diagram.find(filter, '-xml').sort({ updatedAt: -1 });
     res.json(diagrams);
   } catch (err) {
@@ -233,8 +237,9 @@ router.get('/flow-breadcrumbs', async (req, res) => {
     if (!rawNames) return res.json([]);
     const names = String(rawNames).split(',').map(n => n.trim()).filter(Boolean);
     if (!names.length) return res.json([]);
+    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
     const docs = await Diagram.find(
-      { businessFlow: { $in: names } },
+      { $and: [buildNeighborhoodFilter(getNeighborhoodName(req)), { businessFlow: { $in: names } }] },
       { businessFlow: 1, lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1 }
     ).lean();
     // De-dupe: keep one record per businessFlow name
@@ -261,7 +266,8 @@ router.get('/flow-breadcrumbs', async (req, res) => {
 // GET /api/diagrams/business-flow-map — returns { flowName: diagramId } for all diagrams with a businessFlow
 router.get('/business-flow-map', async (req, res) => {
   try {
-    const docs = await Diagram.find({ businessFlow: { $ne: null } }, { businessFlow: 1 }).lean();
+    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+    const docs = await Diagram.find({ $and: [buildNeighborhoodFilter(getNeighborhoodName(req)), { businessFlow: { $ne: null } }] }, { businessFlow: 1 }).lean();
     const map = {};
     for (const d of docs) {
       if (d.businessFlow) map[d.businessFlow] = d._id.toString();
@@ -280,9 +286,13 @@ router.get('/search', async (req, res) => {
   }
   const role = req.currentUser?.role;
   const isViewer = !role || role === 'Viewer';
+  const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+  const neighborhoodName = getNeighborhoodName(req);
   try {
     // Try full-text search first
-    const textFilter = isViewer ? { $text: { $search: q.trim() }, status: 'published' } : { $text: { $search: q.trim() } };
+    const textFilter = isViewer
+      ? { $and: [buildNeighborhoodFilter(neighborhoodName), { $text: { $search: q.trim() } }, { status: 'published' }] }
+      : { $and: [buildNeighborhoodFilter(neighborhoodName), { $text: { $search: q.trim() } }] };
     let results = await Diagram.find(
       textFilter,
       { score: { $meta: 'textScore' }, xml: 0 }
@@ -292,7 +302,9 @@ router.get('/search', async (req, res) => {
       const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const regex = new RegExp(escaped, 'i');
       const orConditions = [{ name: regex }, { businessFlow: regex }, { lineOfBusiness: regex }, { domain: regex }, { subdomain: regex }, { product: regex }, { channel: regex }, { status: regex }, { createdBy: regex }, { 'tasks.name': regex }];
-      const regexFilter = isViewer ? { $and: [{ $or: orConditions }, { status: 'published' }] } : { $or: orConditions };
+      const regexFilter = isViewer
+        ? { $and: [buildNeighborhoodFilter(neighborhoodName), { $or: orConditions }, { status: 'published' }] }
+        : { $and: [buildNeighborhoodFilter(neighborhoodName), { $or: orConditions }] };
       results = await Diagram.find(regexFilter, { xml: 0 }).limit(50);
     }
     res.json(results);
@@ -304,7 +316,8 @@ router.get('/search', async (req, res) => {
 // GET /api/diagrams/:id — get single diagram with XML
 router.get('/:id', async (req, res) => {
   try {
-    const diagram = await Diagram.findById(req.params.id);
+    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+    const diagram = await Diagram.findOne({ $and: [buildNeighborhoodFilter(getNeighborhoodName(req)), { _id: req.params.id }] });
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });
     res.json(diagram);
   } catch (err) {
@@ -328,6 +341,7 @@ router.post('/', async (req, res) => {
     const diagram = await Diagram.create({
       name: diagramName, description, xml: cleanXml, tags, capabilities, tasks,
       status: resolvedStatus,
+      neighborhoodName: req.headers['x-neighborhood-name'] ? String(req.headers['x-neighborhood-name']).trim() : 'AT&T Journey',
       sourcedFrom: sourcedFrom || null,
       createdBy: createdBy || null,
       updatedBy: createdBy || null,
@@ -378,8 +392,10 @@ router.put('/:id', async (req, res) => {
       };
     }
 
-    const diagram = await Diagram.findByIdAndUpdate(
-      req.params.id,
+    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+    const neighborhoodName = getNeighborhoodName(req);
+    const diagram = await Diagram.findOneAndUpdate(
+      { $and: [buildNeighborhoodFilter(neighborhoodName), { _id: req.params.id }] },
       update,
       { new: true, runValidators: true }
     );
@@ -393,7 +409,8 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/diagrams/:id — delete diagram
 router.delete('/:id', async (req, res) => {
   try {
-    const diagram = await Diagram.findByIdAndDelete(req.params.id);
+    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+    const diagram = await Diagram.findOneAndDelete({ $and: [buildNeighborhoodFilter(getNeighborhoodName(req)), { _id: req.params.id }] });
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });
     res.json({ message: 'Diagram deleted.' });
   } catch (err) {
@@ -421,6 +438,7 @@ router.post('/batch', async (req, res) => {
       const tasks = extractTasks(xml);
       const resolvedStatus = await resolveImportedDiagramStatus('staged', fileName, meta.businessFlow || name);
       const diagram = await Diagram.create({
+          neighborhoodName: req.headers['x-neighborhood-name'] ? String(req.headers['x-neighborhood-name']).trim() : 'AT&T Journey',
         name,
         xml: cleanXml,
         tasks,

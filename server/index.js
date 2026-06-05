@@ -16,8 +16,17 @@ const statesRouter = require('./routes/states');
 const dashboardRouter = require('./routes/dashboard');
 const reportsRouter   = require('./routes/reports');
 const databasesRouter = require('./routes/databases');
+const customFactoriesRouter = require('./routes/customFactories');
 const Session = require('./models/Session');
 const User = require('./models/User');
+const Diagram = require('./models/Diagram');
+const Task = require('./models/Task');
+const Actor = require('./models/Actor');
+const Capability = require('./models/Capability');
+const { BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness } = require('./models/ReferenceData');
+const CustomFactory = require('./models/CustomFactory');
+const FactoryNeighborhood = require('./models/FactoryNeighborhood');
+const { DEFAULT_NEIGHBORHOOD_NAME } = require('./utils/neighborhoodScope');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -73,12 +82,39 @@ app.use('/api/states', statesRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/reports',   reportsRouter);
 app.use('/api/databases', databasesRouter);
+app.use('/api/custom-factories', customFactoriesRouter);
 
 // Connect to MongoDB then start server
+async function backfillNeighborhoods() {
+  await FactoryNeighborhood.updateOne(
+    { name: DEFAULT_NEIGHBORHOOD_NAME },
+    { $setOnInsert: { name: DEFAULT_NEIGHBORHOOD_NAME, owner: 'System', createdBy: 'system' } },
+    { upsert: true }
+  );
+
+  const collections = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness, CustomFactory];
+  await Promise.all(collections.map((Model) => Model.updateMany(
+    { $or: [{ neighborhoodName: { $exists: false } }, { neighborhoodName: null }, { neighborhoodName: '' }] },
+    { $set: { neighborhoodName: DEFAULT_NEIGHBORHOOD_NAME } }
+  )));
+
+  await Application.updateMany(
+    { correlationId: '' },
+    { $set: { correlationId: null } }
+  );
+}
+
+async function syncNeighborhoodIndexes() {
+  const models = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness];
+  await Promise.all(models.map((Model) => Model.syncIndexes()));
+}
+
 mongoose
   .connect(MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log(`Connected to MongoDB at ${MONGO_URI}`);
+    await backfillNeighborhoods();
+    await syncNeighborhoodIndexes();
     app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
   })
   .catch((err) => {

@@ -264,6 +264,38 @@ export interface DatabaseHealthNote {
   sourceUrl?: string | null;
 }
 
+export interface FactoryNeighborhoodSummary {
+  name: string;
+  owner?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  factoryCount: number;
+}
+
+export interface CustomFactoryRow {
+  _id: string;
+  values: Record<string, unknown>;
+  owner?: string;
+  state: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CustomFactory {
+  _id: string;
+  neighborhoodName: string;
+  name: string;
+  columns: string[];
+  owner?: string;
+  createdBy?: string;
+  sourceFileName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  rowCount: number;
+  rows: CustomFactoryRow[];
+}
+
 export interface DatabaseItem {
   _id: string;
   sourceKey: string;

@@ -1,12 +1,19 @@
 const mongoose = require('mongoose');
+const { DEFAULT_NEIGHBORHOOD_NAME } = require('../utils/neighborhoodScope');
 
 const diagramSchema = new mongoose.Schema(
   {
+    neighborhoodName: {
+      type: String,
+      required: true,
+      trim: true,
+      default: DEFAULT_NEIGHBORHOOD_NAME,
+      index: true,
+    },
     name: {
       type: String,
       required: true,
       trim: true,
-      unique: true,
     },
     description: {
       type: String,
@@ -80,6 +87,8 @@ const diagramSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+diagramSchema.index({ neighborhoodName: 1, name: 1 }, { unique: true });
 
 // Text index for search across all metadata fields
 diagramSchema.index({
