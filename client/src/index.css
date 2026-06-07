@@ -166,6 +166,27 @@ html, body, #root {
   border-bottom: 1px solid #e2e8f0;
 }
 
+.model-factory-tabs .ant-tabs-tab {
+  border-top: 3px solid #4f46e5 !important;
+}
+
+.model-factory-tabs .ant-tabs-tab-active {
+  background: rgba(79, 70, 229, 0.09) !important;
+}
+
+.model-factory-tabs .ant-tabs-tab:not(.ant-tabs-tab-active):hover {
+  background: rgba(79, 70, 229, 0.05) !important;
+}
+
+.model-factory-tabs .ant-tabs-tab[data-node-key^="sep-"] {
+  border-top: 3px solid transparent !important;
+  background: transparent !important;
+}
+
+.model-factory-tabs .ant-tabs-tab[data-node-key^="sep-"]:hover {
+  background: transparent !important;
+}
+
 /* ── Tab groups: colored top stripe per group ───────────── */
 
 /* GROUP: Canvas — cyan */

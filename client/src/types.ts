@@ -273,11 +273,36 @@ export interface FactoryNeighborhoodSummary {
   factoryCount: number;
 }
 
+export interface ModelCatalogRow {
+  values: Record<string, unknown>;
+}
+
+export interface ModelCatalog {
+  name: string;
+  columns: string[];
+  rowCount: number;
+  rows: ModelCatalogRow[];
+  sourceFileName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CustomFactoryQualifierColumn {
+  name: string;
+  sourceColumnName: string;
+  fieldName: string;
+}
+
 export interface CustomFactoryRow {
   _id: string;
   values: Record<string, unknown>;
   owner?: string;
   state: string;
+  sourcedFrom?: string;
+  createdBy?: string;
+  updatedBy?: string;
+  parentFactoryName?: string;
+  parentName?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -286,7 +311,10 @@ export interface CustomFactory {
   _id: string;
   neighborhoodName: string;
   name: string;
+  sourceColumnName?: string;
+  parentFactoryName?: string;
   columns: string[];
+  qualifierColumns?: CustomFactoryQualifierColumn[];
   owner?: string;
   createdBy?: string;
   sourceFileName?: string;

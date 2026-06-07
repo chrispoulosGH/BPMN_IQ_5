@@ -1,10 +1,12 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { App as AntApp, Button, Card, Form, Input, List, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Tooltip, Upload } from 'antd';
-import { DeleteOutlined, EditOutlined, FolderAddOutlined, InboxOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, FolderAddOutlined, InboxOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 
 import {
   createFactoryNeighborhood,
+  deleteFactoryNeighborhood,
+  deleteCustomFactory,
   deleteCustomFactoryRow,
   getCustomFactories,
   getCustomFactory,
@@ -19,7 +21,15 @@ import {
 interface NeighborhoodFactoryProps {
   canManageFactories: boolean;
   fixedNeighborhoodName?: string;
+  fixedFactoryId?: string;
+  hideFactoryList?: boolean;
   onNeighborhoodsChanged?: () => void | Promise<void>;
+  onNeighborhoodCreated?: (name: string) => void;
+  onFactoryDeleted?: (factoryId: string, neighborhoodName: string) => void | Promise<void>;
+  onNeighborhoodDeleted?: (name: string) => void | Promise<void>;
+  showCreateNeighborhood?: boolean;
+  showAddFactory?: boolean;
+  showDeleteNeighborhood?: boolean;
   mode?: 'panel' | 'action';
 }
 
@@ -34,7 +44,7 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
-export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, onNeighborhoodsChanged, mode = 'panel' }: NeighborhoodFactoryProps) {
+export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel' }: NeighborhoodFactoryProps) {
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const PRIMARY_KEY_COLUMN = 'name';
@@ -51,17 +61,26 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [editingRow, setEditingRow] = useState<CustomFactoryRow | null>(null);
   const [showRowModal, setShowRowModal] = useState(false);
+  const [neighborhoodDraftName, setNeighborhoodDraftName] = useState('');
+  const [neighborhoodUploadFile, setNeighborhoodUploadFile] = useState<File | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [creatingNeighborhood, setCreatingNeighborhood] = useState(false);
   const [savingRow, setSavingRow] = useState(false);
   const [rowSearchColumn, setRowSearchColumn] = useState<string>(ALL_COLUMNS_OPTION);
   const [rowSearchText, setRowSearchText] = useState('');
   const [rowStatusFilter, setRowStatusFilter] = useState<string | undefined>(undefined);
   const [factoryRowViewState, setFactoryRowViewState] = useState<Record<string, FactoryRowViewState>>({});
-  const [neighborhoodForm] = Form.useForm();
   const [uploadForm] = Form.useForm();
   const [rowForm] = Form.useForm();
   const deferredRowSearchText = useDeferredValue(rowSearchText);
+  const canSubmitNeighborhood = neighborhoodDraftName.trim().length > 0 && Boolean(neighborhoodUploadFile);
+
+  const openNeighborhoodModal = useCallback(() => {
+    setNeighborhoodDraftName('');
+    setNeighborhoodUploadFile(null);
+    setShowNeighborhoodModal(true);
+  }, []);
 
   const updateFactoryViewState = useCallback((factoryId: string, nextState: Partial<FactoryRowViewState>) => {
     setFactoryRowViewState((current) => ({
@@ -99,6 +118,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       const data = await getCustomFactories(neighborhoodName);
       setFactories(data);
       setSelectedFactoryId((current) => {
+        if (fixedFactoryId && data.some((factory) => factory._id === fixedFactoryId)) return fixedFactoryId;
         if (current && data.some((factory) => factory._id === current)) return current;
         return data[0]?._id ?? null;
       });
@@ -107,7 +127,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     } finally {
       setLoadingFactories(false);
     }
-  }, [message]);
+  }, [fixedFactoryId, message]);
 
   const loadFactoryDetail = useCallback(async (factoryId: string) => {
     setLoadingFactoryDetail(true);
@@ -151,6 +171,11 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   }, [loadFactoryDetail, mode, selectedFactoryId]);
 
   useEffect(() => {
+    if (mode !== 'panel' || !fixedFactoryId) return;
+    setSelectedFactoryId(fixedFactoryId);
+  }, [fixedFactoryId, mode]);
+
+  useEffect(() => {
     if (!selectedFactoryId) {
       setRowSearchColumn(ALL_COLUMNS_OPTION);
       setRowSearchText('');
@@ -164,20 +189,33 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     setRowStatusFilter(nextViewState?.statusFilter);
   }, [ALL_COLUMNS_OPTION, factoryRowViewState, selectedFactoryId]);
 
-  const handleCreateNeighborhood = async (values: { name: string }) => {
+  const handleCreateNeighborhood = async () => {
+    const name = neighborhoodDraftName.trim();
+    if (!name) {
+      message.error('Model name is required before upload');
+      return;
+    }
+    if (!neighborhoodUploadFile) {
+      message.error('Model CSV file is required');
+      return;
+    }
+    setCreatingNeighborhood(true);
     try {
-      const created = await createFactoryNeighborhood(values.name);
-      message.success(`Neighborhood created: ${created.name}`);
+      const created = await createFactoryNeighborhood({ name, file: neighborhoodUploadFile });
+      message.success(`Model created: ${created.name}`);
       setShowNeighborhoodModal(false);
-      neighborhoodForm.resetFields();
+      setNeighborhoodDraftName('');
+      setNeighborhoodUploadFile(null);
       await loadNeighborhoods();
       if (!fixedNeighborhoodName) {
         setSelectedNeighborhood(created.name);
       }
-      uploadForm.setFieldValue('neighborhoodName', created.name);
       await onNeighborhoodsChanged?.();
+      onNeighborhoodCreated?.(created.name);
     } catch (error: any) {
       message.error(error.response?.data?.error || error.message);
+    } finally {
+      setCreatingNeighborhood(false);
     }
   };
 
@@ -253,6 +291,53 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     }
   };
 
+  const handleDeleteFactory = async (factory: CustomFactory) => {
+    try {
+      await deleteCustomFactory(factory._id);
+      message.success(`Factory deleted: ${factory.name}`);
+      setSelectedFactory((current) => (current?._id === factory._id ? null : current));
+      setSelectedFactoryId((current) => (current === factory._id ? null : current));
+      await loadFactories(factory.neighborhoodName);
+      await onNeighborhoodsChanged?.();
+      await onFactoryDeleted?.(factory._id, factory.neighborhoodName);
+    } catch (error: any) {
+      message.error(error.response?.data?.error || error.message);
+    }
+  };
+
+  const handleDeleteNeighborhood = useCallback((name: string) => {
+    Modal.confirm({
+      title: `Delete neighborhood ${name}?`,
+      title: `Delete model ${name}?`,
+      icon: <ExclamationCircleOutlined />,
+      okText: 'Delete Model',
+      okType: 'danger',
+      centered: true,
+      content: (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div>This will permanently delete the model and every factory inside it.</div>
+          <div style={{ color: '#b91c1c', fontWeight: 600 }}>This action cannot be undone.</div>
+        </div>
+      ),
+      onOk: async () => {
+        try {
+          const result = await deleteFactoryNeighborhood(name);
+          message.success(`Model deleted: ${result.name} (${result.deletedFactoryCount} factories removed)`);
+          setSelectedFactory(null);
+          setSelectedFactoryId(null);
+          setFactories([]);
+          if (!fixedNeighborhoodName) {
+            setSelectedNeighborhood(DEFAULT_NEIGHBORHOOD_NAME);
+          }
+          await onNeighborhoodsChanged?.();
+          await onNeighborhoodDeleted?.(name);
+        } catch (error: any) {
+          message.error(error.response?.data?.error || error.message);
+        }
+      },
+    });
+  }, [DEFAULT_NEIGHBORHOOD_NAME, fixedNeighborhoodName, message, onNeighborhoodDeleted, onNeighborhoodsChanged]);
+
   const rowColumns: ColumnsType<CustomFactoryRow> = useMemo(() => {
     const dynamicColumns = (selectedFactory?.columns || []).map((column) => ({
       title: column,
@@ -278,6 +363,34 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         dataIndex: 'createdAt',
         width: 130,
         render: (value: string) => (value ? new Date(value).toLocaleDateString() : '—'),
+      },
+      {
+        title: 'Sourced From',
+        key: 'sourcedFrom',
+        dataIndex: 'sourcedFrom',
+        width: 180,
+        render: (value: string) => displayValue(value),
+      },
+      {
+        title: 'Created By',
+        key: 'createdBy',
+        dataIndex: 'createdBy',
+        width: 150,
+        render: (value: string) => displayValue(value),
+      },
+      {
+        title: 'Last Updated',
+        key: 'updatedAt',
+        dataIndex: 'updatedAt',
+        width: 160,
+        render: (value: string) => (value ? new Date(value).toLocaleString() : '—'),
+      },
+      {
+        title: 'Updated By',
+        key: 'updatedBy',
+        dataIndex: 'updatedBy',
+        width: 150,
+        render: (value: string) => displayValue(value),
       },
       {
         title: 'Status',
@@ -324,17 +437,40 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     return (
       <>
         {canManageFactories ? (
-          <Button
-            size="small"
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              uploadForm.setFieldsValue({ neighborhoodName: fixedNeighborhoodName || selectedNeighborhood || undefined, factoryName: '' });
-              setShowUploadModal(true);
-            }}
-          >
-            Add Factory
-          </Button>
+          <Space>
+            {showCreateNeighborhood ? (
+              <Button
+                size="small"
+                icon={<FolderAddOutlined />}
+                onClick={openNeighborhoodModal}
+              >
+                Create Model
+              </Button>
+            ) : null}
+            {showAddFactory ? (
+              <Button
+                size="small"
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  uploadForm.setFieldsValue({ neighborhoodName: fixedNeighborhoodName || selectedNeighborhood || undefined, factoryName: '' });
+                  setShowUploadModal(true);
+                }}
+              >
+                Add Factory
+              </Button>
+            ) : null}
+            {showDeleteNeighborhood && fixedNeighborhoodName ? (
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleDeleteNeighborhood(fixedNeighborhoodName)}
+              >
+                Delete Model
+              </Button>
+            ) : null}
+          </Space>
         ) : null}
 
         <Modal
@@ -355,18 +491,18 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 name="neighborhoodName"
                 label={(
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <span>Neighborhood</span>
+                    <span>Model</span>
                     {canManageFactories ? (
-                      <Button size="small" type="link" icon={<FolderAddOutlined />} onClick={() => setShowNeighborhoodModal(true)}>
-                        Create Neighborhood
+                      <Button size="small" type="link" icon={<FolderAddOutlined />} onClick={openNeighborhoodModal}>
+                        Create Model
                       </Button>
                     ) : null}
                   </div>
                 )}
-                rules={[{ required: true, message: 'Neighborhood is required' }]}
+                rules={[{ required: true, message: 'Model is required' }]}
               >
                 <Select
-                  placeholder="Select an existing neighborhood"
+                  placeholder="Select an existing model"
                   options={neighborhoods.map((item) => ({ label: item.name, value: item.name }))}
                 />
               </Form.Item>
@@ -398,17 +534,37 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         </Modal>
 
         <Modal
-          title="Create Neighborhood"
+          title="Create Model from CSV"
           open={showNeighborhoodModal}
-          onCancel={() => setShowNeighborhoodModal(false)}
-          onOk={() => neighborhoodForm.submit()}
-          okText="Create"
+          onCancel={() => { setShowNeighborhoodModal(false); setNeighborhoodUploadFile(null); }}
+          onOk={handleCreateNeighborhood}
+          okText={creatingNeighborhood ? 'Creating…' : 'Create'}
+          confirmLoading={creatingNeighborhood}
+          okButtonProps={{ disabled: !canSubmitNeighborhood }}
         >
-          <Form form={neighborhoodForm} layout="vertical" onFinish={handleCreateNeighborhood} className="mt-4">
-            <Form.Item name="name" label="Neighborhood Name" rules={[{ required: true, message: 'Neighborhood name is required' }]}>
-              <Input />
-            </Form.Item>
-          </Form>
+          <div className="mt-4">
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>Model Name</div>
+            <Input value={neighborhoodDraftName} onChange={(event) => setNeighborhoodDraftName(event.target.value)} />
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>
+              Upload the model catalog reference data for this model. The first row is treated as headers and the remaining rows are stored as the model catalog.
+            </div>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>Model CSV</div>
+            <Upload.Dragger
+              accept=".csv"
+              maxCount={1}
+              beforeUpload={(file) => {
+                setNeighborhoodUploadFile(file);
+                return false;
+              }}
+              onRemove={() => {
+                setNeighborhoodUploadFile(null);
+              }}
+              fileList={neighborhoodUploadFile ? [neighborhoodUploadFile as any] : []}
+            >
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">Upload a model CSV to store model catalog reference data</p>
+            </Upload.Dragger>
+          </div>
         </Modal>
       </>
     );
@@ -416,14 +572,14 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
 
   return (
     <div className="flex h-full gap-3 p-3 min-h-0">
-      <Card
-        title={fixedNeighborhoodName ? `${fixedNeighborhoodName} Uploaded Factories` : 'Neighborhoods'}
+      {!hideFactoryList ? <Card
+        title={fixedNeighborhoodName ? `${fixedNeighborhoodName} Factories` : 'Models'}
         size="small"
         style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, height: '100%' }}
         extra={canManageFactories ? (
           <Space>
-            <Button size="small" icon={<FolderAddOutlined />} onClick={() => setShowNeighborhoodModal(true)}>Neighborhood</Button>
+            <Button size="small" icon={<FolderAddOutlined />} onClick={openNeighborhoodModal}>Model</Button>
             <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => {
               uploadForm.setFieldsValue({ neighborhoodName: selectedNeighborhood || undefined });
               setShowUploadModal(true);
@@ -433,7 +589,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       >
         {!fixedNeighborhoodName ? (
           <Select
-            placeholder="Select a neighborhood"
+            placeholder="Select a model"
             value={selectedNeighborhood || undefined}
             onChange={setSelectedNeighborhood}
             loading={loadingNeighborhoods}
@@ -444,7 +600,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
           />
         ) : (
           <div style={{ color: '#64748b', fontSize: 12 }}>
-            Viewing uploaded factories for <strong>{fixedNeighborhoodName}</strong>
+            Viewing factories for <strong>{fixedNeighborhoodName}</strong>
           </div>
         )}
 
@@ -452,9 +608,27 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
           <List
             loading={loadingFactories}
             dataSource={factories}
-            locale={{ emptyText: selectedNeighborhood ? 'No factories in this neighborhood yet' : 'No neighborhoods available' }}
+            locale={{ emptyText: selectedNeighborhood ? 'No factories in this model yet' : 'No models available' }}
             renderItem={(factory) => (
               <List.Item
+                actions={canManageFactories ? [
+                  <Popconfirm
+                    key="delete"
+                    title={`Delete factory ${factory.name}?`}
+                    description="This removes the entire factory and all of its rows."
+                    okText="Delete"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => handleDeleteFactory(factory)}
+                  >
+                    <Button
+                      size="small"
+                      type="text"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={(event) => event.stopPropagation()}
+                    />
+                  </Popconfirm>,
+                ] : undefined}
                 style={{
                   cursor: 'pointer',
                   borderRadius: 8,
@@ -473,14 +647,31 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
             )}
           />
         </div>
-      </Card>
+      </Card> : null}
 
       <Card
         title={selectedFactory ? `${selectedFactory.name} Factory` : 'Factory'}
         size="small"
         style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, height: '100%' }}
-        extra={selectedFactory ? <span style={{ color: '#64748b', fontSize: 12 }}>{selectedFactory.neighborhoodName} · status defaults to staged</span> : null}
+        extra={selectedFactory ? (
+          <Space>
+            <span style={{ color: '#64748b', fontSize: 12 }}>{selectedFactory.neighborhoodName} · status defaults to staged</span>
+            {canManageFactories ? (
+              <Popconfirm
+                title={`Delete factory ${selectedFactory.name}?`}
+                description="This removes the entire factory and all of its rows."
+                okText="Delete"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => handleDeleteFactory(selectedFactory)}
+              >
+                <Button size="small" type="text" danger icon={<DeleteOutlined />}>
+                  Remove Factory
+                </Button>
+              </Popconfirm>
+            ) : null}
+          </Space>
+        ) : null}
       >
         {!selectedFactory && (loadingFactories || loadingFactoryDetail) ? <Spin /> : null}
 
@@ -565,17 +756,37 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       </Card>
 
       <Modal
-        title="Create Neighborhood"
+        title="Create Model from CSV"
         open={showNeighborhoodModal}
-        onCancel={() => setShowNeighborhoodModal(false)}
-        onOk={() => neighborhoodForm.submit()}
-        okText="Create"
+        onCancel={() => { setShowNeighborhoodModal(false); setNeighborhoodUploadFile(null); }}
+        onOk={handleCreateNeighborhood}
+        okText={creatingNeighborhood ? 'Creating…' : 'Create'}
+        confirmLoading={creatingNeighborhood}
+        okButtonProps={{ disabled: !canSubmitNeighborhood }}
       >
-        <Form form={neighborhoodForm} layout="vertical" onFinish={handleCreateNeighborhood} className="mt-4">
-          <Form.Item name="name" label="Neighborhood Name" rules={[{ required: true, message: 'Neighborhood name is required' }]}>
-            <Input autoFocus />
-          </Form.Item>
-        </Form>
+        <div className="mt-4">
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>Model Name</div>
+          <Input autoFocus value={neighborhoodDraftName} onChange={(event) => setNeighborhoodDraftName(event.target.value)} />
+          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>
+            Upload the model catalog reference data for this model. The first row is treated as headers and the remaining rows are stored as the model catalog.
+          </div>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>Model CSV</div>
+          <Upload.Dragger
+            accept=".csv"
+            maxCount={1}
+            beforeUpload={(file) => {
+              setNeighborhoodUploadFile(file);
+              return false;
+            }}
+            onRemove={() => {
+              setNeighborhoodUploadFile(null);
+            }}
+            fileList={neighborhoodUploadFile ? [neighborhoodUploadFile as any] : []}
+          >
+            <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+            <p className="ant-upload-text">Upload a model CSV to store model catalog reference data</p>
+          </Upload.Dragger>
+        </div>
       </Modal>
 
       <Modal
@@ -591,18 +802,18 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
             name="neighborhoodName"
             label={(
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <span>Neighborhood</span>
+                <span>Model</span>
                 {canManageFactories ? (
-                  <Button size="small" type="link" icon={<FolderAddOutlined />} onClick={() => setShowNeighborhoodModal(true)}>
-                    Create Neighborhood
+                  <Button size="small" type="link" icon={<FolderAddOutlined />} onClick={openNeighborhoodModal}>
+                    Create Model
                   </Button>
                 ) : null}
               </div>
             )}
-            rules={[{ required: true, message: 'Neighborhood is required' }]}
+            rules={[{ required: true, message: 'Model is required' }]}
           >
             <Select
-              placeholder="Select an existing neighborhood"
+              placeholder="Select an existing model"
               options={neighborhoods.map((item) => ({ label: item.name, value: item.name }))}
             />
           </Form.Item>

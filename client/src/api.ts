@@ -1,6 +1,6 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow } from './types';
-export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow };
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog } from './types';
+export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog };
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
 
@@ -155,8 +155,19 @@ export const getDatabase = (id: string): Promise<DatabaseItem> =>
 export const getFactoryNeighborhoods = (): Promise<FactoryNeighborhoodSummary[]> =>
   api.get('/custom-factories/neighborhoods').then((r) => r.data);
 
-export const createFactoryNeighborhood = (name: string): Promise<FactoryNeighborhoodSummary> =>
-  api.post('/custom-factories/neighborhoods', { name }).then((r) => r.data);
+export const createFactoryNeighborhood = (params: { name: string; file: File }): Promise<FactoryNeighborhoodSummary> => {
+  const body = new FormData();
+  body.append('name', params.name);
+  body.append('neighborhoodName', params.name);
+  body.append('file', params.file);
+  return api.post('/custom-factories/neighborhoods', body).then((r) => r.data);
+};
+
+export const deleteFactoryNeighborhood = (name: string): Promise<{ success: boolean; name: string; deletedFactoryCount: number }> =>
+  api.delete(`/custom-factories/neighborhoods/${encodeURIComponent(name)}`).then((r) => r.data);
+
+export const getModelCatalog = (name: string): Promise<ModelCatalog> =>
+  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog`).then((r) => r.data);
 
 export const getCustomFactories = (neighborhoodName?: string): Promise<CustomFactory[]> =>
   api.get('/custom-factories', { params: neighborhoodName ? { neighborhoodName } : undefined }).then((r) => r.data);
@@ -169,9 +180,7 @@ export const uploadCustomFactory = (params: { neighborhoodName: string; factoryN
   body.append('neighborhoodName', params.neighborhoodName);
   body.append('factoryName', params.factoryName);
   body.append('file', params.file);
-  return api.post('/custom-factories/upload', body, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then((r) => r.data);
+  return api.post('/custom-factories/upload', body).then((r) => r.data);
 };
 
 export const updateCustomFactoryRow = (factoryId: string, rowId: string, payload: { values: Record<string, unknown>; owner?: string; state?: string }): Promise<CustomFactory> =>
@@ -179,6 +188,9 @@ export const updateCustomFactoryRow = (factoryId: string, rowId: string, payload
 
 export const deleteCustomFactoryRow = (factoryId: string, rowId: string): Promise<CustomFactory> =>
   api.delete(`/custom-factories/${encodeURIComponent(factoryId)}/rows/${encodeURIComponent(rowId)}`).then((r) => r.data);
+
+export const deleteCustomFactory = (factoryId: string): Promise<{ success: boolean; factoryId: string; neighborhoodName: string; name: string }> =>
+  api.delete(`/custom-factories/${encodeURIComponent(factoryId)}`).then((r) => r.data);
 
 // ── Capabilities CRUD (for CapabilitiesFactory) ─────────────
 export const getCapabilities = (): Promise<CapabilityItem[]> =>

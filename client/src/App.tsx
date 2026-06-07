@@ -56,6 +56,7 @@ import ApplicationFactory from './components/ApplicationFactory';
 import ServerFactory from './components/ServerFactory';
 import DatabaseFactory from './components/DatabaseFactory';
 import NeighborhoodFactory from './components/NeighborhoodFactory';
+import ModelCatalog from './components/ModelCatalog';
 import BusinessFlowFactory from './components/BusinessFlowFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
 import ActorFactory from './components/ActorFactory';
@@ -65,8 +66,8 @@ import ReportsPanel from './components/ReportsPanel';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
 import { encodeExactFactorySearch } from './utils/factorySearch';
-import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, setApiNeighborhoodScope } from './api';
-import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem, FactoryNeighborhoodSummary } from './types';
+import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, getTaskReference, getTaskNames, getActors, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, setApiNeighborhoodScope } from './api';
+import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem, CustomFactory, FactoryNeighborhoodSummary } from './types';
 
 const { Header, Sider, Content } = Layout;
 const { Text, Title } = Typography;
@@ -220,13 +221,18 @@ export default function App() {
 function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: string; displayName: string; role?: string | null; capabilities?: { function: string; permission: string }[] }; onLogout: () => void }) {
   const { message } = AntApp.useApp();
   const DEFAULT_NEIGHBORHOOD_NAME = 'AT&T Journey';
+  const DEFAULT_NEIGHBORHOOD_FACTORY_COUNT = 13;
+  const GLOBAL_MODEL_FACTORY_COUNT = 5;
   const CURRENT_USER = user.userId;
   const hasAdminAccess = user.capabilities?.some(c => c.function === 'Admin') ?? false;
   const readOnly = !(user.capabilities?.some(c => c.permission !== 'Read'));
+  const canEditFactories = !readOnly;
   const [showAdmin, setShowAdmin] = useState(false);
   const [neighborhoodTabs, setNeighborhoodTabs] = useState<FactoryNeighborhoodSummary[]>([]);
   const [activeNeighborhoodTab, setActiveNeighborhoodTab] = useState<string>(DEFAULT_NEIGHBORHOOD_NAME);
   const [loadingNeighborhoodTabs, setLoadingNeighborhoodTabs] = useState(false);
+  const [neighborhoodFactories, setNeighborhoodFactories] = useState<Record<string, CustomFactory[]>>({});
+  const [loadingNeighborhoodFactories, setLoadingNeighborhoodFactories] = useState<Record<string, boolean>>({});
 
   const renderScrollablePane = (child: React.ReactNode) => (
     <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
@@ -234,10 +240,31 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     </div>
   );
 
-  // Tab state — three separate levels
+  // Tab state — outer app tabs, analytics subtabs, and factory tabs scoped per neighborhood
   const [activeOuterTab, setActiveOuterTab] = useState<string>('analytics');   // outer: analytics | bpmn | neighborhoods
   const [activeAnalyticsTab, setActiveAnalyticsTab] = useState<string>('dashboard'); // inner Analytics sub-tabs
-  const [activeTab, setActiveTab] = useState<string>('diagramFactory');        // inner Factories sub-tabs
+  const getModelCatalogTabKey = useCallback((modelName: string) => `modelCatalog:${modelName}`, []);
+  const [activeFactoryTabs, setActiveFactoryTabs] = useState<Record<string, string>>({ [DEFAULT_NEIGHBORHOOD_NAME]: 'diagramFactory' });
+  const activeTab = activeFactoryTabs[activeNeighborhoodTab]
+    || (activeNeighborhoodTab === DEFAULT_NEIGHBORHOOD_NAME ? 'diagramFactory' : getModelCatalogTabKey(activeNeighborhoodTab));
+  const setActiveTab = useCallback((tab: string) => {
+    setActiveFactoryTabs((current) => ({ ...current, [activeNeighborhoodTab]: tab }));
+  }, [activeNeighborhoodTab]);
+
+  const formatFactoryTabTitle = useCallback((name: string) => {
+    const trimmedName = String(name || '').trim();
+    if (!trimmedName) return 'Factory';
+    return /\bfactory$/i.test(trimmedName) ? trimmedName : `${trimmedName} Factory`;
+  }, []);
+
+  const getDisplayedFactoryCount = useCallback((neighborhood: FactoryNeighborhoodSummary) => {
+    const modelSpecificCount = typeof neighborhood.factoryCount === 'number' ? neighborhood.factoryCount : 0;
+    return neighborhood.name === DEFAULT_NEIGHBORHOOD_NAME
+      ? DEFAULT_NEIGHBORHOOD_FACTORY_COUNT
+      : modelSpecificCount + GLOBAL_MODEL_FACTORY_COUNT;
+  }, [DEFAULT_NEIGHBORHOOD_FACTORY_COUNT, DEFAULT_NEIGHBORHOOD_NAME]);
+
+  const GLOBAL_SHARED_FACTORY_TAB_KEYS = ['applications', 'actors', 'products', 'servers', 'databases'];
 
   // Factory tab drag-to-reorder
   const FACTORY_TAB_KEYS = ['diagramFactory','tasks','applications','servers','databases','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'];
@@ -283,8 +310,45 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   }, [loadNeighborhoodTabs]);
 
   useEffect(() => {
-    setApiNeighborhoodScope(activeNeighborhoodTab);
-  }, [activeNeighborhoodTab]);
+    const scopedNeighborhoodName = activeNeighborhoodTab !== DEFAULT_NEIGHBORHOOD_NAME && GLOBAL_SHARED_FACTORY_TAB_KEYS.includes(activeTab)
+      ? DEFAULT_NEIGHBORHOOD_NAME
+      : activeNeighborhoodTab;
+
+    setApiNeighborhoodScope(scopedNeighborhoodName);
+  }, [DEFAULT_NEIGHBORHOOD_NAME, activeNeighborhoodTab, activeTab]);
+
+  const loadNeighborhoodFactoriesFor = useCallback(async (neighborhoodName: string) => {
+    if (neighborhoodName === DEFAULT_NEIGHBORHOOD_NAME) return;
+    setLoadingNeighborhoodFactories((current) => ({ ...current, [neighborhoodName]: true }));
+    try {
+      const factories = await getCustomFactories(neighborhoodName);
+      setNeighborhoodFactories((current) => ({ ...current, [neighborhoodName]: factories }));
+      setActiveFactoryTabs((current) => {
+        const currentTab = current[neighborhoodName];
+        const modelCatalogTabKey = getModelCatalogTabKey(neighborhoodName);
+        const nextTab = currentTab === modelCatalogTabKey || factories.some((factory) => factory._id === currentTab)
+          ? currentTab
+          : modelCatalogTabKey;
+
+        if (!nextTab || nextTab === currentTab) return current;
+        return { ...current, [neighborhoodName]: nextTab };
+      });
+    } catch {
+      setNeighborhoodFactories((current) => ({ ...current, [neighborhoodName]: [] }));
+      setActiveFactoryTabs((current) => {
+        if (!current[neighborhoodName]) return current;
+        const next = { ...current };
+        delete next[neighborhoodName];
+        return next;
+      });
+    } finally {
+      setLoadingNeighborhoodFactories((current) => ({ ...current, [neighborhoodName]: false }));
+    }
+  }, [DEFAULT_NEIGHBORHOOD_NAME, getModelCatalogTabKey]);
+
+  useEffect(() => {
+    loadNeighborhoodFactoriesFor(activeNeighborhoodTab);
+  }, [activeNeighborhoodTab, loadNeighborhoodFactoriesFor]);
 
   const fTabLabel = useCallback((key: string, content: React.ReactNode): React.ReactNode => (
     <div
@@ -377,7 +441,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       };
       const next = [
         { s: span('bpmn', 'bpmn'),                keys: ['bpmn'],                                                                                                               label: 'Canvas',    color: '#0891b2' },
-        { s: span('diagramFactory', 'subdomains'), keys: ['diagramFactory','tasks','applications','servers','databases','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'], label: 'Neighborhoods', color: '#4f46e5' },
+        { s: span('diagramFactory', 'subdomains'), keys: ['diagramFactory','tasks','applications','servers','databases','capabilities','actors','businessFlows','products','linesOfBusiness','channels','domains','subdomains'], label: 'Models', color: '#4f46e5' },
         { s: span('dashboard', 'reports'),         keys: ['dashboard','reports'],                                                                                               label: 'Analytics', color: '#d97706' },
       ].filter(g => g.s).map(g => ({ ...g.s!, label: g.label, color: g.color, keys: g.keys }));
       setGroupLabels(next);
@@ -1200,39 +1264,133 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               },
               {
                 key: 'neighborhoods',
-                label: <span><ShoppingOutlined /> Neighborhoods</span>,
+                label: <span><ShoppingOutlined /> Models</span>,
                 children: loadingNeighborhoodTabs ? (
                   <div className="flex min-h-[240px] items-center justify-center">
-                    <Spin size="large" tip="Loading neighborhoods..." />
+                    <Spin size="large" tip="Loading models..." />
                   </div>
                 ) : (
-                  <Tabs
-                    activeKey={activeNeighborhoodTab}
-                    onChange={setActiveNeighborhoodTab}
-                    items={(neighborhoodTabs.length ? neighborhoodTabs : [{ name: DEFAULT_NEIGHBORHOOD_NAME, factoryCount: 0 } as FactoryNeighborhoodSummary]).map((neighborhood) => ({
-                      key: neighborhood.name,
-                      label: `${neighborhood.name}${typeof neighborhood.factoryCount === 'number' ? ` (${neighborhood.factoryCount})` : ''}`,
-                      children: (
-                        <div className="flex h-full min-h-0 flex-col">
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
-                            <Tag color="blue" style={{ marginInlineEnd: 0 }}>Neighborhood Scope</Tag>
-                            <span style={{ fontWeight: 700, color: '#0f172a' }}>{neighborhood.name}</span>
-                            <span style={{ fontSize: 12, color: '#64748b' }}>All factory data in this view is filtered to the selected neighborhood.</span>
-                            <div style={{ marginLeft: 'auto' }}>
-                              <NeighborhoodFactory
-                                canManageFactories={hasAdminAccess}
-                                fixedNeighborhoodName={neighborhood.name}
-                                onNeighborhoodsChanged={loadNeighborhoodTabs}
-                                mode="action"
-                              />
+                  <div className="flex h-full min-h-0 flex-col">
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
+                      <NeighborhoodFactory
+                        canManageFactories={canEditFactories}
+                        onNeighborhoodsChanged={loadNeighborhoodTabs}
+                        onNeighborhoodCreated={(name) => {
+                          setActiveOuterTab('neighborhoods');
+                          setActiveNeighborhoodTab(name);
+                        }}
+                        showAddFactory={false}
+                        showDeleteNeighborhood={false}
+                        mode="action"
+                      />
+                    </div>
+                    <Tabs
+                      activeKey={activeNeighborhoodTab}
+                      onChange={setActiveNeighborhoodTab}
+                      items={(neighborhoodTabs.length ? neighborhoodTabs : [{ name: DEFAULT_NEIGHBORHOOD_NAME, factoryCount: 0 } as FactoryNeighborhoodSummary]).map((neighborhood) => ({
+                        key: neighborhood.name,
+                        label: `${neighborhood.name} (${getDisplayedFactoryCount(neighborhood)})`,
+                        children: (
+                          <div className="flex h-full min-h-0 flex-col">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
+                              <Tag color="blue" style={{ marginInlineEnd: 0 }}>Model Scope</Tag>
+                              <span style={{ fontWeight: 700, color: '#0f172a' }}>{neighborhood.name}</span>
+                              <span style={{ fontSize: 12, color: '#64748b' }}>All factory data in this view is filtered to the selected model.</span>
+                              <div style={{ marginLeft: 'auto' }}>
+                                <NeighborhoodFactory
+                                  canManageFactories={canEditFactories}
+                                  fixedNeighborhoodName={neighborhood.name}
+                                  onNeighborhoodsChanged={loadNeighborhoodTabs}
+                                  onNeighborhoodCreated={(name) => {
+                                    setActiveOuterTab('neighborhoods');
+                                    setActiveNeighborhoodTab(name);
+                                  }}
+                                  onNeighborhoodDeleted={(name) => {
+                                    setNeighborhoodFactories((current) => {
+                                      if (!current[name]) return current;
+                                      const next = { ...current };
+                                      delete next[name];
+                                      return next;
+                                    });
+                                    setActiveFactoryTabs((current) => {
+                                      if (!current[name]) return current;
+                                      const next = { ...current };
+                                      delete next[name];
+                                      return next;
+                                    });
+                                    setActiveNeighborhoodTab((current) => (current === name ? DEFAULT_NEIGHBORHOOD_NAME : current));
+                                    setActiveOuterTab('neighborhoods');
+                                  }}
+                                  showCreateNeighborhood={false}
+                                  mode="action"
+                                />
+                              </div>
                             </div>
-                          </div>
-                          <Tabs
-                            className="factory-tabs"
-                            defaultActiveKey="diagramFactory"
-                            activeKey={activeTab}
-                            onChange={setActiveTab}
-                            items={[
+                            <Tabs
+                            className={neighborhood.name !== DEFAULT_NEIGHBORHOOD_NAME ? 'factory-tabs model-factory-tabs' : 'factory-tabs'}
+                            defaultActiveKey={neighborhood.name === DEFAULT_NEIGHBORHOOD_NAME ? 'diagramFactory' : getModelCatalogTabKey(neighborhood.name)}
+                            activeKey={activeFactoryTabs[neighborhood.name] || (neighborhood.name === DEFAULT_NEIGHBORHOOD_NAME ? 'diagramFactory' : getModelCatalogTabKey(neighborhood.name))}
+                            onChange={(key) => {
+                              setActiveFactoryTabs((current) => ({ ...current, [neighborhood.name]: key }));
+                            }}
+                            items={neighborhood.name !== DEFAULT_NEIGHBORHOOD_NAME ? [
+                              {
+                                key: getModelCatalogTabKey(neighborhood.name),
+                                label: fTabLabel(getModelCatalogTabKey(neighborhood.name), <><DatabaseOutlined /> Model Catalog</>),
+                                children: renderScrollablePane(
+                                  <ModelCatalog modelName={neighborhood.name} />,
+                                ),
+                              },
+                              {
+                                key: 'applications',
+                                label: fTabLabel('applications', <><LaptopOutlined /> Application Factory</>),
+                                children: renderScrollablePane(
+                                  <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} readOnly={readOnly} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveFactoryTabs((current) => ({ ...current, [neighborhood.name]: tab })); }} />,
+                                ),
+                              },
+                              {
+                                key: 'actors',
+                                label: fTabLabel('actors', <><UserOutlined /> Actor Factory</>),
+                                children: renderScrollablePane(
+                                  <ActorFactory defaultAdd={typeof factoryAdd.actors === 'string' ? factoryAdd.actors : ''} defaultSearch={factorySearch.actors} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                                ),
+                              },
+                              {
+                                key: 'products',
+                                label: fTabLabel('products', <><ShoppingOutlined /> Product Factory</>),
+                                children: renderScrollablePane(
+                                  <ReferenceFactory collection="products" title="Product" defaultSearch={factorySearch.products} onItemAdded={refreshReferenceData} readOnly={readOnly} userRole={user.role} />,
+                                ),
+                              },
+                              {
+                                key: 'servers',
+                                label: fTabLabel('servers', <><DeploymentUnitOutlined /> Servers Factory</>),
+                                children: renderScrollablePane(
+                                  <ServerFactory defaultSearch={factorySearch.servers} readOnly={readOnly} userRole={user.role} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveFactoryTabs((current) => ({ ...current, [neighborhood.name]: tab })); }} />,
+                                ),
+                              },
+                              {
+                                key: 'databases',
+                                label: fTabLabel('databases', <><DatabaseOutlined /> DB Factory</>),
+                                children: renderScrollablePane(
+                                  <DatabaseFactory defaultSearch={factorySearch.databases} readOnly={readOnly} userRole={user.role} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveFactoryTabs((current) => ({ ...current, [neighborhood.name]: tab })); }} />,
+                                ),
+                              },
+                              ...(neighborhoodFactories[neighborhood.name] || []).map((factory) => ({
+                              key: factory._id,
+                              label: fTabLabel(factory._id, <><FolderOpenOutlined /> {formatFactoryTabTitle(factory.name)}</>),
+                              children: renderScrollablePane(
+                                <NeighborhoodFactory
+                                  canManageFactories={canEditFactories}
+                                  fixedNeighborhoodName={neighborhood.name}
+                                  fixedFactoryId={factory._id}
+                                  hideFactoryList
+                                  onNeighborhoodsChanged={loadNeighborhoodTabs}
+                                  onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
+                                />,
+                              ),
+                            })),
+                            ] : [
                       {
                         key: 'diagramFactory',
                         label: fTabLabel('diagramFactory', <><DatabaseOutlined /> BPMN Factory</>),
@@ -1330,7 +1488,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         </div>
                       ),
                     }))}
-                  />
+                    />
+                  </div>
                 ),
               },
             ]}

@@ -105,7 +105,7 @@ async function backfillNeighborhoods() {
 }
 
 async function syncNeighborhoodIndexes() {
-  const models = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness];
+  const models = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness, CustomFactory];
   await Promise.all(models.map((Model) => Model.syncIndexes()));
 }
 
