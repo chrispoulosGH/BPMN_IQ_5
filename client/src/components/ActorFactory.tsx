@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant
 import { getActors, createActor, updateActor, deleteActor, type ActorItem } from '../api';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 import { matchesFactorySearch } from '../utils/factorySearch';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface ActorFactoryProps {
   defaultSearch?: string;
@@ -18,6 +19,7 @@ export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, r
   const [items, setItems] = useState<ActorItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<ActorItem | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -78,6 +80,22 @@ export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, r
       onOk: async () => {
         await deleteActor(item._id);
         message.success('Deleted');
+        loadItems();
+      },
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+    modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected actors?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected actors.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await Promise.all(selectedRowKeys.map((id) => deleteActor(id)));
+        message.success(`Deleted ${selectedRowKeys.length} actors`);
+        setSelectedRowKeys([]);
         loadItems();
       },
     });
@@ -173,6 +191,9 @@ export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, r
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
+        {!readOnly && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
+          Delete Selected ({selectedRowKeys.length})
+        </Button>}
         {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Actor
         </Button>}
@@ -180,14 +201,18 @@ export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, r
 
       <Table
         dataSource={filtered}
-        columns={columns}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, filtered)}
         rowKey="_id"
         size="small"
         loading={loading}
-        pagination={{ pageSize: 25, showSizeChanger: true, showTotal: (t) => `${t} items` }}
+        pagination={{ pageSize: 25, showSizeChanger: true, showTotal: (t) => `${t} items`, position: ['topRight'] }}
         className="flex-1"
         scroll={{ y: 'calc(100vh - 220px)' }}
         rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
+        rowSelection={readOnly ? undefined : {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as string[]),
+        }}
       />
 
       <Modal

@@ -4,6 +4,12 @@ export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, Fact
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
 
+const scopedRequestConfig = (neighborhoodName?: string) => {
+  const trimmed = String(neighborhoodName || '').trim();
+  if (!trimmed) return undefined;
+  return { headers: { 'x-neighborhood-name': trimmed } };
+};
+
 export const setApiNeighborhoodScope = (neighborhoodName?: string | null) => {
   if (neighborhoodName && neighborhoodName.trim()) {
     api.defaults.headers.common['x-neighborhood-name'] = neighborhoodName.trim();
@@ -81,6 +87,9 @@ export const matchCapabilities = (xml: string): Promise<CapabilityMatchResult> =
 export const getTaskReference = (): Promise<ReferenceData> =>
   api.get('/tasks/reference').then((r) => r.data);
 
+export const getTaskReferenceForNeighborhood = (neighborhoodName?: string): Promise<ReferenceData> =>
+  api.get('/tasks/reference', scopedRequestConfig(neighborhoodName)).then((r) => r.data);
+
 export const getTasks = (params?: Record<string, string>): Promise<TaskRecord[]> =>
   api.get('/tasks', { params }).then((r) => r.data);
 
@@ -101,6 +110,14 @@ export const validateTasks = (taskNames: string[], businessFlow?: string): Promi
 
 export const getTaskNames = (businessFlow?: string): Promise<string[]> =>
   api.get('/tasks/names', { params: businessFlow ? { businessFlow } : undefined }).then((r) => r.data);
+
+export const getTaskNamesForNeighborhood = (businessFlow?: string, neighborhoodName?: string): Promise<string[]> => {
+  const config = scopedRequestConfig(neighborhoodName) || {};
+  return api.get('/tasks/names', {
+    ...config,
+    params: businessFlow ? { businessFlow } : undefined,
+  }).then((r) => r.data);
+};
 
 export const getBusinessFlowMap = (): Promise<Record<string, string>> =>
   api.get('/diagrams/business-flow-map').then((r) => r.data);
@@ -141,6 +158,9 @@ export const getApplicationServers = (correlationId: string): Promise<ServerItem
 export const getServer = (id: string): Promise<ServerItem> =>
   api.get(`/servers/${encodeURIComponent(id)}`).then((r) => r.data);
 
+export const deleteServer = (id: string): Promise<{ success: boolean }> =>
+  api.delete(`/servers/${encodeURIComponent(id)}`).then((r) => r.data);
+
 // ── Databases (DB Factory) ─────────────────────────────────
 export const getDatabases = (params?: { search?: string; applicationCorrelationId?: string; applicationName?: string }): Promise<DatabaseItem[]> =>
   api.get('/databases', { params }).then((r) => r.data);
@@ -150,6 +170,9 @@ export const getApplicationDatabases = (correlationId: string): Promise<Database
 
 export const getDatabase = (id: string): Promise<DatabaseItem> =>
   api.get(`/databases/${encodeURIComponent(id)}`).then((r) => r.data);
+
+export const deleteDatabase = (id: string): Promise<{ success: boolean }> =>
+  api.delete(`/databases/${encodeURIComponent(id)}`).then((r) => r.data);
 
 // ── Custom Factories / Neighborhoods ──────────────────────
 export const getFactoryNeighborhoods = (): Promise<FactoryNeighborhoodSummary[]> =>
@@ -175,10 +198,9 @@ export const getCustomFactories = (neighborhoodName?: string): Promise<CustomFac
 export const getCustomFactory = (id: string): Promise<CustomFactory> =>
   api.get(`/custom-factories/${encodeURIComponent(id)}`).then((r) => r.data);
 
-export const uploadCustomFactory = (params: { neighborhoodName: string; factoryName: string; file: File }): Promise<CustomFactory> => {
+export const uploadCustomFactory = (params: { neighborhoodName: string; file: File }): Promise<{ factories: CustomFactory[] }> => {
   const body = new FormData();
   body.append('neighborhoodName', params.neighborhoodName);
-  body.append('factoryName', params.factoryName);
   body.append('file', params.file);
   return api.post('/custom-factories/upload', body).then((r) => r.data);
 };
@@ -208,6 +230,9 @@ export const deleteCapability = (id: string): Promise<{ success: boolean }> =>
 // ── Actors CRUD (for ActorFactory) ──────────────────────────────
 export const getActors = (): Promise<ActorItem[]> =>
   api.get('/actors').then((r) => r.data);
+
+export const getActorsForNeighborhood = (neighborhoodName?: string): Promise<ActorItem[]> =>
+  api.get('/actors', scopedRequestConfig(neighborhoodName)).then((r) => r.data);
 
 export const createActor = (data: Partial<ActorItem>): Promise<ActorItem> =>
   api.post('/actors', data).then((r) => r.data);

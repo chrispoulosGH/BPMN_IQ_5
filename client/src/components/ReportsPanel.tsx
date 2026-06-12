@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Select, Spin, Alert, Card } from 'antd';
-import axios from 'axios';
+import api from '../api';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 
 const { Option } = Select;
@@ -88,8 +88,8 @@ const ReportsPanel: React.FC = () => {
     if (reportType !== 'cost-summary') return;
     setSummaryLoading(true);
     setError(null);
-    axios
-      .get<CostSummaryData>('/api/reports/cost-summary-data', { withCredentials: true })
+    api
+      .get<CostSummaryData>('/reports/cost-summary-data')
       .then((response) => {
         const data = response.data;
         setSummaryData(data);
@@ -111,9 +111,8 @@ const ReportsPanel: React.FC = () => {
     setError(null);
     setHtmlContent('');
     const endpoint = `/api/reports/cost-by-process?businessFlow=${encodeURIComponent(selectedFlow)}`;
-    axios
-      .get<string>(endpoint, {
-        withCredentials: true,
+    api
+      .get<string>(`/reports/cost-by-process?businessFlow=${encodeURIComponent(selectedFlow)}`, {
         responseType: 'text',
       })
       .then(r => setHtmlContent(r.data))

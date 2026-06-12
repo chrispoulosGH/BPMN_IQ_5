@@ -37,11 +37,11 @@ export default function AddToFactoryModal({ open, initialName = '', onSave, onCl
 
   return (
     <Modal
-      title="Add to BPMN Factory"
+      title="Add to BPMN Component"
       open={open}
       onOk={handleOk}
       onCancel={onClose}
-      okText="Add to Factory"
+      okText="Add to Component"
       destroyOnClose
       okButtonProps={{ disabled: loading }}
     >

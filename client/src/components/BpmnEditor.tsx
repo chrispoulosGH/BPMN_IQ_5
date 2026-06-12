@@ -1556,11 +1556,11 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               </div>
               {isAlreadyLoaded && (
                 <div className="border-t border-gray-100 mt-3 pt-3 flex flex-col gap-1.5">
-                  <p className="text-xs text-orange-600 mb-1">This diagram already exists in the factory. Choose an action:</p>
+                  <p className="text-xs text-orange-600 mb-1">This diagram already exists in the component view. Choose an action:</p>
                   <button
                     className="w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700"
                     onClick={() => onDeleteAndReload?.()}
-                    title="Delete the existing factory entry and reload from this file"
+                    title="Delete the existing component entry and reload from this file"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
                     Delete &amp; Reload →
@@ -1600,10 +1600,10 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                   <button
                     className="w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700"
                     onClick={() => onNavigateToFactory?.('diagramFactory', diagramName || '', 'view')}
-                    title="View in BPMN Factory"
+                    title="View in BPMN Component"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 7h10"/><path d="M7 12h10"/><path d="M7 17h6"/></svg>
-                    View in BPMN Factory →
+                    View in BPMN Component →
                   </button>
                 </div>
               )}
@@ -1670,13 +1670,13 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                       onNavigateToFactory?.('tasks', selectedTask.name, 'add', { applications: apps.length ? apps : undefined, actor });
                     }
                   }}
-                  title={isSelectedTaskValid ? 'Open in Business Task Factory' : 'Add to Business Task Factory'}
+                  title={isSelectedTaskValid ? 'Open in Business Task Component' : 'Add to Business Task Component'}
                 >
                   {isSelectedTaskValid
                     ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
                     : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
                   }
-                  {isSelectedTaskValid ? 'View in Task Factory →' : 'Add to Task Factory →'}
+                  {isSelectedTaskValid ? 'View in Task Component →' : 'Add to Task Component →'}
                 </button>
               </div>
               <button
@@ -1713,13 +1713,13 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
                 <button
                   className={`w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 ${isSelectedLaneValid ? 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700' : 'border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700'}`}
                   onClick={() => onNavigateToFactory?.('actors', selectedLane.name, isSelectedLaneValid ? 'view' : 'add')}
-                  title={isSelectedLaneValid ? 'Open in Actor Factory' : 'Add to Actor Factory'}
+                  title={isSelectedLaneValid ? 'Open in Actor Component' : 'Add to Actor Component'}
                 >
                   {isSelectedLaneValid
                     ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
                     : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
                   }
-                  {isSelectedLaneValid ? 'View in Actor Factory →' : 'Add to Actor Factory →'}
+                  {isSelectedLaneValid ? 'View in Actor Component →' : 'Add to Actor Component →'}
                 </button>
               </div>
               <button
@@ -1771,10 +1771,10 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
 
                     onNavigateToFactory?.('applications', selectedApp.name, 'add');
                   }}
-                  title={isSelectedAppValid ? 'Open in Application Factory' : 'Add to Application Factory'}
+                  title={isSelectedAppValid ? 'Open in Application Component' : 'Add to Application Component'}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                  {isSelectedAppValid ? 'View in Application Factory →' : 'Add to Application Factory →'}
+                  {isSelectedAppValid ? 'View in Application Component →' : 'Add to Application Component →'}
                 </button>
               </div>
               <button

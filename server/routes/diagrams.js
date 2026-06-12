@@ -1,7 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Diagram = require('../models/Diagram');
-const { BusinessFlow } = require('../models/ReferenceData');
+const Component = require('../models/Component');
+const Model = require('../models/Model');
+const { BusinessFlow, Product, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
+const { DEFAULT_NEIGHBORHOOD_NAME, getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
 
 /** Strip title/status housekeeping text annotations from the XML (they clutter the canvas) */
 function stripTitleAnnotations(xml) {
@@ -190,27 +193,192 @@ function parseDiagramMetadata(xml) {
   return meta;
 }
 
+function normalizeLookupValue(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function getPlainRowValues(values) {
+  if (!values) return {};
+  if (values instanceof Map) return Object.fromEntries(values.entries());
+  if (typeof values.toObject === 'function') return values.toObject();
+  return { ...values };
+}
+
+function getCustomFactoryRowName(row) {
+  const values = getPlainRowValues(row?.values);
+  return String(values.name || '').trim();
+}
+
+function rowMatchesParent(row, parentName) {
+  const expected = normalizeLookupValue(parentName);
+  if (!expected) return true;
+  const rawParentName = String(row?.parentName || '');
+  if (!rawParentName.trim()) return false;
+  return rawParentName
+    .split(',')
+    .map((value) => normalizeLookupValue(value))
+    .includes(expected);
+}
+
+async function getNeighborhoodMetadataMappings(neighborhoodName) {
+  const baseMappings = {
+    lineOfBusiness: { label: 'Line of Business', kind: 'reference', model: LineOfBusiness },
+    channel: { label: 'Channel', kind: 'reference', model: Channel },
+    product: { label: 'Product', kind: 'reference', model: Product },
+    businessFlow: { label: 'Business Flow', kind: 'reference', model: BusinessFlow },
+  };
+
+  if (neighborhoodName === DEFAULT_NEIGHBORHOOD_NAME) {
+    return {
+      ...baseMappings,
+      domain: { label: 'Domain', kind: 'reference', model: Domain },
+      subdomain: { label: 'Subdomain', kind: 'reference', model: Subdomain },
+    };
+  }
+
+  const model = await Model.findOne({ name: neighborhoodName }, { schemaFactories: 1 }).lean();
+  const orderedFactories = [...(model?.schemaFactories || [])].sort((left, right) => {
+    const leftLevel = Number.isFinite(left?.level) ? left.level : Number.MAX_SAFE_INTEGER;
+    const rightLevel = Number.isFinite(right?.level) ? right.level : Number.MAX_SAFE_INTEGER;
+    if (leftLevel !== rightLevel) return leftLevel - rightLevel;
+    return String(left?.name || '').localeCompare(String(right?.name || ''));
+  });
+
+  const mappings = {};
+  const rootLabel = orderedFactories[0]?.name && /^l0\b/i.test(orderedFactories[0].name)
+    ? 'Application'
+    : (orderedFactories[0]?.name || 'Domain');
+  const secondLevelLabel = orderedFactories[1]?.name && /^l1\b/i.test(orderedFactories[1].name)
+    ? orderedFactories[1].name
+    : (orderedFactories[1]?.name || 'Subdomain');
+  if (orderedFactories[0]?.name) {
+    mappings.domain = {
+      label: rootLabel,
+      kind: 'customFactory',
+      factoryName: orderedFactories[0].name,
+    };
+  }
+  if (orderedFactories[1]?.name) {
+    mappings.subdomain = {
+      label: secondLevelLabel,
+      kind: 'customFactory',
+      factoryName: orderedFactories[1].name,
+      parentFactoryName: orderedFactories[0]?.name || '',
+    };
+  }
+
+  return mappings;
+}
+
+async function hasMatchingReferenceValue(Model, neighborhoodName, value) {
+  const normalizedTarget = normalizeLookupValue(value);
+  if (!normalizedTarget) return false;
+  const items = await Model.find(buildNeighborhoodFilter(neighborhoodName), { name: 1 }).lean();
+  return items.some((item) => normalizeLookupValue(item?.name) === normalizedTarget);
+}
+
+async function hasMatchingCustomFactoryValue(neighborhoodName, mapping, value, parentValue) {
+  if (!mapping?.factoryName) return false;
+  const factory = await Component.findOne(
+    { neighborhoodName, name: mapping.factoryName },
+    { rows: 1, parentFactoryName: 1 }
+  ).lean();
+  if (!factory) return false;
+
+  const normalizedTarget = normalizeLookupValue(value);
+  return (factory.rows || []).some((row) => {
+    if (normalizeLookupValue(getCustomFactoryRowName(row)) !== normalizedTarget) return false;
+    if (!parentValue || !mapping.parentFactoryName) return true;
+    return rowMatchesParent(row, parentValue);
+  });
+}
+
+async function validateDiagramMetadataForNeighborhood(meta, neighborhoodName) {
+  const mappings = await getNeighborhoodMetadataMappings(neighborhoodName);
+  const invalidFields = [];
+  const matchedFields = [];
+
+  for (const [fieldName, mapping] of Object.entries(mappings)) {
+    const value = String(meta?.[fieldName] || '').trim();
+    if (!value) continue;
+
+    let isValid = false;
+    if (mapping.kind === 'reference' && mapping.model) {
+      isValid = await hasMatchingReferenceValue(mapping.model, neighborhoodName, value);
+    } else if (mapping.kind === 'customFactory') {
+      const parentValue = fieldName === 'subdomain' ? meta?.domain : undefined;
+      isValid = await hasMatchingCustomFactoryValue(neighborhoodName, mapping, value, parentValue);
+    }
+
+    matchedFields.push({ fieldName, label: mapping.label, value, isValid });
+    if (!isValid) {
+      invalidFields.push({ fieldName, label: mapping.label, value });
+    }
+  }
+
+  return {
+    neighborhoodName,
+    matchedFields,
+    invalidFields,
+    validFieldCount: matchedFields.length - invalidFields.length,
+  };
+}
+
+async function resolveDiagramNeighborhood(meta, hintedNeighborhoodName) {
+  const modelNames = await Model.distinct('name');
+  const orderedNames = [
+    String(hintedNeighborhoodName || '').trim(),
+    ...modelNames.map((name) => String(name || '').trim()),
+    DEFAULT_NEIGHBORHOOD_NAME,
+  ].filter(Boolean).filter((name, index, list) => list.indexOf(name) === index);
+
+  let bestMatch = null;
+  for (const neighborhoodName of orderedNames) {
+    const summary = await validateDiagramMetadataForNeighborhood(meta, neighborhoodName);
+    if (!summary.matchedFields.length || summary.invalidFields.length) continue;
+    if (!bestMatch || summary.validFieldCount > bestMatch.validFieldCount) {
+      bestMatch = summary;
+    }
+  }
+
+  if (bestMatch) return bestMatch;
+
+  const fallbackNeighborhoodName = String(hintedNeighborhoodName || '').trim() || DEFAULT_NEIGHBORHOOD_NAME;
+  return validateDiagramMetadataForNeighborhood(meta, fallbackNeighborhoodName);
+}
+
 function normalizeBusinessFlowLookupValue(value) {
   return String(value || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '');
 }
 
-async function hasMatchingBusinessFlowReference(name) {
+async function hasMatchingBusinessFlowReference(name, neighborhoodName = DEFAULT_NEIGHBORHOOD_NAME) {
   const normalizedName = normalizeBusinessFlowLookupValue(name);
   if (!normalizedName) return false;
-  const refs = await BusinessFlow.find({}, { name: 1 }).lean();
+  const refs = await BusinessFlow.find(buildNeighborhoodFilter(neighborhoodName), { name: 1 }).lean();
   return refs.some((ref) => normalizeBusinessFlowLookupValue(ref.name) === normalizedName);
 }
 
-async function resolveImportedDiagramStatus(requestedStatus, sourcedFrom, businessFlowName) {
+async function resolveImportedDiagramStatus(requestedStatus, sourcedFrom, businessFlowName, neighborhoodName, metadataValidationSummary) {
   const normalizedStatus = String(requestedStatus || '').trim().toLowerCase();
   const isImportLike = normalizedStatus === 'staged' || Boolean(sourcedFrom);
   if (!isImportLike) {
     return requestedStatus || 'Draft';
   }
 
-  const hasMatchingReference = await hasMatchingBusinessFlowReference(businessFlowName);
+  if (metadataValidationSummary?.invalidFields?.length) {
+    return 'invalid';
+  }
+
+  if (metadataValidationSummary?.matchedFields?.length) {
+    return 'staged';
+  }
+
+  const hasMatchingReference = await hasMatchingBusinessFlowReference(businessFlowName, neighborhoodName);
   return hasMatchingReference ? 'staged' : 'invalid';
 }
 
@@ -218,7 +386,6 @@ async function resolveImportedDiagramStatus(requestedStatus, sourcedFrom, busine
 router.get('/', async (req, res) => {
   try {
     const role = req.currentUser?.role;
-    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
     const neighborhoodName = getNeighborhoodName(req);
     const filter = (!role || role === 'Viewer')
       ? { $and: [buildNeighborhoodFilter(neighborhoodName), { status: 'published' }] }
@@ -237,7 +404,6 @@ router.get('/flow-breadcrumbs', async (req, res) => {
     if (!rawNames) return res.json([]);
     const names = String(rawNames).split(',').map(n => n.trim()).filter(Boolean);
     if (!names.length) return res.json([]);
-    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
     const docs = await Diagram.find(
       { $and: [buildNeighborhoodFilter(getNeighborhoodName(req)), { businessFlow: { $in: names } }] },
       { businessFlow: 1, lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1 }
@@ -266,7 +432,6 @@ router.get('/flow-breadcrumbs', async (req, res) => {
 // GET /api/diagrams/business-flow-map — returns { flowName: diagramId } for all diagrams with a businessFlow
 router.get('/business-flow-map', async (req, res) => {
   try {
-    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
     const docs = await Diagram.find({ $and: [buildNeighborhoodFilter(getNeighborhoodName(req)), { businessFlow: { $ne: null } }] }, { businessFlow: 1 }).lean();
     const map = {};
     for (const d of docs) {
@@ -286,7 +451,6 @@ router.get('/search', async (req, res) => {
   }
   const role = req.currentUser?.role;
   const isViewer = !role || role === 'Viewer';
-  const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
   const neighborhoodName = getNeighborhoodName(req);
   try {
     // Try full-text search first
@@ -316,7 +480,6 @@ router.get('/search', async (req, res) => {
 // GET /api/diagrams/:id — get single diagram with XML
 router.get('/:id', async (req, res) => {
   try {
-    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
     const diagram = await Diagram.findOne({ $and: [buildNeighborhoodFilter(getNeighborhoodName(req)), { _id: req.params.id }] });
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });
     res.json(diagram);
@@ -333,15 +496,17 @@ router.post('/', async (req, res) => {
   }
   try {
     const meta = parseDiagramMetadata(xml);
+    const hintedNeighborhoodName = getNeighborhoodName(req);
+    const metadataValidationSummary = await validateDiagramMetadataForNeighborhood(meta, hintedNeighborhoodName);
     // Use the caller-supplied name; meta.businessFlow is informational metadata only
     const diagramName = name;
     const cleanXml = stripTitleAnnotations(xml);
     const tasks = extractTasks(xml);
-    const resolvedStatus = await resolveImportedDiagramStatus(status, sourcedFrom, meta.businessFlow || diagramName);
+    const resolvedStatus = await resolveImportedDiagramStatus(status, sourcedFrom, meta.businessFlow || diagramName, hintedNeighborhoodName, metadataValidationSummary);
     const diagram = await Diagram.create({
       name: diagramName, description, xml: cleanXml, tags, capabilities, tasks,
       status: resolvedStatus,
-      neighborhoodName: req.headers['x-neighborhood-name'] ? String(req.headers['x-neighborhood-name']).trim() : 'AT&T Journey',
+      neighborhoodName: hintedNeighborhoodName,
       sourcedFrom: sourcedFrom || null,
       createdBy: createdBy || null,
       updatedBy: createdBy || null,
@@ -392,7 +557,6 @@ router.put('/:id', async (req, res) => {
       };
     }
 
-    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
     const neighborhoodName = getNeighborhoodName(req);
     const diagram = await Diagram.findOneAndUpdate(
       { $and: [buildNeighborhoodFilter(neighborhoodName), { _id: req.params.id }] },
@@ -409,7 +573,6 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/diagrams/:id — delete diagram
 router.delete('/:id', async (req, res) => {
   try {
-    const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
     const diagram = await Diagram.findOneAndDelete({ $and: [buildNeighborhoodFilter(getNeighborhoodName(req)), { _id: req.params.id }] });
     if (!diagram) return res.status(404).json({ error: 'Diagram not found.' });
     res.json({ message: 'Diagram deleted.' });
@@ -425,6 +588,7 @@ router.post('/batch', async (req, res) => {
     return res.status(400).json({ error: 'Array of files is required.' });
   }
   const results = { success: [], failed: [] };
+  const hintedNeighborhoodName = getNeighborhoodName(req);
   for (const file of files) {
     try {
       const { xml, fileName } = file;
@@ -433,12 +597,13 @@ router.post('/batch', async (req, res) => {
         continue;
       }
       const meta = parseDiagramMetadata(xml);
+      const resolvedNeighborhood = await resolveDiagramNeighborhood(meta, hintedNeighborhoodName);
       const name = meta.businessFlow || fileName?.replace(/\.bpmn$/i, '').replace(/\.xml$/i, '') || 'Untitled';
       const cleanXml = stripTitleAnnotations(xml);
       const tasks = extractTasks(xml);
-      const resolvedStatus = await resolveImportedDiagramStatus('staged', fileName, meta.businessFlow || name);
+      const resolvedStatus = await resolveImportedDiagramStatus('staged', fileName, meta.businessFlow || name, resolvedNeighborhood.neighborhoodName, resolvedNeighborhood);
       const diagram = await Diagram.create({
-          neighborhoodName: req.headers['x-neighborhood-name'] ? String(req.headers['x-neighborhood-name']).trim() : 'AT&T Journey',
+        neighborhoodName: resolvedNeighborhood.neighborhoodName,
         name,
         xml: cleanXml,
         tasks,
@@ -448,7 +613,7 @@ router.post('/batch', async (req, res) => {
         updatedBy: createdBy || null,
         ...meta,
       });
-      results.success.push({ _id: diagram._id, name: diagram.name, fileName, status: diagram.status });
+      results.success.push({ _id: diagram._id, name: diagram.name, fileName, status: diagram.status, neighborhoodName: diagram.neighborhoodName });
     } catch (err) {
       results.failed.push({ fileName: file.fileName, error: err.message });
     }

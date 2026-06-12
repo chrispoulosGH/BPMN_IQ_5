@@ -2,6 +2,7 @@ import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, use
 import { App as AntApp, Button, Card, Form, Input, List, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Tooltip, Upload } from 'antd';
 import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, FolderAddOutlined, InboxOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 import {
   createFactoryNeighborhood,
@@ -70,6 +71,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   const [rowSearchColumn, setRowSearchColumn] = useState<string>(ALL_COLUMNS_OPTION);
   const [rowSearchText, setRowSearchText] = useState('');
   const [rowStatusFilter, setRowStatusFilter] = useState<string | undefined>(undefined);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [factoryRowViewState, setFactoryRowViewState] = useState<Record<string, FactoryRowViewState>>({});
   const [uploadForm] = Form.useForm();
   const [rowForm] = Form.useForm();
@@ -219,7 +221,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     }
   };
 
-  const handleUploadFactory = async (values: { neighborhoodName: string; factoryName: string }) => {
+  const handleUploadFactory = async (values: { neighborhoodName: string }) => {
     if (!uploadFile) {
       message.error('Spreadsheet file is required');
       return;
@@ -227,17 +229,21 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     setUploading(true);
     try {
       const neighborhoodName = fixedNeighborhoodName || values.neighborhoodName;
-      const created = await uploadCustomFactory({ neighborhoodName, factoryName: values.factoryName, file: uploadFile });
-      message.success(`Factory created: ${created.name}`);
+      const result = await uploadCustomFactory({ neighborhoodName, file: uploadFile });
+      const uploadedFactories = result.factories || [];
+      message.success(uploadedFactories.length === 1
+        ? `Component uploaded: ${uploadedFactories[0].name}`
+        : `Components uploaded: ${uploadedFactories.length}`);
       setShowUploadModal(false);
       uploadForm.resetFields();
       setUploadFile(null);
       await loadNeighborhoods();
       await onNeighborhoodsChanged?.();
-      if (mode === 'panel' && (!fixedNeighborhoodName || created.neighborhoodName === fixedNeighborhoodName)) {
-        setSelectedNeighborhood(created.neighborhoodName);
-        await loadFactories(created.neighborhoodName);
-        setSelectedFactoryId(created._id);
+      const firstFactory = uploadedFactories[0];
+      if (mode === 'panel' && firstFactory && (!fixedNeighborhoodName || firstFactory.neighborhoodName === fixedNeighborhoodName)) {
+        setSelectedNeighborhood(firstFactory.neighborhoodName);
+        await loadFactories(firstFactory.neighborhoodName);
+        setSelectedFactoryId(firstFactory._id);
       }
     } catch (error: any) {
       message.error(error.response?.data?.error || error.message);
@@ -271,7 +277,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       setShowRowModal(false);
       setEditingRow(null);
       rowForm.resetFields();
-      message.success('Factory row updated');
+      message.success('Component row updated');
     } catch (error: any) {
       message.error(error.response?.data?.error || error.message);
     } finally {
@@ -285,16 +291,37 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       const nextFactory = await deleteCustomFactoryRow(selectedFactory._id, row._id);
       setSelectedFactory(nextFactory);
       setFactories((current) => current.map((factory) => (factory._id === nextFactory._id ? nextFactory : factory)));
-      message.success('Factory row deleted');
+      message.success('Component row deleted');
     } catch (error: any) {
       message.error(error.response?.data?.error || error.message);
     }
   };
 
+  const handleBulkDeleteRows = async () => {
+    if (!selectedFactory || !selectedRowKeys.length) return;
+
+    Modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected rows?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected rows from ${selectedFactory.name}.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        let nextFactory = selectedFactory;
+        for (const rowId of selectedRowKeys) {
+          nextFactory = await deleteCustomFactoryRow(selectedFactory._id, rowId);
+        }
+        setSelectedFactory(nextFactory);
+        setFactories((current) => current.map((factory) => (factory._id === nextFactory._id ? nextFactory : factory)));
+        setSelectedRowKeys([]);
+        message.success(`Deleted ${selectedRowKeys.length} rows`);
+      },
+    });
+  };
+
   const handleDeleteFactory = async (factory: CustomFactory) => {
     try {
       await deleteCustomFactory(factory._id);
-      message.success(`Factory deleted: ${factory.name}`);
+      message.success(`Component deleted: ${factory.name}`);
       setSelectedFactory((current) => (current?._id === factory._id ? null : current));
       setSelectedFactoryId((current) => (current === factory._id ? null : current));
       await loadFactories(factory.neighborhoodName);
@@ -315,14 +342,14 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       centered: true,
       content: (
         <div style={{ display: 'grid', gap: 8 }}>
-          <div>This will permanently delete the model and every factory inside it.</div>
+          <div>This will permanently delete the model and every component inside it.</div>
           <div style={{ color: '#b91c1c', fontWeight: 600 }}>This action cannot be undone.</div>
         </div>
       ),
       onOk: async () => {
         try {
           const result = await deleteFactoryNeighborhood(name);
-          message.success(`Model deleted: ${result.name} (${result.deletedFactoryCount} factories removed)`);
+          message.success(`Model deleted: ${result.name} (${result.deletedFactoryCount} components removed)`);
           setSelectedFactory(null);
           setSelectedFactoryId(null);
           setFactories([]);
@@ -397,7 +424,15 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         key: 'state',
         dataIndex: 'state',
         width: 110,
-        render: (value: string) => <Tag color="blue">{value || 'staged'}</Tag>,
+        render: (value: string) => {
+          const nextValue = String(value || 'staged').toLowerCase();
+          const color = nextValue === 'loaded'
+            ? 'green'
+            : nextValue === 'invalid'
+              ? 'red'
+              : 'blue';
+          return <Tag color={color}>{value || 'staged'}</Tag>;
+        },
       },
       {
         title: '',
@@ -453,11 +488,11 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={() => {
-                  uploadForm.setFieldsValue({ neighborhoodName: fixedNeighborhoodName || selectedNeighborhood || undefined, factoryName: '' });
+                  uploadForm.setFieldsValue({ neighborhoodName: fixedNeighborhoodName || selectedNeighborhood || undefined });
                   setShowUploadModal(true);
                 }}
               >
-                Add Factory
+                Add Components
               </Button>
             ) : null}
             {showDeleteNeighborhood && fixedNeighborhoodName ? (
@@ -474,17 +509,17 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         ) : null}
 
         <Modal
-          title="Create Factory from CSV"
+          title="Add Components from CSV"
           open={showUploadModal}
           onCancel={() => { setShowUploadModal(false); setUploadFile(null); }}
           onOk={() => uploadForm.submit()}
-          okText={uploading ? 'Creating…' : 'Create'}
+          okText={uploading ? 'Uploading…' : 'Upload'}
           confirmLoading={uploading}
         >
           <Form form={uploadForm} layout="vertical" onFinish={handleUploadFactory} className="mt-4">
             {fixedNeighborhoodName ? (
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>
-                Creating a factory in <strong>{fixedNeighborhoodName}</strong>
+                Adding components in <strong>{fixedNeighborhoodName}</strong>
               </div>
             ) : (
               <Form.Item
@@ -507,11 +542,8 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 />
               </Form.Item>
             )}
-            <Form.Item name="factoryName" label="Factory Name" rules={[{ required: true, message: 'Factory name is required' }]}>
-              <Input autoFocus />
-            </Form.Item>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>
-              The CSV must include a unique <strong>{PRIMARY_KEY_COLUMN}</strong> column. That column is treated as the factory row primary key.
+              Component names are taken from spreadsheet column headings ending in <strong>Component</strong> or <strong>Components</strong>. Legacy <strong>Part</strong> headers are still accepted. Each derived component must include a unique <strong>{PRIMARY_KEY_COLUMN}</strong> value.
             </div>
             <Form.Item label="CSV File" required>
               <Upload.Dragger
@@ -527,7 +559,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 fileList={uploadFile ? [uploadFile as any] : []}
               >
                 <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                <p className="ant-upload-text">Upload a CSV file to create the factory and staged rows</p>
+                <p className="ant-upload-text">Upload a CSV file to create or update model components from component columns</p>
               </Upload.Dragger>
             </Form.Item>
           </Form>
@@ -573,7 +605,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   return (
     <div className="flex h-full gap-3 p-3 min-h-0">
       {!hideFactoryList ? <Card
-        title={fixedNeighborhoodName ? `${fixedNeighborhoodName} Factories` : 'Models'}
+        title={fixedNeighborhoodName ? `${fixedNeighborhoodName} Components` : 'Models'}
         size="small"
         style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, height: '100%' }}
@@ -583,7 +615,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
             <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => {
               uploadForm.setFieldsValue({ neighborhoodName: selectedNeighborhood || undefined });
               setShowUploadModal(true);
-            }}>Factory</Button>
+            }}>Components</Button>
           </Space>
         ) : null}
       >
@@ -600,7 +632,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
           />
         ) : (
           <div style={{ color: '#64748b', fontSize: 12 }}>
-            Viewing factories for <strong>{fixedNeighborhoodName}</strong>
+            Viewing components for <strong>{fixedNeighborhoodName}</strong>
           </div>
         )}
 
@@ -608,14 +640,14 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
           <List
             loading={loadingFactories}
             dataSource={factories}
-            locale={{ emptyText: selectedNeighborhood ? 'No factories in this model yet' : 'No models available' }}
+            locale={{ emptyText: selectedNeighborhood ? 'No components in this model yet' : 'No models available' }}
             renderItem={(factory) => (
               <List.Item
                 actions={canManageFactories ? [
                   <Popconfirm
                     key="delete"
-                    title={`Delete factory ${factory.name}?`}
-                    description="This removes the entire factory and all of its rows."
+                    title={`Delete component ${factory.name}?`}
+                    description="This removes the entire component and all of its rows."
                     okText="Delete"
                     okButtonProps={{ danger: true }}
                     onConfirm={() => handleDeleteFactory(factory)}
@@ -650,23 +682,23 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       </Card> : null}
 
       <Card
-        title={selectedFactory ? `${selectedFactory.name} Factory` : 'Factory'}
+        title={selectedFactory ? `${selectedFactory.name} Component` : 'Component'}
         size="small"
         style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, height: '100%' }}
         extra={selectedFactory ? (
           <Space>
-            <span style={{ color: '#64748b', fontSize: 12 }}>{selectedFactory.neighborhoodName} · status defaults to staged</span>
+            <span style={{ color: '#64748b', fontSize: 12 }}>{selectedFactory.neighborhoodName} · loaded and invalid statuses are generated during import validation</span>
             {canManageFactories ? (
               <Popconfirm
-                title={`Delete factory ${selectedFactory.name}?`}
-                description="This removes the entire factory and all of its rows."
+                title={`Delete component ${selectedFactory.name}?`}
+                description="This removes the entire component and all of its rows."
                 okText="Delete"
                 okButtonProps={{ danger: true }}
                 onConfirm={() => handleDeleteFactory(selectedFactory)}
               >
                 <Button size="small" type="text" danger icon={<DeleteOutlined />}>
-                  Remove Factory
+                  Remove Component
                 </Button>
               </Popconfirm>
             ) : null}
@@ -676,7 +708,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         {!selectedFactory && (loadingFactories || loadingFactoryDetail) ? <Spin /> : null}
 
         {!selectedFactory && !(loadingFactories || loadingFactoryDetail) ? (
-          <div style={{ color: '#64748b' }}>Select a factory to view spreadsheet-derived rows.</div>
+          <div style={{ color: '#64748b' }}>Select a component to view spreadsheet-derived rows.</div>
         ) : null}
 
         {selectedFactory ? (
@@ -702,7 +734,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
               />
               <Input.Search
                 allowClear
-                placeholder="Search uploaded factory rows"
+                placeholder="Search uploaded component rows"
                 style={{ width: 280 }}
                 value={rowSearchText}
                 onChange={(event) => {
@@ -722,7 +754,12 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                   setRowStatusFilter(value);
                   if (selectedFactory?._id) updateFactoryViewState(selectedFactory._id, { statusFilter: value });
                 }}
-                options={[{ label: 'staged', value: 'staged' }]}
+                options={[
+                  { label: 'loaded', value: 'loaded' },
+                  { label: 'invalid', value: 'invalid' },
+                  { label: 'staged', value: 'staged' },
+                  { label: 'published', value: 'published' },
+                ]}
               />
               <Button onClick={() => {
                 setRowSearchColumn(ALL_COLUMNS_OPTION);
@@ -741,15 +778,25 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
               <span style={{ color: '#64748b', fontSize: 12 }}>
                 Showing {filteredRows.length} of {selectedFactory.rows.length} rows
               </span>
+              {canManageFactories ? (
+                <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDeleteRows}>
+                  Delete Selected ({selectedRowKeys.length})
+                </Button>
+              ) : null}
             </Space>
 
             <Table
               rowKey="_id"
               dataSource={filteredRows}
-              columns={rowColumns}
+              columns={enhanceColumnsWithSortAndFilters(rowColumns as any, filteredRows)}
               size="small"
-              pagination={{ pageSize: 25, showSizeChanger: true }}
-              scroll={{ x: 'max-content', y: 'calc(100vh - 320px)' }}
+              className={hideFactoryList ? 'component-rows-table component-rows-table--nested' : 'component-rows-table'}
+              pagination={{ pageSize: 25, showSizeChanger: true, position: ['topRight'] }}
+              scroll={{ x: 'max-content', y: hideFactoryList ? 'calc(100dvh - 590px)' : 'calc(100dvh - 360px)' }}
+              rowSelection={canManageFactories ? {
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys as string[]),
+              } : undefined}
             />
           </>
         ) : null}
@@ -790,11 +837,11 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       </Modal>
 
       <Modal
-        title="Create Factory from Spreadsheet"
+        title="Add Components from Spreadsheet"
         open={showUploadModal}
         onCancel={() => { setShowUploadModal(false); setUploadFile(null); }}
         onOk={() => uploadForm.submit()}
-        okText={uploading ? 'Creating…' : 'Create'}
+        okText={uploading ? 'Uploading…' : 'Upload'}
         confirmLoading={uploading}
       >
         <Form form={uploadForm} layout="vertical" onFinish={handleUploadFactory} className="mt-4">
@@ -817,11 +864,8 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
               options={neighborhoods.map((item) => ({ label: item.name, value: item.name }))}
             />
           </Form.Item>
-          <Form.Item name="factoryName" label="Factory Name" rules={[{ required: true, message: 'Factory name is required' }]}>
-            <Input />
-          </Form.Item>
           <div style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>
-            The spreadsheet must include a unique <strong>{PRIMARY_KEY_COLUMN}</strong> column. That column is treated as the factory row primary key.
+            Component names are taken from spreadsheet column headings ending in <strong>Component</strong> or <strong>Components</strong>. Legacy <strong>Part</strong> headers are still accepted. Each derived component must include a unique <strong>{PRIMARY_KEY_COLUMN}</strong> value.
           </div>
           <Form.Item label="Spreadsheet" required>
             <Upload.Dragger
@@ -837,7 +881,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
               fileList={uploadFile ? [uploadFile as any] : []}
             >
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Upload spreadsheet to create factory columns and staged rows</p>
+              <p className="ant-upload-text">Upload spreadsheet to create or update model components from component columns</p>
             </Upload.Dragger>
           </Form.Item>
         </Form>
@@ -867,7 +911,12 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
             <Input />
           </Form.Item>
           <Form.Item name="state" label="Status">
-            <Select options={[{ label: 'staged', value: 'staged' }]} />
+            <Select options={[
+              { label: 'loaded', value: 'loaded' },
+              { label: 'invalid', value: 'invalid' },
+              { label: 'staged', value: 'staged' },
+              { label: 'published', value: 'published' },
+            ]} />
           </Form.Item>
         </Form>
       </Modal>

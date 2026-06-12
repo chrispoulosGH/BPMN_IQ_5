@@ -3,6 +3,7 @@ import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form, Typog
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { getCapabilities, createCapability, updateCapability, deleteCapability, type CapabilityItem } from '../api';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface CapabilitiesFactoryProps {
   onNavigateToFactory?: (tab: string, search: string) => void;
@@ -27,6 +28,7 @@ export default function CapabilitiesFactory({
   const [items, setItems] = useState<CapabilityItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState(defaultSearch);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<CapabilityItem | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -78,6 +80,22 @@ export default function CapabilitiesFactory({
       onOk: async () => {
         await deleteCapability(item._id);
         message.success('Deleted');
+        loadItems();
+      },
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+    modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected capabilities?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected capabilities.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await Promise.all(selectedRowKeys.map((id) => deleteCapability(id)));
+        message.success(`Deleted ${selectedRowKeys.length} capabilities`);
+        setSelectedRowKeys([]);
         loadItems();
       },
     });
@@ -192,6 +210,9 @@ export default function CapabilitiesFactory({
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
+        {!readOnly && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
+          Delete Selected ({selectedRowKeys.length})
+        </Button>}
         {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Capability
         </Button>}
@@ -209,14 +230,18 @@ export default function CapabilitiesFactory({
 
       <Table
         dataSource={filtered}
-        columns={columns}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, filtered)}
         rowKey="_id"
         size="small"
         loading={loading}
-        pagination={{ pageSize: 25, showSizeChanger: true, showTotal: (t) => `${t} items` }}
+        pagination={{ pageSize: 25, showSizeChanger: true, showTotal: (t) => `${t} items`, position: ['topRight'] }}
         className="flex-1"
         scroll={{ y: 'calc(100vh - 220px)' }}
         rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
+        rowSelection={readOnly ? undefined : {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as string[]),
+        }}
       />
 
       <Modal

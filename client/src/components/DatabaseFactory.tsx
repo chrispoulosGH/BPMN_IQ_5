@@ -4,8 +4,9 @@ import { SearchOutlined, SettingOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 
-import { getDatabases } from '../api';
+import { deleteDatabase, getDatabases } from '../api';
 import type { DatabaseItem } from '../types';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface DatabaseFactoryProps {
   defaultSearch?: string;
@@ -40,11 +41,12 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'updatedAt', title: 'Updated At', defaultVisible: false },
 ];
 
-export default function DatabaseFactory({ defaultSearch, onNavigateToFactory }: DatabaseFactoryProps) {
-  const { message } = AntApp.useApp();
+export default function DatabaseFactory({ defaultSearch, onNavigateToFactory, readOnly }: DatabaseFactoryProps) {
+  const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<DatabaseItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState(defaultSearch || '');
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [detail, setDetail] = useState<DatabaseItem | null>(null);
   const [tableFilters, setTableFilters] = useState<Record<string, FilterValue | null>>({});
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
@@ -106,6 +108,22 @@ export default function DatabaseFactory({ defaultSearch, onNavigateToFactory }: 
       setLoading(false);
     }
   }, [message]);
+
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+    modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected databases?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected databases.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await Promise.all(selectedRowKeys.map((id) => deleteDatabase(id)));
+        message.success(`Deleted ${selectedRowKeys.length} databases`);
+        setSelectedRowKeys([]);
+        loadItems(search.trim() || undefined);
+      },
+    });
+  };
 
   useEffect(() => {
     setSearch(defaultSearch || '');
@@ -375,18 +393,25 @@ export default function DatabaseFactory({ defaultSearch, onNavigateToFactory }: 
         </Popover>
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{items.length} databases</span>
+        {!readOnly && <Button danger size="small" onClick={handleBulkDelete} disabled={!selectedRowKeys.length}>
+          Delete Selected ({selectedRowKeys.length})
+        </Button>}
       </div>
 
       <Table
         dataSource={items}
-        columns={columns}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, items)}
         rowKey="_id"
         size="small"
         loading={loading}
         onChange={(_pagination, filters) => setTableFilters(filters as Record<string, FilterValue | null>)}
-        pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (total) => `${total} items` }}
+        pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (total) => `${total} items`, position: ['topRight'] }}
         className="flex-1"
         scroll={{ x: scrollX, y: 'calc(100vh - 220px)' }}
+        rowSelection={readOnly ? undefined : {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as string[]),
+        }}
       />
 
       <Drawer title={detail?.name} open={!!detail} onClose={() => setDetail(null)} width={560}>

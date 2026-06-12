@@ -4,13 +4,34 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 
 const User = require('../models/User');
-const CustomFactory = require('../models/CustomFactory');
-const FactoryNeighborhood = require('../models/FactoryNeighborhood');
+const Component = require('../models/Component');
+const Model = require('../models/Model');
+const { Application, Actor, Product } = require('../models/ReferenceData');
+const Server = require('../models/Server');
+const DatabaseInstance = require('../models/DatabaseInstance');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const PRIMARY_KEY_COLUMN = 'name';
 const DEFAULT_NEIGHBORHOOD_NAME = 'AT&T Journey';
+const LEGACY_PART_COLUMN_PATTERN = /\bparts?$/i;
+const COMPONENT_COLUMN_PATTERN = /\bcomponents?$/i;
+const LEGACY_COMPONENT_HEADER_ALIASES = new Map([
+  ['lineofbusiness', 'LOB'],
+  ['lob', 'LOB'],
+  ['channel', 'Channel'],
+  ['product', 'Product'],
+  ['domain', 'L0'],
+  ['l0', 'L0'],
+  ['subdomain', 'L1'],
+  ['l1', 'L1'],
+  ['businessflow', 'Business Flow'],
+  ['business_flow', 'Business Flow'],
+  ['task', 'Task'],
+  ['e2eux', 'Task'],
+  ['application', 'Application'],
+  ['applications', 'Application'],
+]);
 
 function getCurrentUserLabel(req) {
   return req.currentUser?.displayName || req.currentUser?.userId || '';
@@ -38,7 +59,7 @@ function getValidationMessage(error) {
 }
 
 async function ensureDefaultNeighborhood() {
-  await FactoryNeighborhood.updateOne(
+  await Model.updateOne(
     { name: DEFAULT_NEIGHBORHOOD_NAME },
     {
       $setOnInsert: {
@@ -52,26 +73,30 @@ async function ensureDefaultNeighborhood() {
 }
 
 async function migrateFactoriesToDefaultNeighborhood() {
-  await ensureDefaultNeighborhood();
+  const missingNeighborhoodFilter = {
+    $or: [
+      { neighborhoodName: { $exists: false } },
+      { neighborhoodName: null },
+      { neighborhoodName: '' },
+    ],
+  };
 
-  await CustomFactory.updateMany(
-    {
-      $or: [
-        { neighborhoodName: { $exists: false } },
-        { neighborhoodName: null },
-        { neighborhoodName: '' },
-      ],
-    },
+  const missingCount = await Component.countDocuments(missingNeighborhoodFilter);
+  if (!missingCount) return;
+
+  const hasDefaultNeighborhood = await Model.exists({ name: DEFAULT_NEIGHBORHOOD_NAME });
+  if (!hasDefaultNeighborhood) return;
+
+  await Component.updateMany(
+    missingNeighborhoodFilter,
     { $set: { neighborhoodName: DEFAULT_NEIGHBORHOOD_NAME } }
   );
 }
 
 async function ensureNeighborhoodRecordsFromFactories() {
-  await ensureDefaultNeighborhood();
-
   const [factoryNeighborhoods, existingNeighborhoods] = await Promise.all([
-    CustomFactory.distinct('neighborhoodName', { neighborhoodName: { $type: 'string', $ne: '' } }),
-    FactoryNeighborhood.distinct('name'),
+    Component.distinct('neighborhoodName', { neighborhoodName: { $type: 'string', $ne: '' } }),
+    Model.distinct('name'),
   ]);
 
   const existingNames = new Set(existingNeighborhoods.map((name) => String(name || '').trim()).filter(Boolean));
@@ -81,7 +106,7 @@ async function ensureNeighborhoodRecordsFromFactories() {
 
   if (!missingNames.length) return;
 
-  await FactoryNeighborhood.insertMany(
+  await Model.insertMany(
     missingNames.map((name) => ({
       name,
       owner: name === DEFAULT_NEIGHBORHOOD_NAME ? 'System' : '',
@@ -157,7 +182,7 @@ function validatePrimaryKeyRows(rows) {
   });
 }
 
-function validateFactoryRows(rows, columns) {
+function validateComponentRows(rows, columns) {
   if (!columns.includes(PRIMARY_KEY_COLUMN)) {
     throw createValidationError(`Spreadsheet must include a ${PRIMARY_KEY_COLUMN} column`);
   }
@@ -185,7 +210,7 @@ function parseWorkbookRows(buffer, fileName) {
   if (!rawRows.length) throw createValidationError('Spreadsheet does not contain any data rows');
   const { rows, columns } = normalizeRowsAndColumns(rawRows);
   if (!columns.length) throw createValidationError('Spreadsheet does not contain any usable columns');
-  validateFactoryRows(rows, columns);
+  validateComponentRows(rows, columns);
   return { rows, columns, sheetName };
 }
 
@@ -249,11 +274,34 @@ function getNormalizedText(value) {
   return String(value ?? '').trim();
 }
 
-function getFactoryFieldName(label) {
+function getComponentFieldName(label) {
   const trimmed = getNormalizedText(label);
   if (!trimmed) return '';
   if (trimmed.toLowerCase() === PRIMARY_KEY_COLUMN) return PRIMARY_KEY_COLUMN;
   return trimmed.toLowerCase();
+}
+
+function getComponentColumnBaseName(header) {
+  const trimmedHeader = getNormalizedText(header);
+  if (!trimmedHeader) return '';
+  if (COMPONENT_COLUMN_PATTERN.test(trimmedHeader)) {
+    return trimmedHeader.replace(COMPONENT_COLUMN_PATTERN, '').trim();
+  }
+  if (LEGACY_PART_COLUMN_PATTERN.test(trimmedHeader)) {
+    return trimmedHeader.replace(LEGACY_PART_COLUMN_PATTERN, '').trim();
+  }
+
+  const normalizedHeader = trimmedHeader.toLowerCase().replace(/\s+/g, '_');
+  if (LEGACY_COMPONENT_HEADER_ALIASES.has(normalizedHeader)) {
+    return LEGACY_COMPONENT_HEADER_ALIASES.get(normalizedHeader);
+  }
+
+  const compactHeader = trimmedHeader.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  if (LEGACY_COMPONENT_HEADER_ALIASES.has(compactHeader)) {
+    return LEGACY_COMPONENT_HEADER_ALIASES.get(compactHeader);
+  }
+
+  return '';
 }
 
 function splitMultiValue(value) {
@@ -284,12 +332,12 @@ function deriveNeighborhoodSchema(headers) {
     const trimmedHeader = getNormalizedText(header);
     if (!trimmedHeader) return;
 
-    if (/\bfactory$/i.test(trimmedHeader)) {
-      const factoryName = trimmedHeader.replace(/\bfactory$/i, '').trim();
+    const factoryName = getComponentColumnBaseName(trimmedHeader);
+    if (factoryName) {
       if (!factoryName) return;
       const normalizedFactoryName = factoryName.toLowerCase();
       if (normalizedFactoryNames.has(normalizedFactoryName)) {
-        throw createValidationError(`Duplicate factory column found for ${factoryName}`);
+        throw createValidationError(`Duplicate component column found for ${factoryName}`);
       }
 
       const parentFactoryName = factoryDefinitions[factoryDefinitions.length - 1]?.name || '';
@@ -313,12 +361,12 @@ function deriveNeighborhoodSchema(headers) {
 
     const qualifierName = trimmedHeader.slice(matchingFactory.sourceColumnName.length).trim();
     if (!qualifierName) return;
-    const fieldName = getFactoryFieldName(qualifierName);
+    const fieldName = getComponentFieldName(qualifierName);
     if (!fieldName || fieldName === PRIMARY_KEY_COLUMN) {
       throw createValidationError(`Qualifier column ${trimmedHeader} resolves to an invalid field name`);
     }
     if (matchingFactory.qualifiers.some((qualifier) => qualifier.fieldName === fieldName)) {
-      throw createValidationError(`Duplicate qualifier column found for ${matchingFactory.name}: ${qualifierName}`);
+      throw createValidationError(`Duplicate component qualifier column found for ${matchingFactory.name}: ${qualifierName}`);
     }
 
     matchingFactory.qualifiers.push({
@@ -330,13 +378,465 @@ function deriveNeighborhoodSchema(headers) {
   });
 
   if (!factoryDefinitions.length) {
-    throw createValidationError('Model CSV does not contain any factory columns');
+    throw createValidationError('Model CSV does not contain any component columns');
   }
 
   return factoryDefinitions;
 }
 
-function buildNeighborhoodFactories({ neighborhoodName, rows, definitions, sourceFileName, owner, createdBy }) {
+function getRowValueByColumnName(row, columnName) {
+  const normalizedColumnName = String(columnName || '').trim().toLowerCase();
+  if (!normalizedColumnName) return '';
+
+  const matchingKey = Object.keys(row || {}).find((key) => String(key || '').trim().toLowerCase() === normalizedColumnName);
+  return matchingKey ? row[matchingKey] : '';
+}
+
+function escapeRegExp(text) {
+  return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getComparableValue(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function getCanonicalModelMatchValue(value) {
+  let normalized = getComparableValue(value);
+  if (!normalized) return '';
+
+  // Strip hierarchical numeric prefixes such as "2.04 " or "3 ".
+  normalized = normalized.replace(/^\d+(?:\.\d+)*\s*[.)-]?\s*/, '');
+  normalized = normalized.replace(/&/g, ' and ');
+  normalized = normalized.replace(/\//g, ' ');
+  normalized = normalized.replace(/[^a-z0-9\s]+/g, ' ');
+  normalized = normalized.replace(/\s+/g, ' ').trim();
+
+  if (!normalized) return '';
+
+  const phraseAliases = new Map([
+    ['lead managment', 'lead management'],
+    ['proposal management', 'quotation and proposal rfp mgmt'],
+    ['proposal mgmt', 'quotation and proposal rfp mgmt'],
+    ['pricing management', 'pricing order mgmt'],
+    ['pricing mgmt', 'pricing order mgmt'],
+    ['design management', 'design mgmt'],
+  ]);
+
+  if (phraseAliases.has(normalized)) {
+    normalized = phraseAliases.get(normalized);
+  }
+
+  normalized = normalized
+    .replace(/\bmanagment\b/g, 'management')
+    .replace(/\bmanagement\b/g, 'mgmt')
+    .replace(/\bopportunity\b/g, 'oppty')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized;
+}
+
+function getModelCatalogRowValues(row) {
+  if (!row) return {};
+  if (row.values instanceof Map) return Object.fromEntries(row.values.entries());
+  if (row.values && typeof row.values.toObject === 'function') return row.values.toObject();
+  if (row.values && typeof row.values === 'object') return { ...row.values };
+  if (typeof row.toObject === 'function') return row.toObject();
+  return { ...row };
+}
+
+function splitUploadColumns(columns) {
+  const componentColumns = [];
+  const seenComponentNames = new Set();
+
+  columns.forEach((column, index) => {
+    const sourceColumnName = getNormalizedText(column);
+    if (!sourceColumnName) return;
+
+    const componentName = getComponentColumnBaseName(sourceColumnName);
+    if (!componentName) {
+      return;
+    }
+
+    const normalizedComponentName = getComparableValue(componentName);
+    if (!normalizedComponentName) {
+      throw createValidationError(`Invalid component column name: ${sourceColumnName}`);
+    }
+    if (seenComponentNames.has(normalizedComponentName)) {
+      throw createValidationError(`Duplicate component column found: ${sourceColumnName}`);
+    }
+
+    const parentFactoryName = componentColumns[componentColumns.length - 1]?.name || '';
+    componentColumns.push({
+      sourceColumnName,
+      name: componentName,
+      normalizedName: normalizedComponentName,
+      parentFactoryName,
+      index,
+    });
+    seenComponentNames.add(normalizedComponentName);
+  });
+
+  if (!componentColumns.length) {
+    throw createValidationError('Upload must include at least one component column (for example: Application Component)');
+  }
+
+  return { componentColumns };
+}
+
+function classifyComponentColumnsAgainstModel({ schemaFactories, componentColumns }) {
+  const modelComponentColumns = new Set(
+    (schemaFactories || [])
+      .map((factory) => getComparableValue(factory?.sourceColumnName))
+      .filter(Boolean)
+  );
+
+  const matchedModelColumns = [];
+  const dataComponentColumns = [];
+  const unmatchedComponentColumns = [];
+
+  componentColumns.forEach((column) => {
+    if (modelComponentColumns.has(getComparableValue(column.sourceColumnName))) {
+      matchedModelColumns.push(column);
+      return;
+    }
+
+    if (getDataComponentType(column.name)) {
+      dataComponentColumns.push(column);
+      return;
+    }
+
+    unmatchedComponentColumns.push(column);
+  });
+
+  return { matchedModelColumns, dataComponentColumns, unmatchedComponentColumns };
+}
+
+function validateUploadRowsAgainstModel({ modelCatalogRows, matchedModelColumns, uploadRows }) {
+  if (!matchedModelColumns.length) {
+    throw createValidationError('Component upload must include at least one model component column that matches this model definition.');
+  }
+
+  const normalizedModelRows = (modelCatalogRows || []).map((row) => {
+    const values = getModelCatalogRowValues(row);
+    const canonicalValues = matchedModelColumns.reduce((acc, column) => {
+      acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(values, column.sourceColumnName));
+      return acc;
+    }, {});
+    const originalValues = matchedModelColumns.reduce((acc, column) => {
+      acc[column.sourceColumnName] = getNormalizedText(getRowValueByColumnName(values, column.sourceColumnName));
+      return acc;
+    }, {});
+
+    return { canonicalValues, originalValues };
+  });
+
+  const unmatchedRows = [];
+  uploadRows.forEach((uploadRow, index) => {
+    const comparableRow = matchedModelColumns.reduce((acc, column) => {
+      acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(uploadRow, column.sourceColumnName));
+      return acc;
+    }, {});
+
+    const hasMatch = normalizedModelRows.some((modelRow) => matchedModelColumns
+      .every((column) => modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName]));
+
+    if (!hasMatch) {
+      const mismatchPreview = matchedModelColumns
+        .map((column) => `${column.sourceColumnName}=${String(getRowValueByColumnName(uploadRow, column.sourceColumnName) ?? '').trim()}`)
+        .join(', ');
+
+      let bestCandidate = null;
+      let bestScore = -1;
+      normalizedModelRows.forEach((modelRow) => {
+        const score = matchedModelColumns.reduce((sum, column) => {
+          return sum + (modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName] ? 1 : 0);
+        }, 0);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestCandidate = modelRow.originalValues;
+        }
+      });
+
+      const bestCandidatePreview = bestCandidate
+        ? matchedModelColumns
+          .map((column) => `${column.sourceColumnName}=${bestCandidate[column.sourceColumnName] || ''}`)
+          .join(', ')
+        : 'none';
+
+      unmatchedRows.push(`row ${index + 2} (${mismatchPreview}) -> closest model: ${bestCandidatePreview}`);
+    }
+  });
+
+  if (unmatchedRows.length) {
+    throw createValidationError(`Component upload is incompatible with model data. ${unmatchedRows.length} row(s) did not match model hierarchy. Examples: ${unmatchedRows.slice(0, 12).join('; ')}${unmatchedRows.length > 12 ? '; ...' : ''}`);
+  }
+}
+
+function getDataComponentType(componentName) {
+  const normalized = getComparableValue(componentName);
+  if (!normalized) return null;
+
+  const aliases = new Map([
+    ['application', 'application'],
+    ['applications', 'application'],
+    ['app', 'application'],
+    ['apps', 'application'],
+    ['product', 'product'],
+    ['products', 'product'],
+    ['server', 'server'],
+    ['servers', 'server'],
+    ['db', 'databaseInstance'],
+    ['database', 'databaseInstance'],
+    ['database instance', 'databaseInstance'],
+    ['database instances', 'databaseInstance'],
+    ['db instance', 'databaseInstance'],
+    ['db instances', 'databaseInstance'],
+    ['actor', 'actor'],
+    ['actors', 'actor'],
+  ]);
+
+  return aliases.get(normalized) || null;
+}
+
+function getApplicationCorrelationIdFromUploadRow(row) {
+  if (!row || typeof row !== 'object') return '';
+
+  const candidateColumns = [
+    'correlation_id',
+    'correlation id',
+    'correlationid',
+    'application correlation id',
+    'app correlation id',
+    'app_correlation_id',
+    'application_correlation_id',
+  ];
+
+  for (const columnName of candidateColumns) {
+    const candidate = getNormalizedText(getRowValueByColumnName(row, columnName));
+    if (candidate) return candidate;
+  }
+
+  return '';
+}
+
+function getApplicationAcronymFromUploadRow(row, fallbackValue = '') {
+  if (!row || typeof row !== 'object') return getNormalizedText(fallbackValue);
+
+  const candidateColumns = [
+    'application acronym',
+    'app acronym',
+    'acronym',
+    'application_acronym',
+    'app_acronym',
+    'app_x_att2_itap_u_appl_acron_nm',
+  ];
+
+  for (const columnName of candidateColumns) {
+    const candidate = getNormalizedText(getRowValueByColumnName(row, columnName));
+    if (candidate) return candidate;
+  }
+
+  return getNormalizedText(fallbackValue);
+}
+
+async function doesDataComponentExist({ type, value, neighborhoodName, correlationId, acronym }) {
+  const trimmedValue = getNormalizedText(value);
+  if (!trimmedValue) return true;
+
+  const trimmedCorrelationId = getNormalizedText(correlationId);
+  const trimmedAcronym = getNormalizedText(acronym);
+  const exactMatchRegex = new RegExp(`^${escapeRegExp(trimmedValue)}$`, 'i');
+
+  if (type === 'application') {
+    const neighborhoodScope = { $in: [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodName] };
+
+    if (trimmedCorrelationId) {
+      const correlationIdRegex = new RegExp(`^${escapeRegExp(trimmedCorrelationId)}$`, 'i');
+      const appByCorrelation = await Application.findOne(
+        {
+          correlationId: correlationIdRegex,
+          neighborhoodName: neighborhoodScope,
+        },
+        { _id: 1 }
+      ).lean();
+
+      if (appByCorrelation) return true;
+    }
+
+    if (!trimmedAcronym) return false;
+    const acronymRegex = new RegExp(`^${escapeRegExp(trimmedAcronym)}$`, 'i');
+    const app = await Application.findOne({
+      acronym: acronymRegex,
+      neighborhoodName: neighborhoodScope,
+    }, { _id: 1 }).lean();
+    return Boolean(app);
+  }
+
+  if (type === 'product') {
+    const product = await Product.findOne({
+      name: exactMatchRegex,
+      neighborhoodName: { $in: [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodName] },
+    }, { _id: 1 }).lean();
+    return Boolean(product);
+  }
+
+  if (type === 'server') {
+    const server = await Server.findOne({ name: exactMatchRegex }, { _id: 1 }).lean();
+    return Boolean(server);
+  }
+
+  if (type === 'databaseInstance') {
+    const instance = await DatabaseInstance.findOne(
+      { $or: [{ name: exactMatchRegex }, { instanceName: exactMatchRegex }] },
+      { _id: 1 }
+    ).lean();
+    return Boolean(instance);
+  }
+
+  if (type === 'actor') {
+    const actor = await Actor.findOne({
+      name: exactMatchRegex,
+      neighborhoodName: { $in: [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodName] },
+    }, { _id: 1 }).lean();
+    return Boolean(actor);
+  }
+
+  return true;
+}
+
+async function buildComponentUploadFactories({ neighborhoodName, rows, componentColumns, sourceFileName, owner, createdBy }) {
+  const factoryRowMaps = new Map(componentColumns.map((column) => [column.name, new Map()]));
+  const dataExistenceCache = new Map();
+
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex];
+    const rowComponentValues = new Map(componentColumns.map((column) => [column.name, getNormalizedText(getRowValueByColumnName(row, column.sourceColumnName))]));
+    const applicationCorrelationId = getApplicationCorrelationIdFromUploadRow(row);
+
+    for (const column of componentColumns) {
+      const componentValue = rowComponentValues.get(column.name) || '';
+      if (!componentValue) continue;
+
+      const parentName = column.parentFactoryName ? (rowComponentValues.get(column.parentFactoryName) || '') : '';
+      if (column.parentFactoryName && !parentName) {
+        throw createValidationError(`Row ${rowIndex + 2}: ${column.name} has value \"${componentValue}\" but parent component ${column.parentFactoryName} is blank`);
+      }
+
+      const rowMap = factoryRowMaps.get(column.name);
+      const primaryKey = getNormalizedPrimaryKeyValue(componentValue);
+      const existingRow = rowMap.get(primaryKey);
+      const dataComponentType = getDataComponentType(column.name);
+      const applicationAcronym = dataComponentType === 'application'
+        ? getApplicationAcronymFromUploadRow(row, componentValue)
+        : '';
+      const cacheKey = `${dataComponentType || 'component'}::${getComparableValue(componentValue)}::${dataComponentType === 'application' ? getComparableValue(applicationCorrelationId) : ''}::${dataComponentType === 'application' ? getComparableValue(applicationAcronym) : ''}`;
+      let existsInDataCatalog = true;
+      if (dataComponentType) {
+        if (dataExistenceCache.has(cacheKey)) {
+          existsInDataCatalog = dataExistenceCache.get(cacheKey);
+        } else {
+          existsInDataCatalog = await doesDataComponentExist({
+            type: dataComponentType,
+            value: componentValue,
+            neighborhoodName,
+            correlationId: dataComponentType === 'application' ? applicationCorrelationId : '',
+            acronym: dataComponentType === 'application' ? applicationAcronym : '',
+          });
+          dataExistenceCache.set(cacheKey, existsInDataCatalog);
+        }
+      }
+      const rowState = existsInDataCatalog ? 'loaded' : 'invalid';
+
+      if (!existingRow) {
+        rowMap.set(primaryKey, {
+          values: { [PRIMARY_KEY_COLUMN]: componentValue },
+          owner,
+          state: rowState,
+          sourcedFrom: sourceFileName,
+          createdBy,
+          updatedBy: createdBy,
+          parentFactoryName: column.parentFactoryName,
+          parentName,
+        });
+        continue;
+      }
+
+      existingRow.parentName = mergeDistinctQualifierValues(existingRow.parentName || '', parentName || '');
+      if (existingRow.state !== 'invalid' && rowState === 'invalid') {
+        existingRow.state = 'invalid';
+      }
+      existingRow.updatedBy = createdBy;
+      existingRow.sourcedFrom = sourceFileName;
+    }
+  }
+
+  return componentColumns
+    .map((column) => ({
+      neighborhoodName,
+      name: column.name,
+      sourceColumnName: column.sourceColumnName,
+      parentFactoryName: column.parentFactoryName,
+      qualifierColumns: [],
+      columns: [PRIMARY_KEY_COLUMN],
+      owner,
+      createdBy,
+      sourceFileName,
+      rows: Array.from(factoryRowMaps.get(column.name).values()),
+    }))
+    .filter((factory) => factory.rows.length > 0);
+}
+
+function componentRowValuesFromFactoryColumns(columns, uploadedValues) {
+  return (columns || []).reduce((acc, column) => {
+    if (column === PRIMARY_KEY_COLUMN) {
+      acc[column] = getNormalizedText(uploadedValues?.[PRIMARY_KEY_COLUMN]);
+      return acc;
+    }
+    acc[column] = uploadedValues?.[column] ?? '';
+    return acc;
+  }, {});
+}
+
+function mergeUploadedRowsIntoFactory({ existingFactory, uploadedFactory, createdBy, sourceFileName }) {
+  const existingRowsByKey = new Map(
+    (existingFactory.rows || []).map((row) => [getNormalizedPrimaryKeyValue(row.values?.get(PRIMARY_KEY_COLUMN)), row])
+  );
+
+  (uploadedFactory.rows || []).forEach((uploadedRow) => {
+    const normalizedPrimaryKey = getNormalizedPrimaryKeyValue(uploadedRow.values?.[PRIMARY_KEY_COLUMN]);
+    if (!normalizedPrimaryKey) return;
+
+    const currentRow = existingRowsByKey.get(normalizedPrimaryKey);
+    if (!currentRow) {
+      existingFactory.rows.push({
+        values: componentRowValuesFromFactoryColumns(existingFactory.columns, uploadedRow.values),
+        owner: uploadedRow.owner || '',
+        state: uploadedRow.state || 'loaded',
+        sourcedFrom: sourceFileName,
+        createdBy,
+        updatedBy: createdBy,
+        parentFactoryName: uploadedRow.parentFactoryName || existingFactory.parentFactoryName || '',
+        parentName: uploadedRow.parentName || '',
+      });
+      return;
+    }
+
+    currentRow.parentName = mergeDistinctQualifierValues(currentRow.parentName || '', uploadedRow.parentName || '');
+    if ((currentRow.state || 'staged') !== 'invalid' && uploadedRow.state === 'invalid') {
+      currentRow.state = 'invalid';
+    } else if ((currentRow.state || 'staged') === 'staged' && uploadedRow.state === 'loaded') {
+      currentRow.state = 'loaded';
+    }
+    currentRow.updatedBy = createdBy;
+    currentRow.sourcedFrom = sourceFileName;
+  });
+
+  existingFactory.sourceFileName = sourceFileName;
+}
+
+function buildNeighborhoodFactories({ neighborhoodName, rows, definitions, sourceFileName, owner, createdBy, rowState = 'staged' }) {
   const factoryRowMaps = new Map(definitions.map((definition) => [definition.name, new Map()]));
 
   rows.forEach((row, rowIndex) => {
@@ -348,7 +848,7 @@ function buildNeighborhoodFactories({ neighborhoodName, rows, definitions, sourc
 
       const parentName = definition.parentFactoryName ? (rowFactoryValues.get(definition.parentFactoryName) || '') : '';
       if (definition.parentFactoryName && !parentName) {
-        throw createValidationError(`Row ${rowIndex + 2}: ${definition.name} requires a ${definition.parentFactoryName} parent value`);
+        throw createValidationError(`Row ${rowIndex + 2}: ${definition.name} requires a ${definition.parentFactoryName} parent component value`);
       }
 
       const qualifierValues = definition.qualifiers.reduce((acc, qualifier) => {
@@ -364,7 +864,7 @@ function buildNeighborhoodFactories({ neighborhoodName, rows, definitions, sourc
         rowMap.set(primaryKey, {
           values: { [PRIMARY_KEY_COLUMN]: factoryValue, ...qualifierValues },
           owner,
-          state: 'staged',
+          state: rowState,
           sourcedFrom: sourceFileName,
           createdBy,
           updatedBy: createdBy,
@@ -374,9 +874,7 @@ function buildNeighborhoodFactories({ neighborhoodName, rows, definitions, sourc
         return;
       }
 
-      if ((existingRow.parentName || '') !== parentName) {
-        throw createValidationError(`Factory value ${factoryValue} in ${definition.name} maps to multiple parents`);
-      }
+      existingRow.parentName = mergeDistinctQualifierValues(existingRow.parentName || '', parentName || '');
 
       Object.entries(qualifierValues).forEach(([fieldName, nextValue]) => {
         const currentValue = getNormalizedText(existingRow.values?.[fieldName]);
@@ -394,7 +892,7 @@ function buildNeighborhoodFactories({ neighborhoodName, rows, definitions, sourc
   return definitions.map((definition) => {
     const columns = [PRIMARY_KEY_COLUMN, ...definition.qualifiers.map((qualifier) => qualifier.fieldName)];
     const builtRows = Array.from(factoryRowMaps.get(definition.name).values());
-    validateFactoryRows(builtRows.map((row) => row.values), columns);
+    validateComponentRows(builtRows.map((row) => row.values), columns);
     return {
       neighborhoodName,
       name: definition.name,
@@ -412,6 +910,63 @@ function buildNeighborhoodFactories({ neighborhoodName, rows, definitions, sourc
       rows: builtRows,
     };
   });
+}
+
+function buildInvalidRowsForExistingFactory({ existingFactory, uploadedFactory, sourceFileName, owner, createdBy }) {
+  const existingRowsByKey = new Map(
+    (existingFactory.rows || []).map((row) => [getNormalizedPrimaryKeyValue(row.values?.get(PRIMARY_KEY_COLUMN)), row])
+  );
+  const existingKeys = new Set(existingRowsByKey.keys());
+
+  return (uploadedFactory.rows || []).reduce((nextRows, row) => {
+    const rawValues = row.values || {};
+    const primaryKeyValue = getNormalizedText(rawValues[PRIMARY_KEY_COLUMN]);
+    const normalizedPrimaryKey = getNormalizedPrimaryKeyValue(primaryKeyValue);
+    if (!normalizedPrimaryKey) {
+      return nextRows;
+    }
+
+    const existingRow = existingRowsByKey.get(normalizedPrimaryKey);
+    if (existingRow) {
+      existingRow.parentName = mergeDistinctQualifierValues(existingRow.parentName || '', row.parentName || '');
+      existingFactory.columns.forEach((column) => {
+        if (column === PRIMARY_KEY_COLUMN) return;
+
+        const currentValue = getNormalizedText(existingRow.values?.get(column));
+        const nextValue = getNormalizedText(rawValues[column]);
+        if (!currentValue) {
+          existingRow.values.set(column, nextValue);
+          return;
+        }
+        if (nextValue && currentValue !== nextValue) {
+          existingRow.values.set(column, mergeDistinctQualifierValues(currentValue, nextValue));
+        }
+      });
+      existingRow.updatedBy = createdBy;
+      existingRow.sourcedFrom = sourceFileName;
+      return nextRows;
+    }
+
+    const values = existingFactory.columns.reduce((acc, column) => {
+      acc[column] = rawValues[column] ?? '';
+      return acc;
+    }, {});
+
+    values[PRIMARY_KEY_COLUMN] = primaryKeyValue;
+
+    nextRows.push({
+      values,
+      owner,
+      state: 'invalid',
+      sourcedFrom: sourceFileName,
+      createdBy,
+      updatedBy: createdBy,
+      parentFactoryName: existingFactory.parentFactoryName || '',
+      parentName: row.parentName || '',
+    });
+    existingKeys.add(normalizedPrimaryKey);
+    return nextRows;
+  }, []);
 }
 
 function serializeFactory(factory) {
@@ -480,15 +1035,17 @@ router.get('/neighborhoods', async (_req, res) => {
     await migrateFactoriesToDefaultNeighborhood();
     await ensureNeighborhoodRecordsFromFactories();
     const [neighborhoods, counts] = await Promise.all([
-      FactoryNeighborhood.find({}, { name: 1, owner: 1, createdBy: 1, createdAt: 1, updatedAt: 1, _id: 0 }).sort({ name: 1 }).lean(),
-      CustomFactory.aggregate([
-        { $group: { _id: '$neighborhoodName', factoryCount: { $sum: 1 }, updatedAt: { $max: '$updatedAt' } } },
+      Model.find({}, { name: 1, owner: 1, createdBy: 1, createdAt: 1, updatedAt: 1, _id: 0 }).sort({ name: 1 }).lean(),
+      Component.aggregate([
+        { $group: { _id: '$neighborhoodName', componentCount: { $sum: 1 }, updatedAt: { $max: '$updatedAt' } } },
       ]),
     ]);
     const countMap = new Map(counts.map((row) => [row._id, row]));
     res.json(neighborhoods.map((neighborhood) => ({
       ...neighborhood,
-      factoryCount: countMap.get(neighborhood.name)?.factoryCount || 0,
+      factoryCount: countMap.get(neighborhood.name)?.componentCount || 0,
+      partCount: countMap.get(neighborhood.name)?.componentCount || 0,
+      componentCount: countMap.get(neighborhood.name)?.componentCount || 0,
       updatedAt: countMap.get(neighborhood.name)?.updatedAt || neighborhood.updatedAt,
     })));
   } catch (err) {
@@ -498,10 +1055,9 @@ router.get('/neighborhoods', async (_req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    await ensureDefaultNeighborhood();
     const neighborhoodName = String(req.query.neighborhoodName || '').trim();
     const query = neighborhoodName ? { neighborhoodName } : {};
-    const factories = await CustomFactory.find(query, { neighborhoodName: 1, name: 1, owner: 1, createdBy: 1, sourceFileName: 1, columns: 1, createdAt: 1, updatedAt: 1, rows: 1 })
+    const factories = await Component.find(query, { neighborhoodName: 1, name: 1, owner: 1, createdBy: 1, sourceFileName: 1, columns: 1, createdAt: 1, updatedAt: 1, rows: 1 })
       .sort({ neighborhoodName: 1, name: 1 })
       .lean();
     res.json(factories.map((factory) => serializeFactory(factory)));
@@ -516,7 +1072,7 @@ router.get('/neighborhoods/:name/catalog', async (req, res) => {
     const name = String(req.params?.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Model name is required' });
 
-    const model = await FactoryNeighborhood.findOne({ name }).lean();
+    const model = await Model.findOne({ name }).lean();
     if (!model) return res.status(404).json({ error: 'Model not found' });
 
     res.json(serializeModelCatalog(model));
@@ -527,8 +1083,8 @@ router.get('/neighborhoods/:name/catalog', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const factory = await CustomFactory.findById(req.params.id).lean();
-    if (!factory) return res.status(404).json({ error: 'Factory not found' });
+    const factory = await Component.findById(req.params.id).lean();
+    if (!factory) return res.status(404).json({ error: 'Component not found' });
     res.json(serializeFactory(factory));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -541,26 +1097,16 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
   if (!req.file?.buffer) return res.status(400).json({ error: 'Model CSV file is required' });
   let neighborhood = null;
   try {
-    await ensureDefaultNeighborhood();
     await ensureNeighborhoodRecordsFromFactories();
-    const existing = await FactoryNeighborhood.exists({ name });
+    const existing = await Model.exists({ name });
     if (existing) return res.status(409).json({ error: 'Model already exists' });
 
     const owner = getCurrentUserLabel(req);
     const createdBy = getCurrentUserId(req);
     const { columns, rows } = parseModelCatalogWorkbook(req.file.buffer, req.file.originalname);
-    const { headers, rows: factorySourceRows } = parseNeighborhoodWorkbook(req.file.buffer, req.file.originalname);
-    const schemaFactories = deriveNeighborhoodSchema(headers);
-    const builtFactories = buildNeighborhoodFactories({
-      neighborhoodName: name,
-      rows: factorySourceRows,
-      definitions: schemaFactories,
-      sourceFileName: req.file.originalname,
-      owner,
-      createdBy,
-    });
+    const schemaFactories = deriveNeighborhoodSchema(columns);
 
-    neighborhood = await FactoryNeighborhood.create({
+    neighborhood = await Model.create({
       name,
       owner,
       createdBy,
@@ -580,21 +1126,21 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
       })),
     });
 
-    await CustomFactory.insertMany(builtFactories, { ordered: true });
-
     res.status(201).json({
       name: neighborhood.name,
       owner: neighborhood.owner,
       createdBy: neighborhood.createdBy,
-      factoryCount: builtFactories.length,
+      factoryCount: 0,
+      partCount: 0,
+      componentCount: 0,
       createdAt: neighborhood.createdAt,
       updatedAt: neighborhood.updatedAt,
     });
   } catch (err) {
     if (neighborhood?._id) {
       await Promise.all([
-        FactoryNeighborhood.deleteOne({ _id: neighborhood._id }).catch(() => null),
-        CustomFactory.deleteMany({ neighborhoodName: name }).catch(() => null),
+        Model.deleteOne({ _id: neighborhood._id }).catch(() => null),
+        Component.deleteMany({ neighborhoodName: name }).catch(() => null),
       ]);
     }
     if (err?.code === 11000) return res.status(409).json({ error: 'Model already exists' });
@@ -607,21 +1153,21 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Model name is required' });
 
   try {
-    const neighborhood = await FactoryNeighborhood.findOne({ name }, { _id: 1, name: 1 }).lean();
+    const neighborhood = await Model.findOne({ name }, { _id: 1, name: 1 }).lean();
     if (!neighborhood) return res.status(404).json({ error: 'Model not found' });
 
     const [deletedFactories, deletedNeighborhood] = await Promise.all([
-      CustomFactory.deleteMany({ neighborhoodName: name }),
-      FactoryNeighborhood.deleteOne({ _id: neighborhood._id }),
+      Component.deleteMany({ neighborhoodName: name }),
+      Model.deleteOne({ _id: neighborhood._id }),
     ]);
 
     if ((deletedNeighborhood.deletedCount || 0) !== 1) {
       throw createValidationError(`Failed to delete model ${name}`, 500);
     }
 
-    const remainingFactoryCount = await CustomFactory.countDocuments({ neighborhoodName: name });
+    const remainingFactoryCount = await Component.countDocuments({ neighborhoodName: name });
     if (remainingFactoryCount > 0) {
-      throw createValidationError(`Model ${name} still has ${remainingFactoryCount} factories after delete`, 500);
+      throw createValidationError(`Model ${name} still has ${remainingFactoryCount} components after delete`, 500);
     }
 
     res.json({
@@ -629,6 +1175,8 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
       name,
       deletedNeighborhoodCount: deletedNeighborhood.deletedCount || 0,
       deletedFactoryCount: deletedFactories.deletedCount || 0,
+      deletedPartCount: deletedFactories.deletedCount || 0,
+      deletedComponentCount: deletedFactories.deletedCount || 0,
     });
   } catch (err) {
     res.status(err?.status || 500).json({ error: getValidationMessage(err) });
@@ -637,55 +1185,151 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
 
 router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res) => {
   const neighborhoodName = String(req.body?.neighborhoodName || '').trim();
-  const factoryName = String(req.body?.factoryName || '').trim();
   if (!neighborhoodName) return res.status(400).json({ error: 'Model name is required' });
-  if (!factoryName) return res.status(400).json({ error: 'Factory name is required' });
   if (!req.file?.buffer) return res.status(400).json({ error: 'Spreadsheet file is required' });
 
   try {
-    await ensureDefaultNeighborhood();
-    const neighborhood = await FactoryNeighborhood.findOne({ name: neighborhoodName }).lean();
+    const neighborhood = await Model.findOne({ name: neighborhoodName }).lean();
     if (!neighborhood) return res.status(404).json({ error: 'Model not found' });
-    const { rows, columns } = parseWorkbookRows(req.file.buffer, req.file.originalname);
+
+    if (!Array.isArray(neighborhood.modelCatalogColumns) || !neighborhood.modelCatalogColumns.length || !Array.isArray(neighborhood.modelCatalogRows) || !neighborhood.modelCatalogRows.length) {
+      return res.status(409).json({ error: 'Model catalog is missing. Delete and reload the model before loading components.' });
+    }
+
+    const { columns: uploadColumns, rows: uploadRows } = parseModelCatalogWorkbook(req.file.buffer, req.file.originalname);
+    const { componentColumns } = splitUploadColumns(uploadColumns);
+    const { matchedModelColumns, unmatchedComponentColumns } = classifyComponentColumnsAgainstModel({
+      schemaFactories: neighborhood.schemaFactories,
+      componentColumns,
+    });
+
+    validateUploadRowsAgainstModel({
+      modelCatalogRows: neighborhood.modelCatalogRows,
+      matchedModelColumns,
+      uploadRows,
+    });
+
     const owner = req.currentUser?.displayName || req.currentUser?.userId || '';
     const createdBy = req.currentUser?.userId || '';
-    const factory = await CustomFactory.create({
+
+    const uploadedFactories = await buildComponentUploadFactories({
       neighborhoodName,
-      name: factoryName,
-      sourceColumnName: factoryName,
-      parentFactoryName: '',
-      columns,
-      qualifierColumns: columns.filter((column) => column !== PRIMARY_KEY_COLUMN).map((column) => ({
-        name: column,
-        sourceColumnName: column,
-        fieldName: column,
-      })),
+      rows: uploadRows,
+      componentColumns,
+      sourceFileName: req.file.originalname,
       owner,
       createdBy,
-      sourceFileName: req.file.originalname,
-      rows: rows.map((row) => ({
-        values: columns.reduce((acc, column) => {
-          acc[column] = row[column] ?? '';
-          return acc;
-        }, {}),
-        owner,
-        state: 'staged',
-        sourcedFrom: req.file.originalname,
-        createdBy,
-        updatedBy: createdBy,
-      })),
     });
-    res.status(201).json(serializeFactory(factory.toObject()));
+
+    const factoryNames = uploadedFactories.map((factory) => factory.name);
+    const existingFactories = await Component.find({ neighborhoodName, name: { $in: factoryNames } });
+    const existingFactoryMap = new Map(existingFactories.map((factory) => [factory.name, factory]));
+
+    const alreadyLoadedFactory = existingFactories.find((factory) =>
+      (factory.rows || []).some((row) => {
+        const state = getComparableValue(row.state || '');
+        return state === 'loaded' || state === 'invalid';
+      })
+    );
+
+    if (alreadyLoadedFactory) {
+      return res.status(409).json({
+        error: `Component data already loaded for model ${neighborhoodName}. Delete the model and reload before importing components again.`,
+      });
+    }
+
+    const rollbackSnapshots = existingFactories.map((factory) => factory.toObject({ depopulate: true }));
+    const rollbackModelSchemaFactories = Array.isArray(neighborhood.schemaFactories)
+      ? JSON.parse(JSON.stringify(neighborhood.schemaFactories))
+      : [];
+    const createdFactoryIds = [];
+    const savedFactories = [];
+
+    try {
+      for (const uploadedFactory of uploadedFactories) {
+        const existingFactory = existingFactoryMap.get(uploadedFactory.name);
+
+        if (existingFactory) {
+          if (existingFactory.parentFactoryName && uploadedFactory.parentFactoryName && existingFactory.parentFactoryName !== uploadedFactory.parentFactoryName) {
+            throw createValidationError(`Component hierarchy mismatch for ${uploadedFactory.name}. Expected parent ${existingFactory.parentFactoryName}, received ${uploadedFactory.parentFactoryName}`);
+          }
+
+          mergeUploadedRowsIntoFactory({
+            existingFactory,
+            uploadedFactory,
+            createdBy,
+            sourceFileName: req.file.originalname,
+          });
+
+          await existingFactory.save();
+          savedFactories.push(serializeFactory(existingFactory.toObject()));
+          continue;
+        }
+
+        const createdFactory = await Component.create(uploadedFactory);
+        createdFactoryIds.push(String(createdFactory._id));
+        savedFactories.push(serializeFactory(createdFactory.toObject()));
+      }
+
+      if (unmatchedComponentColumns.length) {
+        const existingSchemaColumnNames = new Set(
+          rollbackModelSchemaFactories
+            .map((factory) => getComparableValue(factory?.sourceColumnName))
+            .filter(Boolean)
+        );
+        const currentMaxLevel = rollbackModelSchemaFactories.reduce((maxLevel, factory) => {
+          const level = Number(factory?.level || 0);
+          return Number.isFinite(level) && level > maxLevel ? level : maxLevel;
+        }, 0);
+
+        const schemaAppends = unmatchedComponentColumns
+          .filter((column) => !existingSchemaColumnNames.has(getComparableValue(column.sourceColumnName)))
+          .map((column, index) => ({
+            name: column.name,
+            sourceColumnName: column.sourceColumnName,
+            parentFactoryName: column.parentFactoryName || '',
+            qualifierColumns: [],
+            level: currentMaxLevel + index + 1,
+          }));
+
+        if (schemaAppends.length) {
+          await Model.updateOne(
+            { name: neighborhoodName },
+            {
+              $push: {
+                schemaFactories: { $each: schemaAppends },
+              },
+            }
+          );
+        }
+      }
+    } catch (writeError) {
+      if (createdFactoryIds.length) {
+        await Component.deleteMany({ _id: { $in: createdFactoryIds } }).catch(() => null);
+      }
+
+      await Promise.all(rollbackSnapshots.map((snapshot) =>
+        Component.replaceOne({ _id: snapshot._id }, snapshot, { overwriteDiscriminatorKey: true }).catch(() => null)
+      ));
+
+      await Model.updateOne(
+        { name: neighborhoodName },
+        { $set: { schemaFactories: rollbackModelSchemaFactories } }
+      ).catch(() => null);
+
+      throw writeError;
+    }
+
+    res.status(201).json({ factories: savedFactories, parts: savedFactories, components: savedFactories });
   } catch (err) {
-    if (err?.code === 11000) return res.status(409).json({ error: 'Factory already exists in this model' });
     res.status(err?.status || 500).json({ error: getValidationMessage(err) });
   }
 });
 
 router.put('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => {
   try {
-    const factory = await CustomFactory.findById(req.params.factoryId);
-    if (!factory) return res.status(404).json({ error: 'Factory not found' });
+    const factory = await Component.findById(req.params.factoryId);
+    if (!factory) return res.status(404).json({ error: 'Component not found' });
     const row = factory.rows.id(req.params.rowId);
     if (!row) return res.status(404).json({ error: 'Factory row not found' });
 
@@ -700,7 +1344,7 @@ router.put('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => {
       return values;
     });
 
-    validateFactoryRows(candidateRows, factory.columns);
+    validateComponentRows(candidateRows, factory.columns);
 
     for (const column of factory.columns) {
       row.values.set(column, nextValues[column] ?? '');
@@ -718,10 +1362,10 @@ router.put('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => {
 
 router.delete('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => {
   try {
-    const factory = await CustomFactory.findById(req.params.factoryId);
-    if (!factory) return res.status(404).json({ error: 'Factory not found' });
+    const factory = await Component.findById(req.params.factoryId);
+    if (!factory) return res.status(404).json({ error: 'Component not found' });
     const row = factory.rows.id(req.params.rowId);
-    if (!row) return res.status(404).json({ error: 'Factory row not found' });
+    if (!row) return res.status(404).json({ error: 'Component row not found' });
     row.deleteOne();
     await factory.save();
     res.json(serializeFactory(factory.toObject()));
@@ -732,11 +1376,11 @@ router.delete('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => 
 
 router.delete('/:factoryId', requireAdminWrite, async (req, res) => {
   try {
-    const factory = await CustomFactory.findById(req.params.factoryId).lean();
-    if (!factory) return res.status(404).json({ error: 'Factory not found' });
+    const factory = await Component.findById(req.params.factoryId).lean();
+    if (!factory) return res.status(404).json({ error: 'Component not found' });
 
-    await CustomFactory.deleteOne({ _id: factory._id });
-    await FactoryNeighborhood.updateOne(
+    await Component.deleteOne({ _id: factory._id });
+    await Model.updateOne(
       { name: factory.neighborhoodName },
       {
         $pull: {
@@ -750,7 +1394,7 @@ router.delete('/:factoryId', requireAdminWrite, async (req, res) => {
       }
     );
 
-    res.json({ success: true, factoryId: String(factory._id), neighborhoodName: factory.neighborhoodName, name: factory.name });
+    res.json({ success: true, factoryId: String(factory._id), partId: String(factory._id), componentId: String(factory._id), neighborhoodName: factory.neighborhoodName, name: factory.name });
   } catch (err) {
     res.status(err?.status || 500).json({ error: getValidationMessage(err) });
   }

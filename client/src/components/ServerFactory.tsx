@@ -4,8 +4,9 @@ import { SearchOutlined, SettingOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 
-import { getServers } from '../api';
+import { deleteServer, getServers } from '../api';
 import type { ServerItem } from '../types';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface ServerFactoryProps {
   defaultSearch?: string;
@@ -63,11 +64,12 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'updatedAt', title: 'Updated At', defaultVisible: false },
 ];
 
-export default function ServerFactory({ defaultSearch, onNavigateToFactory }: ServerFactoryProps) {
-  const { message } = AntApp.useApp();
+export default function ServerFactory({ defaultSearch, onNavigateToFactory, readOnly }: ServerFactoryProps) {
+  const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ServerItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState(defaultSearch || '');
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [detail, setDetail] = useState<ServerItem | null>(null);
   const [tableFilters, setTableFilters] = useState<Record<string, FilterValue | null>>({});
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
@@ -160,6 +162,22 @@ export default function ServerFactory({ defaultSearch, onNavigateToFactory }: Se
       setLoading(false);
     }
   }, [message]);
+
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+    modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected servers?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected servers.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await Promise.all(selectedRowKeys.map((id) => deleteServer(id)));
+        message.success(`Deleted ${selectedRowKeys.length} servers`);
+        setSelectedRowKeys([]);
+        loadItems(search.trim() || undefined);
+      },
+    });
+  };
 
   useEffect(() => {
     setSearch(defaultSearch || '');
@@ -553,18 +571,25 @@ export default function ServerFactory({ defaultSearch, onNavigateToFactory }: Se
         </Popover>
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{items.length} servers</span>
+        {!readOnly && <Button danger size="small" onClick={handleBulkDelete} disabled={!selectedRowKeys.length}>
+          Delete Selected ({selectedRowKeys.length})
+        </Button>}
       </div>
 
       <Table
         dataSource={items}
-        columns={columns}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, items)}
         rowKey="_id"
         size="small"
         loading={loading}
         onChange={(_pagination, filters) => setTableFilters(filters as Record<string, FilterValue | null>)}
-        pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (total) => `${total} items` }}
+        pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (total) => `${total} items`, position: ['topRight'] }}
         className="flex-1"
         scroll={{ x: scrollX, y: 'calc(100vh - 220px)' }}
+        rowSelection={readOnly ? undefined : {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as string[]),
+        }}
       />
 
       <Drawer title={detail?.name} open={!!detail} onClose={() => setDetail(null)} width={560}>

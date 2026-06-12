@@ -3,6 +3,7 @@ import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form, Tag, 
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { getRefItems, createRefItem, updateRefItem, deleteRefItem, type RefItem } from '../api';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface ReferenceFactoryProps {
   collection: string;
@@ -19,6 +20,7 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
   const [items, setItems] = useState<RefItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<RefItem | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -74,6 +76,23 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
       onOk: async () => {
         await deleteRefItem(collection, item._id);
         message.success('Deleted');
+        loadItems();
+      },
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+
+    modal.confirm({
+      title: `Delete ${selectedRowKeys.length} ${title.toLowerCase()} entr${selectedRowKeys.length === 1 ? 'y' : 'ies'}?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected ${title.toLowerCase()} entr${selectedRowKeys.length === 1 ? 'y' : 'ies'}.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await Promise.all(selectedRowKeys.map((id) => deleteRefItem(collection, String(id))));
+        message.success(`Deleted ${selectedRowKeys.length} ${title.toLowerCase()} entr${selectedRowKeys.length === 1 ? 'y' : 'ies'}`);
+        setSelectedRowKeys([]);
         loadItems();
       },
     });
@@ -162,6 +181,9 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>
+        {!readOnly && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
+          Delete Selected ({selectedRowKeys.length})
+        </Button>}
         {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New {title}
         </Button>}
@@ -169,14 +191,18 @@ export default function ReferenceFactory({ collection, title, defaultSearch, def
 
       <Table
         dataSource={filtered}
-        columns={columns}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, filtered)}
         rowKey="_id"
         size="small"
         loading={loading}
-        pagination={{ pageSize: 25, showSizeChanger: true, showTotal: (t) => `${t} items` }}
+        pagination={{ pageSize: 25, showSizeChanger: true, showTotal: (t) => `${t} items`, position: ['topRight'] }}
         className="flex-1"
         scroll={{ y: 'calc(100vh - 220px)' }}
         rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
+        rowSelection={readOnly ? undefined : {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys),
+        }}
       />
 
       <Modal

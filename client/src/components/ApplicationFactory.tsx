@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select, List, Spin, Typography } from 'antd';
-import { SearchOutlined, SettingOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
+import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select, List, Spin, Typography, Space } from 'antd';
+import { SearchOutlined, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ApplicationItem, ServerItem } from '../types';
-import { getRefItems, createApplication, updateApplication, getApplicationServers } from '../api';
+import { getRefItems, createApplication, updateApplication, getApplicationServers, deleteRefItem } from '../api';
 import type { ColumnsType } from 'antd/es/table';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 import { matchesFactorySearch } from '../utils/factorySearch';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface ApplicationFactoryProps {
   defaultSearch?: string;
@@ -43,10 +44,11 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
 ];
 
 export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, onNavigateToFactory }: ApplicationFactoryProps) {
-  const { message } = AntApp.useApp();
+  const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [detail, setDetail] = useState<ApplicationItem | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm] = Form.useForm();
@@ -150,6 +152,36 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     }
   };
 
+  const handleDelete = (record: ApplicationItem) => {
+    modal.confirm({
+      title: `Delete "${record.name}"?`,
+      content: 'This will permanently remove this application.',
+      okText: 'Delete',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await deleteRefItem('applications', record._id);
+        message.success('Application deleted');
+        loadItems();
+      },
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+    modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected applications?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected applications.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await Promise.all(selectedRowKeys.map((id) => deleteRefItem('applications', id)));
+        message.success(`Deleted ${selectedRowKeys.length} applications`);
+        setSelectedRowKeys([]);
+        loadItems();
+      },
+    });
+  };
+
   const toggleColumn = (key: string) => {
     setVisibleKeys(prev => {
       const next = new Set(prev);
@@ -238,10 +270,15 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
       },
     },
     { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 130, ellipsis: true, render: (v: string) => v || '—' },
-    { title: '', key: 'actions', width: 50, render: (_: unknown, record: ApplicationItem) => readOnly ? null : (
-      <Tooltip title="Edit">
-        <Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-      </Tooltip>
+    { title: '', key: 'actions', width: 90, render: (_: unknown, record: ApplicationItem) => readOnly ? null : (
+      <Space size="small">
+        <Tooltip title="Edit">
+          <Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+        </Tooltip>
+        <Tooltip title="Delete">
+          <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)} />
+        </Tooltip>
+      </Space>
     )},
   ], [items, readOnly]);
 
@@ -288,6 +325,9 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         </Popover>
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} of {items.length} applications</span>
+        {!readOnly && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
+          Delete Selected ({selectedRowKeys.length})
+        </Button>}
         {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { addForm.resetFields(); setShowAddForm(true); }}>
           New Application
         </Button>}
@@ -295,14 +335,18 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
 
       <Table
         dataSource={filtered}
-        columns={columns}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, filtered)}
         rowKey="_id"
         size="small"
         loading={loading}
-        pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (t) => `${t} items` }}
+        pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (t) => `${t} items`, position: ['topRight'] }}
         className="flex-1"
         scroll={{ x: scrollX, y: 'calc(100vh - 220px)' }}
         rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
+        rowSelection={readOnly ? undefined : {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as string[]),
+        }}
       />
 
       <Drawer

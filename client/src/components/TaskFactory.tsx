@@ -5,6 +5,7 @@ import type { TaskRecord, TaskCreatePayload, ReferenceData, TaskAddData } from '
 import { getTasks, getTaskReference, createTask, updateTask, deleteTask } from '../api';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 import { parseFactorySearch } from '../utils/factorySearch';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface TaskFactoryProps {
   defaultSearch?: string;
@@ -21,6 +22,7 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
   const [refData, setRefData] = useState<ReferenceData | null>(null);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskRecord | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -96,6 +98,22 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
       onOk: async () => {
         await deleteTask(task._id);
         message.success('Task deleted');
+        loadTasks();
+      },
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+    modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected tasks?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected tasks.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await Promise.all(selectedRowKeys.map((id) => deleteTask(id)));
+        message.success(`Deleted ${selectedRowKeys.length} tasks`);
+        setSelectedRowKeys([]);
         loadTasks();
       },
     });
@@ -214,6 +232,9 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
           onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
         />
         <div className="flex-1" />
+        {!readOnly && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
+          Delete Selected ({selectedRowKeys.length})
+        </Button>}
         {userRole === 'Super' && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleCreate}>
           New Task
         </Button>}
@@ -222,14 +243,18 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
       {/* Table */}
       <Table
         dataSource={tasks}
-        columns={columns}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, tasks)}
         rowKey="_id"
         size="small"
         loading={loading}
-        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} tasks` }}
+        pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} tasks`, position: ['topRight'] }}
         className="flex-1"
         scroll={{ y: 'calc(100vh - 220px)' }}
         rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
+        rowSelection={readOnly ? undefined : {
+          selectedRowKeys,
+          onChange: (keys) => setSelectedRowKeys(keys as string[]),
+        }}
       />
 
       {/* Create/Edit Modal */}

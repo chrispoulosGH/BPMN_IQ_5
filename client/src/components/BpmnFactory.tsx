@@ -4,6 +4,28 @@ import { EditOutlined, DeleteOutlined, SearchOutlined, FolderOpenOutlined, Uploa
 import type { DiagramMeta } from '../types';
 import { getDiagrams, getDiagram, deleteDiagram, updateDiagram, batchImportDiagrams, transitionState } from '../api';
 import { matchesFactorySearch } from '../utils/factorySearch';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
+
+interface DiagramMetadataFieldConfig {
+  label: string;
+  tabKey?: string;
+}
+
+interface DiagramMetadataConfig {
+  lineOfBusiness?: DiagramMetadataFieldConfig;
+  channel?: DiagramMetadataFieldConfig;
+  domain?: DiagramMetadataFieldConfig;
+  subdomain?: DiagramMetadataFieldConfig;
+  product?: DiagramMetadataFieldConfig;
+}
+
+const DEFAULT_DIAGRAM_METADATA_CONFIG: Required<DiagramMetadataConfig> = {
+  lineOfBusiness: { label: 'Line of Business', tabKey: 'linesOfBusiness' },
+  channel: { label: 'Channel', tabKey: 'channels' },
+  domain: { label: 'Domain', tabKey: 'domains' },
+  subdomain: { label: 'Subdomain', tabKey: 'subdomains' },
+  product: { label: 'Product', tabKey: 'products' },
+};
 
 // State transition rules (mirrors server/services/stateTransitions.js)
 const STATE_TRANSITIONS = [
@@ -66,11 +88,16 @@ interface BpmnFactoryProps {
   readOnly?: boolean;
   refreshTick?: number;
   userRole?: string | null;
+  diagramMetadataConfig?: DiagramMetadataConfig;
 }
 
-export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateToFactory, readOnly, refreshTick, userRole }: BpmnFactoryProps) {
+export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateToFactory, readOnly, refreshTick, userRole, diagramMetadataConfig }: BpmnFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const canImportExport = userRole === 'Administrator' || userRole === 'Super';
+  const metadataConfig = {
+    ...DEFAULT_DIAGRAM_METADATA_CONFIG,
+    ...diagramMetadataConfig,
+  };
   const [diagrams, setDiagrams] = useState<DiagramMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -113,6 +140,22 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
       onOk: async () => {
         await deleteDiagram(diagram._id);
         message.success('Deleted');
+        loadDiagrams();
+      },
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (!selectedRowKeys.length) return;
+    modal.confirm({
+      title: `Delete ${selectedRowKeys.length} selected diagrams?`,
+      content: `This will permanently remove ${selectedRowKeys.length} selected diagrams.`,
+      okText: 'Delete Selected',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        await Promise.all(selectedRowKeys.map((id) => deleteDiagram(String(id))));
+        message.success(`Deleted ${selectedRowKeys.length} diagrams`);
+        setSelectedRowKeys([]);
         loadDiagrams();
       },
     });
@@ -168,6 +211,7 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
       content: (
         <div>
           <p>The following files will be imported with status <Tag color="orange">Staged</Tag> or <Tag color="red">Invalid</Tag> when the XML business flow is not in Business Flow reference data:</p>
+          <p>Each XML will be matched to a model from its diagram-title metadata and validated against that model's factory/reference values.</p>
           <ul style={{ maxHeight: 200, overflow: 'auto', paddingLeft: 16 }}>
             {readFiles.map((f) => <li key={f.fileName}>{f.fileName}</li>)}
           </ul>
@@ -360,53 +404,73 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
       },
     },
     {
-      title: 'Line of Business',
+      title: metadataConfig.lineOfBusiness.label,
       dataIndex: 'lineOfBusiness',
       key: 'lineOfBusiness',
       width: 140,
       filters: lobFilters,
       filterSearch: true,
       onFilter: (value: any, record: DiagramMeta) => record.lineOfBusiness === value,
-      render: (val: string) => val ? <Typography.Link onClick={() => onNavigateToFactory?.('linesOfBusiness', val)}>{val}</Typography.Link> : '—',
+      render: (val: string) => val
+        ? metadataConfig.lineOfBusiness.tabKey
+          ? <Typography.Link onClick={() => onNavigateToFactory?.(metadataConfig.lineOfBusiness.tabKey!, val)}>{val}</Typography.Link>
+          : val
+        : '—',
     },
     {
-      title: 'Channel',
+      title: metadataConfig.channel.label,
       dataIndex: 'channel',
       key: 'channel',
       width: 110,
       filters: channelFilters,
       onFilter: (value: any, record: DiagramMeta) => record.channel === value,
-      render: (val: string) => val ? <Typography.Link onClick={() => onNavigateToFactory?.('channels', val)}>{val}</Typography.Link> : '—',
+      render: (val: string) => val
+        ? metadataConfig.channel.tabKey
+          ? <Typography.Link onClick={() => onNavigateToFactory?.(metadataConfig.channel.tabKey!, val)}>{val}</Typography.Link>
+          : val
+        : '—',
     },
     {
-      title: 'Domain',
+      title: metadataConfig.domain.label,
       dataIndex: 'domain',
       key: 'domain',
       width: 130,
       filters: domainFilters,
       filterSearch: true,
       onFilter: (value: any, record: DiagramMeta) => record.domain === value,
-      render: (val: string) => val ? <Typography.Link onClick={() => onNavigateToFactory?.('domains', val)}>{val}</Typography.Link> : '—',
+      render: (val: string) => val
+        ? metadataConfig.domain.tabKey
+          ? <Typography.Link onClick={() => onNavigateToFactory?.(metadataConfig.domain.tabKey!, val)}>{val}</Typography.Link>
+          : val
+        : '—',
     },
     {
-      title: 'Subdomain',
+      title: metadataConfig.subdomain.label,
       dataIndex: 'subdomain',
       key: 'subdomain',
       width: 140,
       filters: subdomainFilters,
       filterSearch: true,
       onFilter: (value: any, record: DiagramMeta) => record.subdomain === value,
-      render: (val: string) => val ? <Typography.Link onClick={() => onNavigateToFactory?.('subdomains', val)}>{val}</Typography.Link> : '—',
+      render: (val: string) => val
+        ? metadataConfig.subdomain.tabKey
+          ? <Typography.Link onClick={() => onNavigateToFactory?.(metadataConfig.subdomain.tabKey!, val)}>{val}</Typography.Link>
+          : val
+        : '—',
     },
     {
-      title: 'Product',
+      title: metadataConfig.product.label,
       dataIndex: 'product',
       key: 'product',
       width: 120,
       filters: productFilters,
       filterSearch: true,
       onFilter: (value: any, record: DiagramMeta) => record.product === value,
-      render: (val: string) => val ? <Typography.Link onClick={() => onNavigateToFactory?.('products', val)}>{val}</Typography.Link> : '—',
+      render: (val: string) => val
+        ? metadataConfig.product.tabKey
+          ? <Typography.Link onClick={() => onNavigateToFactory?.(metadataConfig.product.tabKey!, val)}>{val}</Typography.Link>
+          : val
+        : '—',
     },
     {
       title: 'Sourced From',
@@ -499,6 +563,10 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
       ),
     },
   ];
+  const enhancedColumns = useMemo(
+    () => enhanceColumnsWithSortAndFilters(columns as any, filtered),
+    [columns, filtered]
+  );
 
   return (
     <div className="p-4">
@@ -525,6 +593,9 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
           </Typography.Text>
         </div>
         <Space>
+          {!readOnly && <Button danger icon={<DeleteOutlined />} onClick={handleBulkDelete} disabled={!selectedRowKeys.length}>
+            Delete Selected ({selectedRowKeys.length})
+          </Button>}
           {canImportExport && <Button
             icon={<DownloadOutlined />}
             onClick={handleBatchExport}
@@ -540,7 +611,7 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
       </div>
       <Table
         dataSource={filtered}
-        columns={columns.map((col: any) => ({
+        columns={enhancedColumns.map((col: any) => ({
           ...col,
           width: colWidths[col.key] || col.width,
           onHeaderCell: (column: any) => ({
@@ -552,7 +623,7 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
         rowKey="_id"
         size="small"
         loading={loading}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        pagination={{ pageSize: 20, showSizeChanger: true, position: ['topRight'] }}
         scroll={{ y: 'calc(100vh - 260px)' }}
         rowSelection={{
           selectedRowKeys,

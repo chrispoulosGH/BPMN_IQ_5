@@ -124,4 +124,15 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    const appScope = await buildNeighborhoodApplicationFilter(req);
+    const item = await Server.findOneAndDelete({ $and: [appScope, { _id: req.params.id }] });
+    if (!item) return res.status(404).json({ error: 'Server not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

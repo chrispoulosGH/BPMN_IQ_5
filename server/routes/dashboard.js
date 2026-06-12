@@ -40,6 +40,139 @@ function buildDatabaseScopeQuery(applications) {
   return orConditions.length ? { $or: orConditions } : { _id: null };
 }
 
+function normalizeTaskApplications(applications) {
+  return (Array.isArray(applications) ? applications : [])
+    .map((entry) => {
+      if (typeof entry === 'string') return entry;
+      return entry?.name;
+    })
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function buildApplicationLookup(applications) {
+  const byIdentifier = new Map();
+  for (const app of applications) {
+    for (const value of [app?.correlationId, app?.acronym, app?.name]) {
+      const key = normalizeIdentifier(value);
+      if (key && !byIdentifier.has(key)) {
+        byIdentifier.set(key, app);
+      }
+    }
+  }
+  return byIdentifier;
+}
+
+function resolveApplicationsFromTask(taskApplications, appLookup) {
+  const resolved = [];
+  const seen = new Set();
+
+  for (const entry of Array.isArray(taskApplications) ? taskApplications : []) {
+    const identifiers = typeof entry === 'string'
+      ? [entry]
+      : [entry?.correlationId, entry?.acronym, entry?.name];
+
+    for (const identifier of identifiers) {
+      const app = appLookup.get(normalizeIdentifier(identifier));
+      if (!app) continue;
+      const appId = String(app?._id || '');
+      if (!appId || seen.has(appId)) continue;
+      seen.add(appId);
+      resolved.push(app);
+      break;
+    }
+  }
+
+  return resolved;
+}
+
+function extractTaskApplicationIdentifiers(taskApplications) {
+  const identifiers = new Set();
+
+  for (const entry of Array.isArray(taskApplications) ? taskApplications : []) {
+    if (typeof entry === 'string') {
+      const key = normalizeIdentifier(entry);
+      if (key) identifiers.add(key);
+      continue;
+    }
+
+    for (const value of [entry?.correlationId, entry?.acronym, entry?.name]) {
+      const key = normalizeIdentifier(value);
+      if (key) identifiers.add(key);
+    }
+  }
+
+  return identifiers;
+}
+
+async function loadScopedTasks(req) {
+  const directTasks = await Task.find(withNeighborhood(req)).lean();
+  if (directTasks.length) {
+    return directTasks.map((task) => ({
+      ...task,
+      applications: normalizeTaskApplications(task.applications),
+    }));
+  }
+
+  const flows = await BusinessFlow.find(withNeighborhood(req), { name: 1, tasks: 1 }).lean();
+  const fallbackTasks = [];
+
+  for (const flow of flows) {
+    const flowName = String(flow?.name || '').trim();
+    for (const task of Array.isArray(flow?.tasks) ? flow.tasks : []) {
+      const taskName = String(task?.name || '').trim();
+      if (!taskName) continue;
+      fallbackTasks.push({
+        _id: `${flowName}:${taskName}`,
+        name: taskName,
+        businessFlow: flowName || 'Unspecified Business Flow',
+        product: '',
+        domain: '',
+        channel: '',
+        actor: '',
+        applications: normalizeTaskApplications(task?.applications),
+      });
+    }
+  }
+
+  if (fallbackTasks.length) return fallbackTasks;
+
+  const diagrams = await Diagram.find(withNeighborhood(req), { _id: 1, name: 1, businessFlow: 1, tasks: 1 }).lean();
+  const diagramTasks = [];
+
+  for (const diagram of diagrams) {
+    const flowName = String(diagram?.businessFlow || diagram?.name || '').trim() || 'Unspecified Business Flow';
+    for (const task of Array.isArray(diagram?.tasks) ? diagram.tasks : []) {
+      const taskName = String(task?.name || '').trim();
+      if (!taskName) continue;
+      diagramTasks.push({
+        _id: `${diagram._id}:${taskName}`,
+        name: taskName,
+        businessFlow: flowName,
+        product: '',
+        domain: '',
+        channel: '',
+        actor: '',
+        applications: normalizeTaskApplications(task?.applications),
+      });
+    }
+  }
+
+  if (diagramTasks.length) return diagramTasks;
+
+  return [];
+}
+
+async function loadScopedApplications(req) {
+  return Application.find(withNeighborhood(req)).lean();
+}
+
+async function loadBusinessFlowsWithCostData(req, db) {
+  return db.collection('businessflows')
+    .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
+    .toArray();
+}
+
 /**
  * GET /api/dashboard/task-risk
  * Returns aggregated risk/compliance profile for each task,
@@ -47,26 +180,25 @@ function buildDatabaseScopeQuery(applications) {
  */
 router.get('/task-risk', async (req, res) => {
   try {
-    const apps = await Application.find(withNeighborhood(req)).lean();
+    const apps = await loadScopedApplications(req);
     const [tasks, servers, databases] = await Promise.all([
-      Task.find(withNeighborhood(req)).lean(),
+      loadScopedTasks(req),
       Server.find(buildServerScopeQuery(apps), { linkedApplications: 1, healthNotes: 1 }).lean(),
       DatabaseInstance.find(buildDatabaseScopeQuery(apps), { applicationCorrelationId: 1, applicationName: 1, applicationAcronym: 1, linkedApplications: 1, healthNotes: 1 }).lean(),
     ]);
 
-    // Build app lookup by lowercase name
-    const appMap = new Map();
-    for (const app of apps) {
-      appMap.set(app.name.toLowerCase().trim(), app);
-    }
+    const appLookup = buildApplicationLookup(apps);
     const appInfrastructureMap = buildApplicationInfrastructureMap(apps, servers, databases);
 
     // Aggregate per task
     const taskProfiles = tasks.map((task) => {
-      const resolvedApps = (task.applications || [])
-        .map((name) => appMap.get(name.toLowerCase().trim()))
-        .filter(Boolean);
+      const resolvedApps = resolveApplicationsFromTask(task.applications, appLookup);
+      const taskAppIdentifiers = extractTaskApplicationIdentifiers(task.applications);
       const infrastructure = sumInfrastructureForApps(resolvedApps, appInfrastructureMap);
+      const resolvedAppCount = resolvedApps.length;
+      const effectiveAppCount = resolvedAppCount || taskAppIdentifiers.size;
+      const resolvedRiskScore = computeRiskScore(resolvedApps);
+      const effectiveRiskScore = resolvedRiskScore || (resolvedAppCount === 0 ? taskAppIdentifiers.size : 0);
 
       return {
         _id: task._id,
@@ -76,7 +208,7 @@ router.get('/task-risk', async (req, res) => {
         domain: task.domain,
         channel: task.channel,
         actor: task.actor,
-        appCount: resolvedApps.length,
+        appCount: effectiveAppCount,
         criticality: countValues(resolvedApps, 'businessCriticality'),
         lifecycle: countValues(resolvedApps, 'lifecycleStatus'),
         applicationType: countValues(resolvedApps, 'applicationType'),
@@ -91,7 +223,7 @@ router.get('/task-risk', async (req, res) => {
         serverVulnerabilities: infrastructure.serverVulnerabilities,
         dbVulnerabilities: infrastructure.dbVulnerabilities,
         // Composite risk score (higher = more regulated)
-        riskScore: computeRiskScore(resolvedApps),
+        riskScore: effectiveRiskScore,
       };
     });
 
@@ -107,17 +239,14 @@ router.get('/task-risk', async (req, res) => {
  */
 router.get('/flow-risk', async (req, res) => {
   try {
-    const apps = await Application.find(withNeighborhood(req)).lean();
+    const apps = await loadScopedApplications(req);
     const [tasks, servers, databases] = await Promise.all([
-      Task.find(withNeighborhood(req)).lean(),
+      loadScopedTasks(req),
       Server.find(buildServerScopeQuery(apps), { linkedApplications: 1, healthNotes: 1 }).lean(),
       DatabaseInstance.find(buildDatabaseScopeQuery(apps), { applicationCorrelationId: 1, applicationName: 1, applicationAcronym: 1, linkedApplications: 1, healthNotes: 1 }).lean(),
     ]);
 
-    const appMap = new Map();
-    for (const app of apps) {
-      appMap.set(app.name.toLowerCase().trim(), app);
-    }
+    const appLookup = buildApplicationLookup(apps);
     const appInfrastructureMap = buildApplicationInfrastructureMap(apps, servers, databases);
 
     // Group tasks by businessFlow
@@ -132,36 +261,57 @@ router.get('/flow-risk', async (req, res) => {
     const flowProfiles = [];
     for (const [flowName, flowTasks] of flowMap) {
       // Gather all unique apps across all tasks in this flow
-      const allAppNames = new Set();
+      const allAppIdentifiers = new Set();
       for (const t of flowTasks) {
-        for (const a of t.applications || []) {
-          allAppNames.add(a.toLowerCase().trim());
+        for (const appRef of t.applications || []) {
+          if (typeof appRef === 'string') {
+            const key = normalizeIdentifier(appRef);
+            if (key) allAppIdentifiers.add(key);
+            continue;
+          }
+
+          for (const value of [appRef?.correlationId, appRef?.acronym, appRef?.name]) {
+            const key = normalizeIdentifier(value);
+            if (key) allAppIdentifiers.add(key);
+          }
         }
       }
-      const resolvedApps = [...allAppNames]
-        .map((n) => appMap.get(n))
+      const resolvedApps = [...allAppIdentifiers]
+        .map((identifier) => appLookup.get(identifier))
         .filter(Boolean);
-      const infrastructure = sumInfrastructureForApps(resolvedApps, appInfrastructureMap);
+      const resolvedAppIds = new Set();
+      const dedupedResolvedApps = [];
+      for (const app of resolvedApps) {
+        const appId = String(app?._id || '');
+        if (!appId || resolvedAppIds.has(appId)) continue;
+        resolvedAppIds.add(appId);
+        dedupedResolvedApps.push(app);
+      }
+      const infrastructure = sumInfrastructureForApps(dedupedResolvedApps, appInfrastructureMap);
+      const resolvedFlowAppCount = dedupedResolvedApps.length;
+      const effectiveFlowAppCount = resolvedFlowAppCount || allAppIdentifiers.size;
+      const resolvedFlowRiskScore = computeRiskScore(dedupedResolvedApps);
+      const effectiveFlowRiskScore = resolvedFlowRiskScore || (resolvedFlowAppCount === 0 ? allAppIdentifiers.size : 0);
 
       flowProfiles.push({
         name: flowName,
         taskCount: flowTasks.length,
-        appCount: resolvedApps.length,
-        uniqueApps: allAppNames.size,
-        criticality: countValues(resolvedApps, 'businessCriticality'),
-        lifecycle: countValues(resolvedApps, 'lifecycleStatus'),
-        applicationType: countValues(resolvedApps, 'applicationType'),
-        customerFacing: countYN(resolvedApps, 'customerFacing'),
-        internetFacing: countYN(resolvedApps, 'internetFacing'),
-        cpni: countYN(resolvedApps, 'cpniIndicator'),
-        handleSpi: countYN(resolvedApps, 'handleSpi'),
-        storeSpi: countYN(resolvedApps, 'storeSpi'),
-        pciData: countYN(resolvedApps, 'pciData'),
-        pciDataStored: countYN(resolvedApps, 'pciDataStored'),
-        soxFsa: countYN(resolvedApps, 'soxFsa'),
+        appCount: effectiveFlowAppCount,
+        uniqueApps: effectiveFlowAppCount,
+        criticality: countValues(dedupedResolvedApps, 'businessCriticality'),
+        lifecycle: countValues(dedupedResolvedApps, 'lifecycleStatus'),
+        applicationType: countValues(dedupedResolvedApps, 'applicationType'),
+        customerFacing: countYN(dedupedResolvedApps, 'customerFacing'),
+        internetFacing: countYN(dedupedResolvedApps, 'internetFacing'),
+        cpni: countYN(dedupedResolvedApps, 'cpniIndicator'),
+        handleSpi: countYN(dedupedResolvedApps, 'handleSpi'),
+        storeSpi: countYN(dedupedResolvedApps, 'storeSpi'),
+        pciData: countYN(dedupedResolvedApps, 'pciData'),
+        pciDataStored: countYN(dedupedResolvedApps, 'pciDataStored'),
+        soxFsa: countYN(dedupedResolvedApps, 'soxFsa'),
         serverVulnerabilities: infrastructure.serverVulnerabilities,
         dbVulnerabilities: infrastructure.dbVulnerabilities,
-        riskScore: computeRiskScore(resolvedApps),
+        riskScore: effectiveFlowRiskScore,
       });
     }
 
@@ -529,11 +679,7 @@ router.get('/flow-3d', async (req, res) => {
       Diagram.find(withNeighborhood(req), { name: 1, tasks: 1 }).lean(),
     ]);
 
-    // App lookup by lowercase name
-    const appMap = new Map();
-    for (const app of apps) {
-      appMap.set(app.name.toLowerCase().trim(), app);
-    }
+    const appLookup = buildApplicationLookup(apps);
 
     const diagramNames = [];
     const points = [];
@@ -606,9 +752,12 @@ router.get('/flow-3d', async (req, res) => {
 
         // applications is an array of { name } objects on the diagram task
         for (const appRef of (dt.applications || [])) {
-          const appName = typeof appRef === 'string' ? appRef : appRef.name;
-          if (!appName) continue;
-          const app = appMap.get(appName.toLowerCase().trim());
+          const identifiers = typeof appRef === 'string'
+            ? [appRef]
+            : [appRef?.correlationId, appRef?.acronym, appRef?.name];
+          const app = identifiers
+            .map((value) => appLookup.get(normalizeIdentifier(value)))
+            .find(Boolean);
           if (!app) continue;
           points.push({
             appName: app.name,
@@ -642,9 +791,7 @@ router.get('/flow-3d', async (req, res) => {
 router.get('/flow-cost-3d', async (req, res) => {
   try {
     const db = require('mongoose').connection;
-    const bfDocs = await db.collection('businessflows')
-      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
-      .toArray();
+    const bfDocs = await loadBusinessFlowsWithCostData(req, db);
 
     const businessFlows = [];
     const points = [];
@@ -699,9 +846,7 @@ router.get('/cost-by-year', async (req, res) => {
   }
   try {
     const db = require('mongoose').connection;
-    const bfDocs = await db.collection('businessflows')
-      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
-      .toArray();
+    const bfDocs = await loadBusinessFlowsWithCostData(req, db);
 
     const flowMap = new Map();
     const taskMap = new Map();
@@ -753,9 +898,7 @@ router.get('/capability-cost-by-year', async (req, res) => {
   try {
     const db = require('mongoose').connection;
     const [bfDocs, diagramDocs] = await Promise.all([
-      db.collection('businessflows')
-        .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
-        .toArray(),
+      loadBusinessFlowsWithCostData(req, db),
       Diagram.find(withNeighborhood(req), { name: 1, businessFlow: 1, capabilities: 1 }).lean(),
     ]);
 

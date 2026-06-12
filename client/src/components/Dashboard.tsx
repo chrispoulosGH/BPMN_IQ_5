@@ -21,6 +21,7 @@ import {
   Pie,
   Cell,
 } from 'recharts';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 import { getDashboardTaskRisk, getDashboardFlowRisk, getDashboardCostByYear, getDashboardCapabilityCostByYear, getDashboardCapabilityFlowRelationships } from '../api';
 import type { CapabilityCostByYearItem, CostByYearItem, TaskCostByYearItem } from '../api';
 import Flow3DChart from './Flow3DChart';
@@ -396,11 +397,11 @@ function CapabilityFlowRelationshipDashboard({ data, costData, costYear }: { dat
           dataSource={selectedCapabilities.slice(0, 15)}
           size="small"
           pagination={false}
-          columns={[
+          columns={enhanceColumnsWithSortAndFilters([
             { title: 'Capability', dataIndex: 'name', key: 'name', ellipsis: true },
             { title: 'Supporting Flows', dataIndex: 'flowCount', key: 'flowCount', width: 140, sorter: (a, b) => a.flowCount - b.flowCount, defaultSortOrder: 'descend' as const },
             { title: 'Total Strength', dataIndex: 'totalStrength', key: 'totalStrength', width: 130, sorter: (a, b) => a.totalStrength - b.totalStrength },
-          ]}
+          ], selectedCapabilities.slice(0, 15))}
         />
       </Card>
 
@@ -456,12 +457,12 @@ function CapabilityFlowRelationshipDashboard({ data, costData, costYear }: { dat
           rowKey={(r) => `${r.capability}__${r.businessFlow}`}
           dataSource={relationshipLinks.slice(0, 100)}
           size="small"
-          pagination={{ pageSize: 20, showSizeChanger: true }}
-          columns={[
+          pagination={{ pageSize: 20, showSizeChanger: true, position: ['topRight'] }}
+          columns={enhanceColumnsWithSortAndFilters([
             { title: 'Business Capability', dataIndex: 'capability', key: 'capability', ellipsis: true, sorter: (a, b) => a.capability.localeCompare(b.capability) },
             { title: 'Business Flow', dataIndex: 'businessFlow', key: 'businessFlow', ellipsis: true, sorter: (a, b) => a.businessFlow.localeCompare(b.businessFlow) },
             { title: 'Relationship Strength', dataIndex: 'count', key: 'count', width: 170, sorter: (a, b) => a.count - b.count, defaultSortOrder: 'descend' as const },
-          ]}
+          ], relationshipLinks.slice(0, 100))}
         />
       </Card>
         </>
@@ -760,9 +761,9 @@ function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskPro
           dataSource={[...tasks].sort((a, b) => b.riskScore - a.riskScore)}
           rowKey="_id"
           size="small"
-          pagination={{ pageSize: 15, showSizeChanger: true }}
+          pagination={{ pageSize: 15, showSizeChanger: true, position: ['topRight'] }}
           scroll={{ x: 900 }}
-          columns={[
+          columns={enhanceColumnsWithSortAndFilters([
             { title: 'Task', dataIndex: 'name', key: 'name', ellipsis: true, width: 180, sorter: (a, b) => a.name.localeCompare(b.name) },
             { title: 'Business Flow', dataIndex: 'businessFlow', key: 'bflow', ellipsis: true, width: 160 },
             { title: 'Apps', dataIndex: 'appCount', key: 'apps', width: 60, sorter: (a, b) => a.appCount - b.appCount },
@@ -780,7 +781,7 @@ function TaskDashboard({ tasks, allTasks, costData, costYear }: { tasks: TaskPro
             { title: 'Inet.', key: 'if', width: 55, render: (_, r) => r.internetFacing.yes || '-' },
             { title: 'Srv Vulns', dataIndex: 'serverVulnerabilities', key: 'sv', width: 90, sorter: (a, b) => a.serverVulnerabilities - b.serverVulnerabilities },
             { title: 'DB Vulns', dataIndex: 'dbVulnerabilities', key: 'dv', width: 90, sorter: (a, b) => a.dbVulnerabilities - b.dbVulnerabilities },
-          ]}
+          ], [...tasks].sort((a, b) => b.riskScore - a.riskScore))}
         />
       </Card>
     </>
@@ -1071,9 +1072,9 @@ function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; co
           dataSource={flows}
           rowKey="name"
           size="small"
-          pagination={{ pageSize: 15, showSizeChanger: true }}
+          pagination={{ pageSize: 15, showSizeChanger: true, position: ['topRight'] }}
           scroll={{ x: 1000 }}
-          columns={[
+          columns={enhanceColumnsWithSortAndFilters([
             { title: 'Business Flow', dataIndex: 'name', key: 'name', ellipsis: true, width: 200, sorter: (a, b) => a.name.localeCompare(b.name) },
             { title: 'Tasks', dataIndex: 'taskCount', key: 'tasks', width: 60, sorter: (a, b) => a.taskCount - b.taskCount },
             { title: 'Apps', dataIndex: 'appCount', key: 'apps', width: 60, sorter: (a, b) => a.appCount - b.appCount },
@@ -1091,7 +1092,7 @@ function FlowDashboard({ flows, costData, costYear }: { flows: FlowProfile[]; co
             { title: 'Inet.', key: 'if', width: 55, render: (_, r) => r.internetFacing.yes || '-' },
             { title: 'Srv Vulns', dataIndex: 'serverVulnerabilities', key: 'sv', width: 90, sorter: (a, b) => a.serverVulnerabilities - b.serverVulnerabilities },
             { title: 'DB Vulns', dataIndex: 'dbVulnerabilities', key: 'dv', width: 90, sorter: (a, b) => a.dbVulnerabilities - b.dbVulnerabilities },
-          ]}
+          ], flows)}
         />
       </Card>
     </>

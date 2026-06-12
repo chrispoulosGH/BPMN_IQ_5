@@ -166,6 +166,33 @@ html, body, #root {
   border-bottom: 1px solid #e2e8f0;
 }
 
+/* Prevent table rows from being clipped in nested tabs/cards.
+   We cap table body height to a safe viewport-based value and always allow scrolling. */
+.factory-tabs .ant-table-wrapper,
+.factory-tabs .ant-spin-nested-loading,
+.factory-tabs .ant-spin-container,
+.factory-tabs .ant-table,
+.factory-tabs .ant-table-container {
+  min-height: 0;
+}
+
+.factory-tabs .ant-table-body {
+  max-height: calc(100dvh - 360px) !important;
+  overflow-y: auto !important;
+}
+
+.factory-tabs.model-factory-tabs .ant-table-body {
+  max-height: calc(100dvh - 420px) !important;
+}
+
+.component-rows-table .ant-table-body {
+  overflow-y: auto !important;
+}
+
+.component-rows-table.component-rows-table--nested .ant-table-body {
+  max-height: calc(100dvh - 590px) !important;
+}
+
 .model-factory-tabs .ant-tabs-tab {
   border-top: 3px solid #4f46e5 !important;
 }

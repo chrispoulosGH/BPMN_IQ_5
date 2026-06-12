@@ -24,8 +24,8 @@ const Task = require('./models/Task');
 const Actor = require('./models/Actor');
 const Capability = require('./models/Capability');
 const { BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness } = require('./models/ReferenceData');
-const CustomFactory = require('./models/CustomFactory');
-const FactoryNeighborhood = require('./models/FactoryNeighborhood');
+const Component = require('./models/Component');
+const Model = require('./models/Model');
 const { DEFAULT_NEIGHBORHOOD_NAME } = require('./utils/neighborhoodScope');
 
 const app = express();
@@ -86,17 +86,21 @@ app.use('/api/custom-factories', customFactoriesRouter);
 
 // Connect to MongoDB then start server
 async function backfillNeighborhoods() {
-  await FactoryNeighborhood.updateOne(
-    { name: DEFAULT_NEIGHBORHOOD_NAME },
-    { $setOnInsert: { name: DEFAULT_NEIGHBORHOOD_NAME, owner: 'System', createdBy: 'system' } },
-    { upsert: true }
-  );
+  const collections = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness, Component];
+  const missingNeighborhoodFilter = {
+    $or: [{ neighborhoodName: { $exists: false } }, { neighborhoodName: null }, { neighborhoodName: '' }],
+  };
 
-  const collections = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness, CustomFactory];
-  await Promise.all(collections.map((Model) => Model.updateMany(
-    { $or: [{ neighborhoodName: { $exists: false } }, { neighborhoodName: null }, { neighborhoodName: '' }] },
-    { $set: { neighborhoodName: DEFAULT_NEIGHBORHOOD_NAME } }
-  )));
+  const missingCounts = await Promise.all(collections.map((Model) => Model.countDocuments(missingNeighborhoodFilter)));
+  const requiresDefaultNeighborhood = missingCounts.some((count) => count > 0);
+  const hasDefaultNeighborhood = Boolean(await Model.exists({ name: DEFAULT_NEIGHBORHOOD_NAME }));
+
+  if (requiresDefaultNeighborhood && hasDefaultNeighborhood) {
+    await Promise.all(collections.map((Model) => Model.updateMany(
+      missingNeighborhoodFilter,
+      { $set: { neighborhoodName: DEFAULT_NEIGHBORHOOD_NAME } }
+    )));
+  }
 
   await Application.updateMany(
     { correlationId: '' },
@@ -104,8 +108,88 @@ async function backfillNeighborhoods() {
   );
 }
 
+async function migrateLegacyModelCollection() {
+  const db = mongoose.connection.db;
+  const collectionEntries = await db.listCollections({}, { nameOnly: true }).toArray();
+  const collectionNames = new Set(collectionEntries.map((entry) => entry.name));
+
+  if (!collectionNames.has('factoryneighborhoods')) return;
+
+  if (!collectionNames.has('models')) {
+    await db.collection('factoryneighborhoods').rename('models');
+    return;
+  }
+
+  const legacyDocs = await db.collection('factoryneighborhoods').find({}).toArray();
+  if (legacyDocs.length) {
+    const toUpsertUpdate = (doc) => {
+      const { _id, __v, ...rest } = doc || {};
+      return rest;
+    };
+
+    await db.collection('models').bulkWrite(
+      legacyDocs.map((doc) => ({
+        updateOne: {
+          filter: { name: doc.name },
+          update: { $set: toUpsertUpdate(doc) },
+          upsert: true,
+        },
+      })),
+      { ordered: false }
+    );
+  }
+
+  await db.collection('factoryneighborhoods').drop().catch(() => null);
+}
+
+async function migrateLegacyComponentCollection() {
+  const db = mongoose.connection.db;
+  const collectionEntries = await db.listCollections({}, { nameOnly: true }).toArray();
+  const collectionNames = new Set(collectionEntries.map((entry) => entry.name));
+  const legacyCollectionNames = ['parts', 'customfactories'];
+
+  if (!collectionNames.has('components')) {
+    if (collectionNames.has('parts')) {
+      await db.collection('parts').rename('components');
+      collectionNames.delete('parts');
+      collectionNames.add('components');
+    } else if (collectionNames.has('customfactories')) {
+      await db.collection('customfactories').rename('components');
+      collectionNames.delete('customfactories');
+      collectionNames.add('components');
+    }
+  }
+
+  if (!collectionNames.has('components')) return;
+
+  for (const legacyName of legacyCollectionNames) {
+    if (!collectionNames.has(legacyName)) continue;
+
+    const legacyDocs = await db.collection(legacyName).find({}).toArray();
+    if (legacyDocs.length) {
+      const toUpsertUpdate = (doc) => {
+        const { _id, __v, ...rest } = doc || {};
+        return rest;
+      };
+
+      await db.collection('components').bulkWrite(
+        legacyDocs.map((doc) => ({
+          updateOne: {
+            filter: { neighborhoodName: doc.neighborhoodName, name: doc.name },
+            update: { $set: toUpsertUpdate(doc) },
+            upsert: true,
+          },
+        })),
+        { ordered: false }
+      );
+    }
+
+    await db.collection(legacyName).drop().catch(() => null);
+  }
+}
+
 async function syncNeighborhoodIndexes() {
-  const models = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness, CustomFactory];
+  const models = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness, Component, Model];
   await Promise.all(models.map((Model) => Model.syncIndexes()));
 }
 
@@ -113,6 +197,8 @@ mongoose
   .connect(MONGO_URI)
   .then(async () => {
     console.log(`Connected to MongoDB at ${MONGO_URI}`);
+    await migrateLegacyModelCollection();
+    await migrateLegacyComponentCollection();
     await backfillNeighborhoods();
     await syncNeighborhoodIndexes();
     app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

@@ -3,6 +3,7 @@ import { App as AntApp, Card, Spin, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import { getModelCatalog, type ModelCatalogRow } from '../api';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface ModelCatalogProps {
   modelName: string;
@@ -60,9 +61,9 @@ export default function ModelCatalog({ modelName }: ModelCatalogProps) {
         <Table
           rowKey={(_row, index) => `${modelName}-${index}`}
           dataSource={catalog.rows}
-          columns={columns}
+          columns={enhanceColumnsWithSortAndFilters(columns as any, catalog.rows)}
           size="small"
-          pagination={{ pageSize: 25, showSizeChanger: true, position: ['topRight', 'bottomRight'] }}
+          pagination={{ pageSize: 25, showSizeChanger: true, position: ['topRight'] }}
           scroll={{ x: 'max-content' }}
         />
       ) : null}

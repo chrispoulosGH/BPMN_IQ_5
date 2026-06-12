@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Modal, Table, Button, Input, Select, Space, message, Popconfirm, Tag } from 'antd';
 import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import api from '../api';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface UserRecord {
   _id: string;
@@ -150,7 +151,7 @@ export default function AdminPanel({ open, onClose }: AdminPanelProps) {
 
         <Table
           dataSource={users}
-          columns={columns}
+          columns={enhanceColumnsWithSortAndFilters(columns as any, users)}
           rowKey="_id"
           loading={loading}
           pagination={false}

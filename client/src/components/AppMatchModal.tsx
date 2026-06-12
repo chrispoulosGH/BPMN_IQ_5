@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Modal, Checkbox, Table, Tag, Typography } from 'antd';
 import { compareTwoStrings } from 'string-similarity';
 import type { ApplicationItem } from '../types';
+import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 const { Text } = Typography;
 
@@ -170,6 +171,7 @@ export default function AppMatchModal({ open, matches, title, onApprove, onClose
   const exactCount = matches.filter((m) => m.exact).length;
   const fuzzyCount = matches.filter((m) => !m.exact && m.refMatch).length;
   const unmatchedCount = matches.filter((m) => !m.refMatch).length;
+  const tableRows = useMemo(() => matches.map((m, i) => ({ ...m, key: i })), [matches]);
 
   const columns = [
     {
@@ -236,8 +238,8 @@ export default function AppMatchModal({ open, matches, title, onApprove, onClose
         <Tag color="red">{unmatchedCount} unmatched</Tag>
       </div>
       <Table
-        dataSource={matches.map((m, i) => ({ ...m, key: i }))}
-        columns={columns}
+        dataSource={tableRows}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, tableRows)}
         pagination={false}
         size="small"
         scroll={{ y: 400 }}
