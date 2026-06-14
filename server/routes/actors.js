@@ -1,13 +1,65 @@
 const express = require('express');
 const router = express.Router();
 const Actor = require('../models/Actor');
+const Component = require('../models/Component');
 const { getNeighborhoodName, buildNeighborhoodFilter, withNeighborhood } = require('../utils/neighborhoodScope');
+
+function normalizeValue(value) {
+  return String(value || '').trim();
+}
+
+function normalizeKey(value) {
+  return normalizeValue(value).toLowerCase();
+}
+
+function getRowValues(values) {
+  if (!values) return {};
+  if (values instanceof Map) return Object.fromEntries(values.entries());
+  return { ...values };
+}
+
+function getComponentRowName(row, component) {
+  const values = getRowValues(row?.values);
+  if (values.name !== undefined && values.name !== null && normalizeValue(values.name)) {
+    return normalizeValue(values.name);
+  }
+
+  for (const column of Array.isArray(component?.columns) ? component.columns : []) {
+    const candidate = normalizeValue(values[column]);
+    if (candidate) return candidate;
+  }
+
+  return '';
+}
+
+async function getActorsFromComponents(req) {
+  const neighborhoodName = getNeighborhoodName(req);
+  const components = await Component.find({ neighborhoodName }, { name: 1, rows: 1, columns: 1 }).lean();
+  const actorComponents = components.filter((component) => normalizeKey(component?.name) === 'actor');
+
+  const seen = new Set();
+  const actors = [];
+  for (const component of actorComponents) {
+    for (const row of Array.isArray(component?.rows) ? component.rows : []) {
+      const name = getComponentRowName(row, component);
+      if (!name) continue;
+      const key = normalizeKey(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      actors.push({ name, neighborhoodName });
+    }
+  }
+
+  return actors.sort((left, right) => left.name.localeCompare(right.name));
+}
 
 // GET /api/actors — list all
 router.get('/', async (req, res) => {
   try {
     const actors = await Actor.find(withNeighborhood(req)).sort({ name: 1 });
-    res.json(actors);
+    if (actors.length) return res.json(actors);
+    const componentActors = await getActorsFromComponents(req);
+    res.json(componentActors);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -22,7 +74,12 @@ router.get('/search', async (req, res) => {
       withNeighborhood(req, { $text: { $search: q.trim() } }),
       { score: { $meta: 'textScore' } }
     ).sort({ score: { $meta: 'textScore' } }).limit(50);
-    res.json(results);
+    if (results.length) return res.json(results);
+
+    const query = q.trim().toLowerCase();
+    const componentActors = await getActorsFromComponents(req);
+    const filtered = componentActors.filter((actor) => actor.name.toLowerCase().includes(query));
+    res.json(filtered.slice(0, 50));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,10 +1,10 @@
 const express = require('express');
 const router  = express.Router();
-const mongoose = require('mongoose');
 const { Application } = require('../models/ReferenceData');
 const Server = require('../models/Server');
 const DatabaseInstance = require('../models/DatabaseInstance');
 const { getNeighborhoodName } = require('../utils/neighborhoodScope');
+const { loadScopedFlowCostDocumentsFromComponentsAndDiagrams } = require('../utils/flowCostSource');
 
 const YEARS = Array.from({ length: 10 }, (_, i) => 2016 + i);
 
@@ -160,15 +160,58 @@ function getAnnualCostTotal(annualCosts) {
   return (Array.isArray(annualCosts) ? annualCosts : []).reduce((sum, entry) => sum + (entry?.totalCost || 0), 0);
 }
 
-function getBusinessFlowCostTotals(flowDoc) {
-  const tasks = Array.isArray(flowDoc?.tasks) ? flowDoc.tasks : [];
-  const taskCount = tasks.length;
-  const applicationCount = tasks.reduce((sum, task) => sum + ((Array.isArray(task?.applications) ? task.applications : []).length), 0);
-  const totalCost = tasks.reduce((sum, task) => {
-    return sum + (Array.isArray(task?.applications) ? task.applications : []).reduce((appSum, app) => appSum + getAnnualCostTotal(app?.annualCosts), 0);
-  }, 0);
+function normalizeCostKeyPart(value) {
+  return String(value || '').trim().toLowerCase();
+}
 
-  return { taskCount, applicationCount, totalCost };
+function buildUniqueFlowTaskAppCostRows(flowDoc) {
+  const flowName = normalizeText(flowDoc?.name);
+  const byCompositeKey = new Map();
+
+  for (const task of Array.isArray(flowDoc?.tasks) ? flowDoc.tasks : []) {
+    const taskName = normalizeText(task?.name);
+    if (!taskName) continue;
+
+    for (const app of Array.isArray(task?.applications) ? task.applications : []) {
+      const appName = normalizeText(app?.name);
+      if (!appName) continue;
+
+      const key = `${normalizeCostKeyPart(flowName)}|||${normalizeCostKeyPart(taskName)}|||${normalizeCostKeyPart(appName)}`;
+      if (!byCompositeKey.has(key)) {
+        byCompositeKey.set(key, {
+          businessFlow: flowName,
+          task: taskName,
+          application: appName,
+          annualCosts: Array.from({ length: YEARS.length }, (_, index) => ({
+            year: YEARS[index],
+            operationCost: 0,
+            developmentCost: 0,
+            totalCost: 0,
+          })),
+        });
+      }
+
+      const row = byCompositeKey.get(key);
+      for (let i = 0; i < YEARS.length; i += 1) {
+        const entry = app?.annualCosts?.[i];
+        if (!entry) continue;
+        row.annualCosts[i].operationCost += Number(entry.operationCost || 0);
+        row.annualCosts[i].developmentCost += Number(entry.developmentCost || 0);
+        row.annualCosts[i].totalCost += Number(entry.totalCost || 0);
+      }
+    }
+  }
+
+  return [...byCompositeKey.values()];
+}
+
+function getBusinessFlowCostTotals(flowDoc) {
+  const uniqueRows = buildUniqueFlowTaskAppCostRows(flowDoc);
+  const tasks = new Set(uniqueRows.map((row) => row.task));
+  const applicationCount = uniqueRows.length;
+  const totalCost = uniqueRows.reduce((sum, row) => sum + getAnnualCostTotal(row.annualCosts), 0);
+
+  return { taskCount: tasks.size, applicationCount, totalCost };
 }
 
 function buildCostSummaryPayload(flowDocs) {
@@ -198,11 +241,9 @@ function buildCostSummaryPayload(flowDocs) {
  */
 router.get('/business-flows', async (req, res) => {
   try {
-    const db = mongoose.connection;
-    const docs = await db.collection('businessflows')
-      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } }, { projection: { name: 1, _id: 0 } })
-      .toArray();
-    res.json(docs.map(d => d.name).sort());
+    const docs = await loadScopedFlowCostDocumentsFromComponentsAndDiagrams(req);
+    const names = buildCostSummaryPayload(docs).flows.map((flow) => flow.name);
+    res.json(names.sort());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -214,11 +255,7 @@ router.get('/business-flows', async (req, res) => {
  */
 router.get('/cost-summary-data', async (req, res) => {
   try {
-    const db = mongoose.connection;
-    const docs = await db.collection('businessflows')
-      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
-      .project({ name: 1, tasks: 1, _id: 0 })
-      .toArray();
+    const docs = await loadScopedFlowCostDocumentsFromComponentsAndDiagrams(req);
 
     const summary = buildCostSummaryPayload(docs);
     if (!summary.flows.length) {
@@ -240,11 +277,7 @@ router.get('/cost-summary-data', async (req, res) => {
  */
 router.get('/cost-summary', async (req, res) => {
   try {
-    const db = mongoose.connection;
-    const docs = await db.collection('businessflows')
-      .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
-      .project({ name: 1, tasks: 1, _id: 0 })
-      .toArray();
+    const docs = await loadScopedFlowCostDocumentsFromComponentsAndDiagrams(req);
 
     const {
       flows: rankedFlows,
@@ -383,37 +416,41 @@ router.get('/cost-by-process', async (req, res) => {
   if (!bfName) return res.status(400).json({ error: 'businessFlow query param required' });
 
   try {
-    const db  = mongoose.connection;
-    const neighborhoodName = getNeighborhoodName(req);
-    const bf  = await db.collection('businessflows').findOne({ neighborhoodName, name: bfName });
+    const docs = await loadScopedFlowCostDocumentsFromComponentsAndDiagrams(req);
+    const normalizedBfName = normalizeKey(bfName);
+    const bf = docs.find((doc) => normalizeKey(doc?.name) === normalizedBfName);
     if (!bf || !bf.tasks?.length) {
       return res.status(404).json({ error: `Business flow "${bfName}" has no task cost data.` });
     }
 
-    // Lifecycle status lookup
-    const allAppNames = [...new Set(bf.tasks.flatMap(t => t.applications.map(a => a.name)))];
-    const appDocs = await db.collection('applications')
-      .find({ neighborhoodName, name: { $in: allAppNames } }, { projection: { name: 1, lifecycleStatus: 1, _id: 0 } })
-      .toArray();
-    const lcMap = Object.fromEntries(appDocs.map(a => [a.name, a.lifecycleStatus || 'unknown']));
+    const lcMap = {};
 
     // Totals
     const taskTotals = bf.tasks.map(task => {
       let op = 0, dev = 0, tot = 0;
-      task.applications.forEach(app => {
-        app.annualCosts.forEach(c => {
+      const uniqueRows = buildUniqueFlowTaskAppCostRows({ name: bf.name, tasks: [task] });
+      uniqueRows.forEach((row) => {
+        row.annualCosts.forEach((c) => {
           op  += c.operationCost   || 0;
           dev += c.developmentCost || 0;
           tot += c.totalCost       || 0;
         });
       });
-      return { name: task.name, op, dev, tot, appCount: task.applications.length };
+      return { name: task.name, op, dev, tot, appCount: uniqueRows.length };
     });
 
+    const uniqueFlowRows = buildUniqueFlowTaskAppCostRows(bf);
+    const rowsByTask = new Map();
+    for (const row of uniqueFlowRows) {
+      const key = normalizeCostKeyPart(row.task);
+      if (!rowsByTask.has(key)) rowsByTask.set(key, []);
+      rowsByTask.get(key).push(row);
+    }
+
     const portByYear = YEARS.map((_, yi) => ({
-      op:  bf.tasks.reduce((s, t) => s + t.applications.reduce((ss, a) => ss + (a.annualCosts[yi]?.operationCost   || 0), 0), 0),
-      dev: bf.tasks.reduce((s, t) => s + t.applications.reduce((ss, a) => ss + (a.annualCosts[yi]?.developmentCost || 0), 0), 0),
-      tot: bf.tasks.reduce((s, t) => s + t.applications.reduce((ss, a) => ss + (a.annualCosts[yi]?.totalCost       || 0), 0), 0),
+      op:  uniqueFlowRows.reduce((sum, row) => sum + (row.annualCosts[yi]?.operationCost || 0), 0),
+      dev: uniqueFlowRows.reduce((sum, row) => sum + (row.annualCosts[yi]?.developmentCost || 0), 0),
+      tot: uniqueFlowRows.reduce((sum, row) => sum + (row.annualCosts[yi]?.totalCost || 0), 0),
     }));
     const grandOp  = portByYear.reduce((s, r) => s + r.op,  0);
     const grandDev = portByYear.reduce((s, r) => s + r.dev, 0);
@@ -432,7 +469,8 @@ router.get('/cost-by-process', async (req, res) => {
 
     const taskSection = (task, taskIdx) => {
       const taskTotal = taskTotals[taskIdx];
-      if (task.applications.length === 0) {
+      const taskRows = rowsByTask.get(normalizeCostKeyPart(task.name)) || [];
+      if (!taskRows.length) {
         return `
         <div class="task-section">
           <div class="task-header">
@@ -442,18 +480,18 @@ router.get('/cost-by-process', async (req, res) => {
           </div>
         </div>`;
       }
-      const flatVals = task.applications.flatMap(a => a.annualCosts.map(c => c.totalCost || 0)).filter(v => v > 0);
+      const flatVals = taskRows.flatMap((row) => row.annualCosts.map((c) => c.totalCost || 0)).filter((v) => v > 0);
       const taskMin  = flatVals.length ? Math.min(...flatVals) : 0;
       const taskMax  = flatVals.length ? Math.max(...flatVals) : 0;
 
       const yearHeaders = YEARS.map(y => `<th>${y}</th>`).join('');
-      const appRows = task.applications.map(app => {
-        const opRow  = app.annualCosts.map(c => `<td class="num" style="background:${heatColor(c.operationCost, taskMin, taskMax)}">${fmt(c.operationCost)}</td>`).join('');
-        const devRow = app.annualCosts.map(c => `<td class="num dev" style="background:${heatColor(c.developmentCost, taskMin, taskMax)}">${fmt(c.developmentCost)}</td>`).join('');
-        const totRow = app.annualCosts.map(c => `<td class="num total" style="background:${heatColor(c.totalCost, taskMin, taskMax)}">${fmt(c.totalCost)}</td>`).join('');
+      const appRows = taskRows.map((row) => {
+        const opRow  = row.annualCosts.map((c) => `<td class="num" style="background:${heatColor(c.operationCost, taskMin, taskMax)}">${fmt(c.operationCost)}</td>`).join('');
+        const devRow = row.annualCosts.map((c) => `<td class="num dev" style="background:${heatColor(c.developmentCost, taskMin, taskMax)}">${fmt(c.developmentCost)}</td>`).join('');
+        const totRow = row.annualCosts.map((c) => `<td class="num total" style="background:${heatColor(c.totalCost, taskMin, taskMax)}">${fmt(c.totalCost)}</td>`).join('');
         return `
           <tr class="app-row">
-            <td rowspan="3" class="app-name">${app.name}${lcBadge(app.name)}</td>
+            <td rowspan="3" class="app-name">${row.application}${lcBadge(row.application)}</td>
             <td class="cost-type oper">Operation</td>${opRow}
           </tr>
           <tr><td class="cost-type dev-label">Development</td>${devRow}</tr>
@@ -462,7 +500,7 @@ router.get('/cost-by-process', async (req, res) => {
       }).join('');
 
       const subtotalByYear = YEARS.map((_, yi) =>
-        task.applications.reduce((s, a) => s + (a.annualCosts[yi]?.totalCost || 0), 0)
+        taskRows.reduce((sum, row) => sum + (row.annualCosts[yi]?.totalCost || 0), 0)
       );
       const subMin = Math.min(...subtotalByYear.filter(x => x > 0));
       const subMax = Math.max(...subtotalByYear);
@@ -475,7 +513,7 @@ router.get('/cost-by-process', async (req, res) => {
         <div class="task-header">
           <span class="task-num">${String(taskIdx + 1).padStart(2,'0')}</span>
           <span class="task-name">${task.name}</span>
-          <span class="task-meta">${task.applications.length} app${task.applications.length !== 1 ? 's' : ''} &nbsp;·&nbsp; 10-yr total: <strong>${fmtM(taskTotal.tot)}</strong></span>
+          <span class="task-meta">${taskRows.length} app${taskRows.length !== 1 ? 's' : ''} &nbsp;·&nbsp; 10-yr total: <strong>${fmtM(taskTotal.tot)}</strong></span>
         </div>
         <div class="wrap">
           <table>

@@ -49,7 +49,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const PRIMARY_KEY_COLUMN = 'name';
-  const DEFAULT_NEIGHBORHOOD_NAME = 'AT&T Journey';
+  const DEFAULT_NEIGHBORHOOD_NAME = 'ATT Journey Model';
   const [neighborhoods, setNeighborhoods] = useState<FactoryNeighborhoodSummary[]>([]);
   const [factories, setFactories] = useState<CustomFactory[]>([]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState<string | null>(null);

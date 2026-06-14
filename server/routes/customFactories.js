@@ -13,7 +13,7 @@ const DatabaseInstance = require('../models/DatabaseInstance');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const PRIMARY_KEY_COLUMN = 'name';
-const DEFAULT_NEIGHBORHOOD_NAME = 'AT&T Journey';
+const DEFAULT_NEIGHBORHOOD_NAME = 'ATT Journey Model';
 const LEGACY_PART_COLUMN_PATTERN = /\bparts?$/i;
 const COMPONENT_COLUMN_PATTERN = /\bcomponents?$/i;
 const LEGACY_COMPONENT_HEADER_ALIASES = new Map([
@@ -675,11 +675,18 @@ async function doesDataComponentExist({ type, value, neighborhoodName, correlati
   }
 
   if (type === 'product') {
-    const product = await Product.findOne({
-      name: exactMatchRegex,
-      neighborhoodName: { $in: [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodName] },
-    }, { _id: 1 }).lean();
-    return Boolean(product);
+    const [product, productComponent] = await Promise.all([
+      Product.findOne({
+        name: exactMatchRegex,
+        neighborhoodName: { $in: [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodName] },
+      }, { _id: 1 }).lean(),
+      Component.findOne({
+        neighborhoodName,
+        name: { $regex: /^product$/i },
+        'rows.values.name': exactMatchRegex,
+      }, { _id: 1 }).lean(),
+    ]);
+    return Boolean(product || productComponent);
   }
 
   if (type === 'server') {
@@ -696,11 +703,18 @@ async function doesDataComponentExist({ type, value, neighborhoodName, correlati
   }
 
   if (type === 'actor') {
-    const actor = await Actor.findOne({
-      name: exactMatchRegex,
-      neighborhoodName: { $in: [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodName] },
-    }, { _id: 1 }).lean();
-    return Boolean(actor);
+    const [actor, actorComponent] = await Promise.all([
+      Actor.findOne({
+        name: exactMatchRegex,
+        neighborhoodName: { $in: [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodName] },
+      }, { _id: 1 }).lean(),
+      Component.findOne({
+        neighborhoodName,
+        name: { $regex: /^actor$/i },
+        'rows.values.name': exactMatchRegex,
+      }, { _id: 1 }).lean(),
+    ]);
+    return Boolean(actor || actorComponent);
   }
 
   return true;

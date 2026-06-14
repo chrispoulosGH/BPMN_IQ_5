@@ -226,7 +226,8 @@ export default function App() {
 
 function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: string; displayName: string; role?: string | null; capabilities?: { function: string; permission: string }[] }; onLogout: () => void }) {
   const { message, modal } = AntApp.useApp();
-  const DEFAULT_NEIGHBORHOOD_NAME = 'AT&T Journey';
+  const DEFAULT_NEIGHBORHOOD_NAME = 'ATT Journey Model';
+  const ALL_NEIGHBORHOODS_TOKEN = '__all__';
   const DEFAULT_NEIGHBORHOOD_FACTORY_COUNT = 13;
   const GLOBAL_MODEL_FACTORY_COUNT = 3;
   const CURRENT_USER = user.userId;
@@ -554,7 +555,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   }, [neighborhoodTabs]);
 
   const scopedNeighborhoodName = activeOuterTab === 'data'
-    ? DEFAULT_NEIGHBORHOOD_NAME
+    ? ALL_NEIGHBORHOODS_TOKEN
     : activeOuterTab === 'analytics'
       ? (activeAnalyticsModel || DEFAULT_NEIGHBORHOOD_NAME)
       : activeNeighborhoodTab !== DEFAULT_NEIGHBORHOOD_NAME && GLOBAL_SHARED_FACTORY_TAB_KEYS.includes(activeTab)

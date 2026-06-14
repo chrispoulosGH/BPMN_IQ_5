@@ -3,9 +3,11 @@ const router = express.Router();
 const Task = require('../models/Task');
 const { Application, BusinessFlow } = require('../models/ReferenceData');
 const Diagram = require('../models/Diagram');
+const Component = require('../models/Component');
 const Server = require('../models/Server');
 const DatabaseInstance = require('../models/DatabaseInstance');
 const { getNeighborhoodName, withNeighborhood } = require('../utils/neighborhoodScope');
+const { loadScopedFlowCostDocumentsFromComponentsAndDiagrams } = require('../utils/flowCostSource');
 
 function buildNeighborhoodApplicationKeys(applications) {
   return {
@@ -48,6 +50,75 @@ function normalizeTaskApplications(applications) {
     })
     .map((value) => String(value || '').trim())
     .filter(Boolean);
+}
+
+function getRowValues(values) {
+  if (!values) return {};
+  if (values instanceof Map) return Object.fromEntries(values.entries());
+  return { ...values };
+}
+
+function getFirstRowValue(values, keys, fallback = '') {
+  for (const key of keys) {
+    const value = String(values?.[key] || '').trim();
+    if (value) return value;
+  }
+  return fallback;
+}
+
+const APP_ENRICHMENT_FIELDS = [
+  'businessCriticality',
+  'applicationType',
+  'customerFacing',
+  'internetFacing',
+  'cpniIndicator',
+  'handleSpi',
+  'storeSpi',
+  'pciData',
+  'pciDataStored',
+  'soxFsa',
+];
+
+function hasAnyEnrichmentField(app) {
+  return APP_ENRICHMENT_FIELDS.some((field) => String(app?.[field] || '').trim());
+}
+
+function mergeAppEnrichmentFields(targetApp, sourceApp) {
+  if (!sourceApp) return targetApp;
+  const merged = { ...targetApp };
+
+  for (const field of APP_ENRICHMENT_FIELDS) {
+    if (!String(merged[field] || '').trim()) {
+      merged[field] = String(sourceApp[field] || '').trim();
+    }
+  }
+
+  if (!String(merged.lifecycleStatus || '').trim()) {
+    merged.lifecycleStatus = String(sourceApp.lifecycleStatus || '').trim();
+  }
+
+  if (!String(merged.correlationId || '').trim()) {
+    merged.correlationId = String(sourceApp.correlationId || '').trim();
+  }
+
+  if (!String(merged.acronym || '').trim()) {
+    merged.acronym = String(sourceApp.acronym || '').trim();
+  }
+
+  return merged;
+}
+
+function getComponentRowName(row, component) {
+  const values = getRowValues(row?.values);
+  const explicitName = String(values?.name || '').trim();
+  if (explicitName) return explicitName;
+
+  for (const column of Array.isArray(component?.columns) ? component.columns : []) {
+    const value = String(values?.[column] || '').trim();
+    if (value) return value;
+  }
+
+  return '';
 }
 
 function buildApplicationLookup(applications) {
@@ -164,13 +235,98 @@ async function loadScopedTasks(req) {
 }
 
 async function loadScopedApplications(req) {
-  return Application.find(withNeighborhood(req)).lean();
+  const legacyApps = await Application.find(withNeighborhood(req)).lean();
+  if (legacyApps.length) return legacyApps;
+
+  const neighborhoodName = getNeighborhoodName(req);
+  const components = await Component.find(
+    withNeighborhood(req, { name: { $regex: /^application$/i } }),
+    { name: 1, columns: 1, rows: 1 }
+  ).lean();
+
+  const fallbackApps = [];
+  const seen = new Set();
+
+  for (const component of components) {
+    for (const row of Array.isArray(component?.rows) ? component.rows : []) {
+      const values = getRowValues(row?.values);
+      const name = getComponentRowName(row, component);
+      if (!name) continue;
+      const key = normalizeIdentifier(name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      fallbackApps.push({
+        _id: `${neighborhoodName}:${name}`,
+        name,
+        acronym: getFirstRowValue(values, ['acronym', 'abbr']),
+        correlationId: getFirstRowValue(values, ['correlationId', 'correlation_id']),
+        lifecycleStatus: getFirstRowValue(values, ['lifecycleStatus', 'lifecycle']),
+        businessCriticality: getFirstRowValue(values, ['businessCriticality', 'criticality']),
+        applicationType: getFirstRowValue(values, ['applicationType', 'appType']),
+        customerFacing: getFirstRowValue(values, ['customerFacing', 'customer_facing']),
+        internetFacing: getFirstRowValue(values, ['internetFacing', 'internet_facing']),
+        cpniIndicator: getFirstRowValue(values, ['cpniIndicator', 'cpni']),
+        handleSpi: getFirstRowValue(values, ['handleSpi', 'handleSPI']),
+        storeSpi: getFirstRowValue(values, ['storeSpi', 'storeSPI']),
+        pciData: getFirstRowValue(values, ['pciData', 'pci']),
+        pciDataStored: getFirstRowValue(values, ['pciDataStored', 'pciStored']),
+        soxFsa: getFirstRowValue(values, ['soxFsa', 'sox', 'fsa']),
+      });
+    }
+  }
+
+  if (!fallbackApps.length) return fallbackApps;
+
+  const correlationIds = [...new Set(fallbackApps.map((app) => String(app.correlationId || '').trim()).filter(Boolean))];
+  const acronyms = [...new Set(fallbackApps.map((app) => String(app.acronym || '').trim()).filter(Boolean))];
+  const names = [...new Set(fallbackApps.map((app) => String(app.name || '').trim()).filter(Boolean))];
+
+  const referenceOrConditions = [
+    correlationIds.length ? { correlationId: { $in: correlationIds } } : null,
+    acronyms.length ? { acronym: { $in: acronyms } } : null,
+    names.length ? { name: { $in: names } } : null,
+    names.length ? { acronym: { $in: names } } : null,
+  ].filter(Boolean);
+
+  if (!referenceOrConditions.length) return fallbackApps;
+
+  const referenceApps = await Application.find(
+    { $or: referenceOrConditions },
+    {
+      name: 1,
+      acronym: 1,
+      correlationId: 1,
+      lifecycleStatus: 1,
+      businessCriticality: 1,
+      applicationType: 1,
+      customerFacing: 1,
+      internetFacing: 1,
+      cpniIndicator: 1,
+      handleSpi: 1,
+      storeSpi: 1,
+      pciData: 1,
+      pciDataStored: 1,
+      soxFsa: 1,
+    }
+  ).lean();
+
+  if (!referenceApps.length) return fallbackApps;
+
+  const refLookup = buildApplicationLookup(referenceApps);
+  return fallbackApps.map((app) => {
+    if (hasAnyEnrichmentField(app)) return app;
+
+    for (const value of [app.correlationId, app.acronym, app.name]) {
+      const ref = refLookup.get(normalizeIdentifier(value));
+      if (ref) return mergeAppEnrichmentFields(app, ref);
+    }
+
+    return app;
+  });
 }
 
-async function loadBusinessFlowsWithCostData(req, db) {
-  return db.collection('businessflows')
-    .find({ neighborhoodName: getNeighborhoodName(req), 'tasks.0': { $exists: true } })
-    .toArray();
+async function loadBusinessFlowsWithCostData(req) {
+  return loadScopedFlowCostDocumentsFromComponentsAndDiagrams(req);
 }
 
 /**
@@ -399,7 +555,7 @@ router.get('/lob-drilldown-tree', async (req, res) => {
         withNeighborhood(req),
         { lineOfBusiness: 1, channel: 1, product: 1, domain: 1, subdomain: 1, businessFlow: 1, name: 1, tasks: 1 }
       ).lean(),
-      Application.find(withNeighborhood(req), { acronym: 1, correlationId: 1 }).lean(),
+      loadScopedApplications(req),
     ]);
 
     const appCorrelationByIdentifier = new Map();
@@ -480,7 +636,7 @@ router.get('/lob-drilldown-tree', async (req, res) => {
  */
 router.get('/server-location-points', async (req, res) => {
   try {
-    const apps = await Application.find(withNeighborhood(req)).lean();
+    const apps = await loadScopedApplications(req);
     const rows = await Server.find(
       buildServerScopeQuery(apps),
       {
@@ -567,6 +723,64 @@ function countYN(apps, field) {
 
 function normalizeIdentifier(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+const COST_YEARS = Array.from({ length: 10 }, (_, i) => 2016 + i);
+
+function createEmptyAnnualCostRows() {
+  return COST_YEARS.map((year) => ({
+    year,
+    operationCost: 0,
+    developmentCost: 0,
+    totalCost: 0,
+  }));
+}
+
+function normalizeAnnualCostRows(annualCosts) {
+  const rows = createEmptyAnnualCostRows();
+  for (let i = 0; i < COST_YEARS.length; i += 1) {
+    const entry = Array.isArray(annualCosts) ? annualCosts[i] : null;
+    if (!entry) continue;
+    rows[i].operationCost += Number(entry.operationCost || 0);
+    rows[i].developmentCost += Number(entry.developmentCost || 0);
+    rows[i].totalCost += Number(entry.totalCost || 0);
+  }
+  return rows;
+}
+
+function buildUniqueFlowTaskApplicationCosts(flowDoc) {
+  const flowName = String(flowDoc?.name || '').trim();
+  const byCompositeKey = new Map();
+
+  for (const task of Array.isArray(flowDoc?.tasks) ? flowDoc.tasks : []) {
+    const taskName = String(task?.name || '').trim();
+    if (!taskName) continue;
+
+    for (const app of Array.isArray(task?.applications) ? task.applications : []) {
+      const appName = String(app?.name || '').trim();
+      if (!appName) continue;
+
+      const key = `${normalizeIdentifier(flowName)}|||${normalizeIdentifier(taskName)}|||${normalizeIdentifier(appName)}`;
+      if (!byCompositeKey.has(key)) {
+        byCompositeKey.set(key, {
+          businessFlow: flowName,
+          task: taskName,
+          application: appName,
+          annualCosts: createEmptyAnnualCostRows(),
+        });
+      }
+
+      const row = byCompositeKey.get(key);
+      const incoming = normalizeAnnualCostRows(app?.annualCosts);
+      for (let i = 0; i < COST_YEARS.length; i += 1) {
+        row.annualCosts[i].operationCost += incoming[i].operationCost;
+        row.annualCosts[i].developmentCost += incoming[i].developmentCost;
+        row.annualCosts[i].totalCost += incoming[i].totalCost;
+      }
+    }
+  }
+
+  return [...byCompositeKey.values()];
 }
 
 function countVulnerabilityItems(healthNotes) {
@@ -675,7 +889,7 @@ function computeRiskScore(apps) {
 router.get('/flow-3d', async (req, res) => {
   try {
     const [apps, diagrams] = await Promise.all([
-      Application.find(withNeighborhood(req)).lean(),
+      loadScopedApplications(req),
       Diagram.find(withNeighborhood(req), { name: 1, tasks: 1 }).lean(),
     ]);
 
@@ -786,12 +1000,11 @@ router.get('/flow-3d', async (req, res) => {
  * Returns cost data for the "Cost by Business Flow" 3D chart.
  * Points: { businessFlow, task, taskOrder, year, totalCost, opCost, devCost }
  * One point per task × year combination (summed across all apps in that task).
- * Source: businessflows collection → tasks[].applications[].annualCosts[]
+ * Source: diagram task/application relationships + application component annual cost fields
  */
 router.get('/flow-cost-3d', async (req, res) => {
   try {
-    const db = require('mongoose').connection;
-    const bfDocs = await loadBusinessFlowsWithCostData(req, db);
+    const bfDocs = await loadBusinessFlowsWithCostData(req);
 
     const businessFlows = [];
     const points = [];
@@ -802,18 +1015,25 @@ router.get('/flow-cost-3d', async (req, res) => {
       const flowName = bf.name;
       businessFlows.push(flowName);
 
-      const ordered = bf.tasks.map(t => t.name);
+      const ordered = [...new Set((bf.tasks || []).map((t) => String(t?.name || '').trim()).filter(Boolean))];
       taskOrders[flowName] = ordered;
 
-      bf.tasks.forEach((task, taskIdx) => {
-        if (!task.applications || !task.applications.length) return;
+      const uniqueFlowCosts = buildUniqueFlowTaskApplicationCosts(bf);
+      const costRowsByTask = new Map();
+      for (const row of uniqueFlowCosts) {
+        const key = normalizeIdentifier(row.task);
+        if (!costRowsByTask.has(key)) costRowsByTask.set(key, []);
+        costRowsByTask.get(key).push(row);
+      }
 
-        // Sum costs across all apps for each year index
-        const YEARS = Array.from({ length: 10 }, (_, i) => 2016 + i);
-        YEARS.forEach((year, yi) => {
+      ordered.forEach((taskName, taskIdx) => {
+        const taskRows = costRowsByTask.get(normalizeIdentifier(taskName)) || [];
+        if (!taskRows.length) return;
+
+        COST_YEARS.forEach((year, yi) => {
           let totalCost = 0, opCost = 0, devCost = 0;
-          task.applications.forEach(app => {
-            const entry = app.annualCosts?.[yi];
+          taskRows.forEach((costRow) => {
+            const entry = costRow.annualCosts?.[yi];
             if (entry) {
               totalCost += entry.totalCost       || 0;
               opCost    += entry.operationCost   || 0;
@@ -821,7 +1041,7 @@ router.get('/flow-cost-3d', async (req, res) => {
             }
           });
           if (totalCost > 0) {
-            points.push({ businessFlow: flowName, task: task.name, taskOrder: taskIdx, year, totalCost, opCost, devCost });
+            points.push({ businessFlow: flowName, task: taskName, taskOrder: taskIdx, year, totalCost, opCost, devCost });
           }
         });
       });
@@ -836,7 +1056,7 @@ router.get('/flow-cost-3d', async (req, res) => {
 /**
  * GET /api/dashboard/cost-by-year?year=2025
  * Returns top-20 business flows and top-20 tasks ranked by total cost for the given year.
- * Source: businessflows collection → tasks[].applications[].annualCosts[yearIdx]
+ * Source: diagram task/application relationships + application component annual cost fields
  */
 router.get('/cost-by-year', async (req, res) => {
   const year = parseInt(req.query.year) || 2025;
@@ -845,8 +1065,7 @@ router.get('/cost-by-year', async (req, res) => {
     return res.status(400).json({ error: 'Year must be between 2016 and 2025' });
   }
   try {
-    const db = require('mongoose').connection;
-    const bfDocs = await loadBusinessFlowsWithCostData(req, db);
+    const bfDocs = await loadBusinessFlowsWithCostData(req);
 
     const flowMap = new Map();
     const taskMap = new Map();
@@ -855,21 +1074,20 @@ router.get('/cost-by-year', async (req, res) => {
       if (!flowMap.has(bf.name)) {
         flowMap.set(bf.name, { name: bf.name, opCost: 0, devCost: 0, totalCost: 0 });
       }
-      for (const task of (bf.tasks || [])) {
-        const taskKey = `${bf.name}::${task.name}`;
+      const uniqueFlowCosts = buildUniqueFlowTaskApplicationCosts(bf);
+      for (const row of uniqueFlowCosts) {
+        const taskKey = `${bf.name}::${row.task}`;
         if (!taskMap.has(taskKey)) {
-          taskMap.set(taskKey, { name: task.name, businessFlow: bf.name, opCost: 0, devCost: 0, totalCost: 0 });
+          taskMap.set(taskKey, { name: row.task, businessFlow: bf.name, opCost: 0, devCost: 0, totalCost: 0 });
         }
-        for (const app of (task.applications || [])) {
-          const entry = app.annualCosts?.[yearIdx];
-          if (!entry) continue;
-          flowMap.get(bf.name).opCost    += entry.operationCost   || 0;
-          flowMap.get(bf.name).devCost   += entry.developmentCost || 0;
-          flowMap.get(bf.name).totalCost += entry.totalCost       || 0;
-          taskMap.get(taskKey).opCost    += entry.operationCost   || 0;
-          taskMap.get(taskKey).devCost   += entry.developmentCost || 0;
-          taskMap.get(taskKey).totalCost += entry.totalCost       || 0;
-        }
+        const entry = row.annualCosts?.[yearIdx];
+        if (!entry) continue;
+        flowMap.get(bf.name).opCost    += entry.operationCost   || 0;
+        flowMap.get(bf.name).devCost   += entry.developmentCost || 0;
+        flowMap.get(bf.name).totalCost += entry.totalCost       || 0;
+        taskMap.get(taskKey).opCost    += entry.operationCost   || 0;
+        taskMap.get(taskKey).devCost   += entry.developmentCost || 0;
+        taskMap.get(taskKey).totalCost += entry.totalCost       || 0;
       }
     }
 
@@ -896,9 +1114,8 @@ router.get('/capability-cost-by-year', async (req, res) => {
   }
 
   try {
-    const db = require('mongoose').connection;
     const [bfDocs, diagramDocs] = await Promise.all([
-      loadBusinessFlowsWithCostData(req, db),
+      loadBusinessFlowsWithCostData(req),
       Diagram.find(withNeighborhood(req), { name: 1, businessFlow: 1, capabilities: 1 }).lean(),
     ]);
 
@@ -908,14 +1125,12 @@ router.get('/capability-cost-by-year', async (req, res) => {
       let devCost = 0;
       let totalCost = 0;
 
-      for (const task of (bf.tasks || [])) {
-        for (const app of (task.applications || [])) {
-          const entry = app.annualCosts?.[yearIdx];
-          if (!entry) continue;
-          opCost += entry.operationCost || 0;
-          devCost += entry.developmentCost || 0;
-          totalCost += entry.totalCost || 0;
-        }
+      for (const row of buildUniqueFlowTaskApplicationCosts(bf)) {
+        const entry = row.annualCosts?.[yearIdx];
+        if (!entry) continue;
+        opCost += entry.operationCost || 0;
+        devCost += entry.developmentCost || 0;
+        totalCost += entry.totalCost || 0;
       }
 
       if (totalCost > 0) {

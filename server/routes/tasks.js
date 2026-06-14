@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
+const Diagram = require('../models/Diagram');
+const Component = require('../models/Component');
 const { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
 const { getNeighborhoodName, buildNeighborhoodFilter, withNeighborhood } = require('../utils/neighborhoodScope');
 
@@ -45,20 +47,182 @@ function duplicateErrorMessage(err) {
   return 'Already exists';
 }
 
+function normalizeValue(value) {
+  return String(value || '').trim();
+}
+
+function normalizeKey(value) {
+  return normalizeValue(value).toLowerCase();
+}
+
+function uniqueByName(items) {
+  const seen = new Set();
+  const uniqueItems = [];
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const name = normalizeValue(item?.name);
+    if (!name) continue;
+    const key = normalizeKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueItems.push({ ...(item || {}), name });
+  }
+
+  return uniqueItems.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function getRowValues(values) {
+  if (!values) return {};
+  if (values instanceof Map) return Object.fromEntries(values.entries());
+  return { ...values };
+}
+
+function getComponentRowName(row, component) {
+  const values = getRowValues(row?.values);
+  if (values.name !== undefined && values.name !== null && String(values.name).trim()) {
+    return String(values.name).trim();
+  }
+
+  for (const column of Array.isArray(component?.columns) ? component.columns : []) {
+    const value = values[column];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  return '';
+}
+
+function matchComponentSemantic(componentName, aliases) {
+  const key = normalizeKey(componentName);
+  return aliases.some((alias) => key === normalizeKey(alias));
+}
+
+async function getComponentReferenceItems(neighborhoodName, aliases) {
+  const components = await Component.find({ neighborhoodName }, { name: 1, rows: 1, columns: 1 }).lean();
+  const matches = components.filter((component) => matchComponentSemantic(component?.name, aliases));
+
+  const names = [];
+  for (const component of matches) {
+    for (const row of Array.isArray(component?.rows) ? component.rows : []) {
+      const name = getComponentRowName(row, component);
+      if (name) names.push({ name });
+    }
+  }
+
+  return uniqueByName(names);
+}
+
+function normalizeTaskApplications(applications) {
+  return (Array.isArray(applications) ? applications : [])
+    .map((entry) => {
+      if (typeof entry === 'string') return entry;
+      return entry?.name;
+    })
+    .map((value) => normalizeValue(value))
+    .filter(Boolean);
+}
+
+function filterTasksByQuery(tasks, query = {}) {
+  const businessFlow = normalizeValue(query.businessFlow);
+  const product = normalizeValue(query.product);
+  const actor = normalizeValue(query.actor);
+  const channel = normalizeValue(query.channel);
+  const domain = normalizeValue(query.domain);
+  const search = normalizeValue(query.search);
+  const exact = String(query.exact || '') === '1';
+
+  return (Array.isArray(tasks) ? tasks : []).filter((task) => {
+    if (businessFlow && normalizeKey(task?.businessFlow) !== normalizeKey(businessFlow)) return false;
+    if (product && normalizeKey(task?.product) !== normalizeKey(product)) return false;
+    if (actor && normalizeKey(task?.actor) !== normalizeKey(actor)) return false;
+    if (channel && normalizeKey(task?.channel) !== normalizeKey(channel)) return false;
+    if (domain && normalizeKey(task?.domain) !== normalizeKey(domain)) return false;
+    if (!search) return true;
+    const taskName = normalizeValue(task?.name);
+    if (exact) return taskName === search;
+    return taskName.toLowerCase().includes(search.toLowerCase());
+  });
+}
+
+async function getTasksFromDiagrams(req) {
+  const diagrams = await Diagram.find(
+    buildNeighborhoodFilter(getNeighborhoodName(req)),
+    { _id: 1, businessFlow: 1, name: 1, product: 1, domain: 1, channel: 1, tasks: 1 }
+  ).lean();
+
+  const taskRows = [];
+  for (const diagram of diagrams) {
+    const flowName = normalizeValue(diagram?.businessFlow) || normalizeValue(diagram?.name) || 'Unspecified Business Flow';
+    for (const task of Array.isArray(diagram?.tasks) ? diagram.tasks : []) {
+      const taskName = normalizeValue(task?.name);
+      if (!taskName) continue;
+      taskRows.push({
+        _id: `${diagram._id}:${taskName}`,
+        neighborhoodName: getNeighborhoodName(req),
+        name: taskName,
+        businessFlow: flowName,
+        product: normalizeValue(diagram?.product),
+        domain: normalizeValue(diagram?.domain),
+        subdomain: normalizeValue(diagram?.subdomain),
+        channel: normalizeValue(diagram?.channel),
+        actor: '',
+        applications: normalizeTaskApplications(task?.applications),
+        sequence: undefined,
+      });
+    }
+  }
+
+  return taskRows;
+}
+
+async function getMergedReferenceItems(req, collection) {
+  const Model = refModels[collection];
+  const legacyItems = Model ? await Model.find(withNeighborhood(req)).sort('name').lean() : [];
+
+  const neighborhoodName = getNeighborhoodName(req);
+  const aliasMap = {
+    businessFlows: ['business flow', 'business_flow'],
+    products: ['product'],
+    actors: ['actor'],
+    channels: ['channel'],
+    domains: ['domain', 'l0'],
+    subdomains: ['subdomain', 'l1'],
+    linesOfBusiness: ['line of business', 'lineofbusiness', 'lob'],
+  };
+
+  const componentItems = aliasMap[collection]
+    ? await getComponentReferenceItems(neighborhoodName, aliasMap[collection])
+    : [];
+
+  if (collection === 'businessFlows') {
+    const diagramFlows = await Diagram.find(
+      buildNeighborhoodFilter(neighborhoodName),
+      { businessFlow: 1, name: 1, _id: 0 }
+    ).lean();
+    const diagramItems = diagramFlows
+      .map((diagram) => ({ name: normalizeValue(diagram?.businessFlow) || normalizeValue(diagram?.name) }))
+      .filter((item) => item.name);
+    return uniqueByName([...(legacyItems || []), ...componentItems, ...diagramItems]);
+  }
+
+  return uniqueByName([...(legacyItems || []), ...componentItems]);
+}
+
 // ─── Reference Data ──────────────────────────────────────────
 const refModels = { businessFlows: BusinessFlow, products: Product, applications: Application, actors: Actor, channels: Channel, domains: Domain, subdomains: Subdomain, linesOfBusiness: LineOfBusiness };
 
 router.get('/reference', async (_req, res) => {
   const req = _req;
   const [businessFlows, products, applications, actors, channels, domains, subdomains, linesOfBusiness] = await Promise.all([
-    BusinessFlow.find(withNeighborhood(req)).sort('name').lean(),
-    Product.find(withNeighborhood(req)).sort('name').lean(),
+    getMergedReferenceItems(req, 'businessFlows'),
+    getMergedReferenceItems(req, 'products'),
     Application.find(withNeighborhood(req)).sort('name').lean(),
-    Actor.find(withNeighborhood(req)).sort('name').lean(),
-    Channel.find(withNeighborhood(req)).sort('name').lean(),
-    Domain.find(withNeighborhood(req)).sort('name').lean(),
-    Subdomain.find(withNeighborhood(req)).sort('name').lean(),
-    LineOfBusiness.find(withNeighborhood(req)).sort('name').lean(),
+    getMergedReferenceItems(req, 'actors'),
+    getMergedReferenceItems(req, 'channels'),
+    getMergedReferenceItems(req, 'domains'),
+    getMergedReferenceItems(req, 'subdomains'),
+    getMergedReferenceItems(req, 'linesOfBusiness'),
   ]);
   res.json({ businessFlows, products, applications, actors, channels, domains, subdomains, linesOfBusiness });
 });
@@ -79,9 +243,12 @@ router.get('/reference/applications/by-correlation/:correlationId', async (req, 
 });
 
 router.get('/reference/:collection', async (req, res) => {
-  const Model = refModels[req.params.collection];
-  if (!Model) return res.status(404).json({ error: 'Unknown collection' });
-  const items = await Model.find(withNeighborhood(req)).sort('name').lean();
+  if (!refModels[req.params.collection]) return res.status(404).json({ error: 'Unknown collection' });
+  if (req.params.collection === 'applications') {
+    const items = await Application.find(withNeighborhood(req)).sort('name').lean();
+    return res.json(items);
+  }
+  const items = await getMergedReferenceItems(req, req.params.collection);
   res.json(items);
 });
 
@@ -152,7 +319,11 @@ router.delete('/reference/:collection/:id', async (req, res) => {
 router.get('/names', async (req, res) => {
   const filter = withNeighborhood(req, req.query.businessFlow ? { businessFlow: req.query.businessFlow } : {});
   const names = await Task.distinct('name', filter);
-  res.json(names.sort());
+  if (names.length) return res.json(names.sort());
+
+  const fallbackTasks = await getTasksFromDiagrams(req);
+  const fallbackNames = [...new Set(filterTasksByQuery(fallbackTasks, req.query).map((task) => task.name))];
+  return res.json(fallbackNames.sort());
 });
 
 // List tasks (with optional filters)
@@ -173,7 +344,18 @@ router.get('/', async (req, res) => {
 
   const filter = withNeighborhood(req, extraFilter);
   const tasks = await Task.find(filter).sort({ businessFlow: 1, sequence: 1, name: 1 }).lean();
-  res.json(tasks);
+  if (tasks.length) return res.json(tasks);
+
+  const fallbackTasks = await getTasksFromDiagrams(req);
+  const filteredFallbackTasks = filterTasksByQuery(fallbackTasks, req.query)
+    .sort((left, right) => {
+      if (normalizeValue(left.businessFlow) !== normalizeValue(right.businessFlow)) {
+        return normalizeValue(left.businessFlow).localeCompare(normalizeValue(right.businessFlow));
+      }
+      return normalizeValue(left.name).localeCompare(normalizeValue(right.name));
+    });
+
+  return res.json(filteredFallbackTasks);
 });
 
 // Get single task
@@ -242,7 +424,10 @@ router.post('/validate', async (req, res) => {
   // Get distinct task names scoped to the businessFlow if provided, otherwise all
   const filter = withNeighborhood(req, businessFlow ? { businessFlow } : {});
   const knownNames = await Task.distinct('name', filter);
-  const knownSet = new Set(knownNames.map((n) => n.toLowerCase().trim()));
+  const fallbackNames = knownNames.length
+    ? knownNames
+    : [...new Set(filterTasksByQuery(await getTasksFromDiagrams(req), businessFlow ? { businessFlow } : {}).map((task) => task.name))];
+  const knownSet = new Set(fallbackNames.map((n) => n.toLowerCase().trim()));
 
   const valid = [];
   const invalid = [];

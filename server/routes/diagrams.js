@@ -248,25 +248,26 @@ async function getNeighborhoodMetadataMappings(neighborhoodName) {
   });
 
   const mappings = {};
-  const rootLabel = orderedFactories[0]?.name && /^l0\b/i.test(orderedFactories[0].name)
-    ? 'Application'
-    : (orderedFactories[0]?.name || 'Domain');
-  const secondLevelLabel = orderedFactories[1]?.name && /^l1\b/i.test(orderedFactories[1].name)
-    ? orderedFactories[1].name
-    : (orderedFactories[1]?.name || 'Subdomain');
-  if (orderedFactories[0]?.name) {
-    mappings.domain = {
-      label: rootLabel,
+  const fieldOrder = ['lineOfBusiness', 'channel', 'product', 'domain', 'subdomain', 'businessFlow'];
+  const parentFieldByField = {
+    lineOfBusiness: null,
+    channel: 'lineOfBusiness',
+    product: 'channel',
+    domain: 'product',
+    subdomain: 'domain',
+    businessFlow: 'subdomain',
+  };
+
+  for (let index = 0; index < fieldOrder.length; index += 1) {
+    const fieldName = fieldOrder[index];
+    const factory = orderedFactories[index];
+    if (!factory?.name) continue;
+    mappings[fieldName] = {
+      label: factory.name,
       kind: 'customFactory',
-      factoryName: orderedFactories[0].name,
-    };
-  }
-  if (orderedFactories[1]?.name) {
-    mappings.subdomain = {
-      label: secondLevelLabel,
-      kind: 'customFactory',
-      factoryName: orderedFactories[1].name,
-      parentFactoryName: orderedFactories[0]?.name || '',
+      factoryName: factory.name,
+      parentFactoryName: index > 0 ? (orderedFactories[index - 1]?.name || '') : '',
+      parentField: parentFieldByField[fieldName],
     };
   }
 
@@ -309,7 +310,7 @@ async function validateDiagramMetadataForNeighborhood(meta, neighborhoodName) {
     if (mapping.kind === 'reference' && mapping.model) {
       isValid = await hasMatchingReferenceValue(mapping.model, neighborhoodName, value);
     } else if (mapping.kind === 'customFactory') {
-      const parentValue = fieldName === 'subdomain' ? meta?.domain : undefined;
+      const parentValue = mapping.parentField ? meta?.[mapping.parentField] : undefined;
       isValid = await hasMatchingCustomFactoryValue(neighborhoodName, mapping, value, parentValue);
     }
 
@@ -359,6 +360,37 @@ function normalizeBusinessFlowLookupValue(value) {
 async function hasMatchingBusinessFlowReference(name, neighborhoodName = DEFAULT_NEIGHBORHOOD_NAME) {
   const normalizedName = normalizeBusinessFlowLookupValue(name);
   if (!normalizedName) return false;
+
+  if (neighborhoodName !== DEFAULT_NEIGHBORHOOD_NAME) {
+    const businessFlowComponent = await Component.findOne(
+      { neighborhoodName, name: { $regex: /^business[\s_]*flow$/i } },
+      { rows: 1 }
+    ).lean();
+
+    const hasComponentMatch = (businessFlowComponent?.rows || []).some((row) => {
+      return normalizeBusinessFlowLookupValue(getCustomFactoryRowName(row)) === normalizedName;
+    });
+
+    if (hasComponentMatch) return true;
+
+    const hasDiagramMatch = Boolean(await Diagram.findOne(
+      {
+        $and: [
+          buildNeighborhoodFilter(neighborhoodName),
+          {
+            $or: [
+              { businessFlow: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+              { name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } },
+            ],
+          },
+        ],
+      },
+      { _id: 1 }
+    ).lean());
+
+    if (hasDiagramMatch) return true;
+  }
+
   const refs = await BusinessFlow.find(buildNeighborhoodFilter(neighborhoodName), { name: 1 }).lean();
   return refs.some((ref) => normalizeBusinessFlowLookupValue(ref.name) === normalizedName);
 }
