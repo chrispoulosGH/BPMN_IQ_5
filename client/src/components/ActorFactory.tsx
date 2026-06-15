@@ -3,7 +3,7 @@ import { Table, Input, Button, App as AntApp, Space, Tooltip, Modal, Form, Tag, 
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { getActors, createActor, updateActor, deleteActor, type ActorItem } from '../api';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
-import { matchesFactorySearch } from '../utils/factorySearch';
+import { matchesFactorySearch, parseFactorySearch, encodeExactFactorySearch } from '../utils/factorySearch';
 import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface ActorFactoryProps {
@@ -19,6 +19,7 @@ export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, r
   const [items, setItems] = useState<ActorItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [exactSearch, setExactSearch] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<ActorItem | null>(null);
@@ -40,7 +41,11 @@ export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, r
   useEffect(() => { loadItems(); }, [loadItems]);
 
   useEffect(() => {
-    if (defaultSearch !== undefined) setSearch(defaultSearch);
+    if (defaultSearch !== undefined) {
+      const parsed = parseFactorySearch(defaultSearch);
+      setSearch(parsed.term);
+      setExactSearch(parsed.exact);
+    }
   }, [defaultSearch]);
 
   // Open Add modal when navigated from BpmnEditor properties panel
@@ -126,9 +131,10 @@ export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, r
     }
   };
 
+  const searchToken = exactSearch ? encodeExactFactorySearch(search) : search;
   const filtered = search
     ? items.filter((i) =>
-        matchesFactorySearch([i.name, i.role, i.description], search)
+        matchesFactorySearch([i.name, i.role, i.description], searchToken)
       )
     : items;
 
@@ -187,7 +193,11 @@ export default function ActorFactory({ defaultSearch, defaultAdd, onItemAdded, r
           prefix={<SearchOutlined />}
           style={{ width: 280 }}
           allowClear
-          onChange={(e) => setSearch(e.target.value)}
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setExactSearch(false);
+          }}
         />
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} items</span>

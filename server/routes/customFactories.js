@@ -761,7 +761,7 @@ async function buildComponentUploadFactories({ neighborhoodName, rows, component
           dataExistenceCache.set(cacheKey, existsInDataCatalog);
         }
       }
-      const rowState = existsInDataCatalog ? 'loaded' : 'invalid';
+      const rowState = existsInDataCatalog ? 'staged' : 'invalid';
 
       if (!existingRow) {
         rowMap.set(primaryKey, {
@@ -827,7 +827,7 @@ function mergeUploadedRowsIntoFactory({ existingFactory, uploadedFactory, create
       existingFactory.rows.push({
         values: componentRowValuesFromFactoryColumns(existingFactory.columns, uploadedRow.values),
         owner: uploadedRow.owner || '',
-        state: uploadedRow.state || 'loaded',
+        state: uploadedRow.state || 'staged',
         sourcedFrom: sourceFileName,
         createdBy,
         updatedBy: createdBy,
@@ -840,8 +840,8 @@ function mergeUploadedRowsIntoFactory({ existingFactory, uploadedFactory, create
     currentRow.parentName = mergeDistinctQualifierValues(currentRow.parentName || '', uploadedRow.parentName || '');
     if ((currentRow.state || 'staged') !== 'invalid' && uploadedRow.state === 'invalid') {
       currentRow.state = 'invalid';
-    } else if ((currentRow.state || 'staged') === 'staged' && uploadedRow.state === 'loaded') {
-      currentRow.state = 'loaded';
+    } else if ((currentRow.state || 'staged') === 'staged' && uploadedRow.state === 'staged') {
+      currentRow.state = 'staged';
     }
     currentRow.updatedBy = createdBy;
     currentRow.sourcedFrom = sourceFileName;
@@ -1239,16 +1239,16 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
     const existingFactories = await Component.find({ neighborhoodName, name: { $in: factoryNames } });
     const existingFactoryMap = new Map(existingFactories.map((factory) => [factory.name, factory]));
 
-    const alreadyLoadedFactory = existingFactories.find((factory) =>
+    const alreadyStagedFactory = existingFactories.find((factory) =>
       (factory.rows || []).some((row) => {
         const state = getComparableValue(row.state || '');
-        return state === 'loaded' || state === 'invalid';
+        return state === 'staged' || state === 'invalid';
       })
     );
 
-    if (alreadyLoadedFactory) {
+    if (alreadyStagedFactory) {
       return res.status(409).json({
-        error: `Component data already loaded for model ${neighborhoodName}. Delete the model and reload before importing components again.`,
+        error: `Component data already staged for model ${neighborhoodName}. Delete the model and reload before importing components again.`,
       });
     }
 

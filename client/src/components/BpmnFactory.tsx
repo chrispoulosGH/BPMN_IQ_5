@@ -3,7 +3,7 @@ import { Table, Input, Button, App as AntApp, Space, Tooltip, Tag, Select, Typog
 import { EditOutlined, DeleteOutlined, SearchOutlined, FolderOpenOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { DiagramMeta } from '../types';
 import { getDiagrams, getDiagram, deleteDiagram, updateDiagram, batchImportDiagrams, transitionState } from '../api';
-import { matchesFactorySearch } from '../utils/factorySearch';
+import { matchesFactorySearch, parseFactorySearch, encodeExactFactorySearch } from '../utils/factorySearch';
 import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface DiagramMetadataFieldConfig {
@@ -101,6 +101,7 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
   const [diagrams, setDiagrams] = useState<DiagramMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [exactSearch, setExactSearch] = useState(false);
   const batchInputRef = useRef<HTMLInputElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<{ name?: string; description?: string; sourcedFrom?: string; owner?: string }>({});
@@ -125,7 +126,11 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
   useEffect(() => { loadDiagrams(); }, [loadDiagrams, refreshTick]);
 
   useEffect(() => {
-    if (defaultSearch !== undefined) setSearch(defaultSearch);
+    if (defaultSearch !== undefined) {
+      const parsed = parseFactorySearch(defaultSearch);
+      setSearch(parsed.term);
+      setExactSearch(parsed.exact);
+    }
   }, [defaultSearch]);
 
   // Reset table filter count when search or data changes
@@ -270,6 +275,7 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
     }
   };
 
+  const searchToken = exactSearch ? encodeExactFactorySearch(search) : search;
   const filtered = search
     ? diagrams.filter((d) => {
         return matchesFactorySearch([
@@ -285,7 +291,7 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
           d.updatedBy,
           d.sourcedFrom,
           ...(d.tasks || []).flatMap((t) => [t.name, ...(t.applications || []).map((a) => a.name)]),
-        ], search);
+        ], searchToken);
       })
     : diagrams;
 
@@ -584,7 +590,10 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
             placeholder="Search diagrams..."
             prefix={<SearchOutlined />}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setExactSearch(false);
+            }}
             allowClear
             style={{ width: 300 }}
           />

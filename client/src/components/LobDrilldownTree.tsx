@@ -26,7 +26,7 @@ interface TreeResponse {
   tree: TreeNode[];
 }
 
-type InfrastructureLoadStatus = 'loading' | 'loaded' | 'empty' | 'error';
+type InfrastructureLoadStatus = 'loading' | 'staged' | 'empty' | 'error';
 
 interface SelectedInfrastructure {
   id: string;
@@ -553,7 +553,7 @@ export default function LobDrilldownTree() {
       setInfrastructureByApplicationNodeId((prev) => ({ ...prev, [node.id]: infrastructureNodes }));
       setInfrastructureLoadStatusByApplicationNodeId((prev) => ({
         ...prev,
-        [node.id]: serverNodes.length || databaseNodes.length ? 'loaded' : 'empty',
+        [node.id]: serverNodes.length || databaseNodes.length ? 'staged' : 'empty',
       }));
       setPendingCenterNodeId(infrastructureNodes[0]?.id || node.id);
     } catch {
@@ -927,7 +927,7 @@ export default function LobDrilldownTree() {
                   </Descriptions.Item>
                   {selectedNode.level === 'application' ? (
                     <Descriptions.Item label="Infrastructure Status">
-                      {infrastructureLoadStatusByApplicationNodeId[selectedNode.id] || 'not loaded'}
+                      {infrastructureLoadStatusByApplicationNodeId[selectedNode.id] || 'not staged'}
                     </Descriptions.Item>
                   ) : null}
                   {selectedNode.children.length ? (

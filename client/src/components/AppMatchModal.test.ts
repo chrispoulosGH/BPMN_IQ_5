@@ -17,12 +17,14 @@ describe('computeAppMatches', () => {
 
     expect(computeAppMatches(['PDX'], referenceApplications)[0]).toMatchObject({
       refMatch: 'Platform Data Exchange',
+      displayMatch: 'PDX',
       exact: true,
       matchedOn: 'acronym',
     });
 
     expect(computeAppMatches(['CSI Customer Care'], referenceApplications)[0]).toMatchObject({
       refMatch: 'CSI Customer Care',
+      displayMatch: 'CSI Customer Care',
       exact: true,
       matchedOn: 'name',
     });
@@ -32,8 +34,17 @@ describe('computeAppMatches', () => {
     const result = computeAppMatches(['CSI Customer'], referenceApplications)[0];
 
     expect(result.refMatch).toBe('CSI Customer Care');
+    expect(result.displayMatch).toBe('CSI Customer Care');
     expect(result.exact).toBe(false);
     expect(result.matchedOn).toBe('name');
     expect(result.score).toBeGreaterThan(0.4);
+  });
+
+  it('uses acronym as display when acronym is the strongest fuzzy match', () => {
+    const result = computeAppMatches(['pdxx'], referenceApplications)[0];
+
+    expect(result.refMatch).toBe('Platform Data Exchange');
+    expect(result.displayMatch).toBe('PDX');
+    expect(result.matchedOn).toBe('acronym');
   });
 });

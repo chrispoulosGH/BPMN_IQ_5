@@ -6,7 +6,7 @@ import {
 } from 'bpmn-js-properties-panel';
 import { Modal, Tag } from 'antd';
 import { validateTasks, getTaskNames, getServers, getServer, getApplicationServers, getDatabases, getDatabase, getApplicationDatabases } from '../api';
-import type { ApplicationItem, ServerItem, DatabaseItem } from '../types';
+import type { ApplicationItem, ServerItem, DatabaseItem, CapabilityMatch } from '../types';
 import bpmniqModdle from '../bpmniq-moddle.json';
 import {
   buildExactApplicationIdentifierSet,
@@ -66,6 +66,11 @@ interface BpmnEditorProps {
   readOnly?: boolean;
   onNavigateToFactory?: (tab: string, searchTerm: string, mode?: 'view' | 'add', extra?: { applications?: string[]; actor?: string }) => void;
   onTaskSelect?: (task: { name: string; id: string } | null) => void;
+  selectedCapability?: CapabilityMatch | null;
+  isCapabilityAssigned?: boolean;
+  onCapabilityAssignToggle?: (capability: CapabilityMatch) => void;
+  onCapabilityViewInCatalog?: (capability: CapabilityMatch) => void;
+  onCapabilityBack?: () => void;
   onAddToFactory?: () => void;
   onDeleteAndReload?: () => void;
   onSaveAsNew?: (newName: string) => void;
@@ -91,7 +96,7 @@ function normalizeBusinessFlowLookupValue(value?: string | null): string {
 }
 
 const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
-  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allApplications = [], allBusinessFlowNames = [], allTaskNames = [], allActorNames = [], diagramName, diagramStatus, canEditDiagramName = false, isInFactory, isAlreadyLoaded, readOnly, onNavigateToFactory, onTaskSelect, onAddToFactory, onDeleteAndReload, onSaveAsNew, onDiagramNameClick, onNewDiagram, onDiagramNameChange, diagramBreadcrumb }, ref) => {
+  ({ xml, importTrigger, onXmlChange, onDirty, showProperties = true, allApplicationNames = [], allApplications = [], allBusinessFlowNames = [], allTaskNames = [], allActorNames = [], diagramName, diagramStatus, canEditDiagramName = false, isInFactory, isAlreadyLoaded, readOnly, onNavigateToFactory, onTaskSelect, selectedCapability, isCapabilityAssigned = false, onCapabilityAssignToggle, onCapabilityViewInCatalog, onCapabilityBack, onAddToFactory, onDeleteAndReload, onSaveAsNew, onDiagramNameClick, onNewDiagram, onDiagramNameChange, diagramBreadcrumb }, ref) => {
     const canvasRef = useRef<HTMLDivElement>(null);
     const propertiesRef = useRef<HTMLDivElement>(null);
     const modelerRef = useRef<any>(null);
@@ -932,6 +937,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
 
       // Track element selection – show task link when a task/activity is clicked
       modeler.on('element.click', (event: any) => {
+        onCapabilityBack?.();
         setSelectedApp(null);
         setDiagramSelected(false);
         const el = event.element;
@@ -1415,6 +1421,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
             className="absolute top-2 left-1/2 -translate-x-1/2 z-20"
             style={{ cursor: 'pointer' }}
             onClick={() => {
+              onCapabilityBack?.();
               setDiagramSelected(true);
               setSelectedTask(null);
               setSelectedLane(null);
@@ -1494,7 +1501,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
             className="properties-panel-container border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-10 overflow-hidden"
             style={{
               width: propsCollapsed ? 0 : propsWidth,
-              display: (selectedApp || selectedTask?.name || selectedLane || diagramSelected) ? 'none' : undefined,
+              display: (selectedApp || selectedTask?.name || selectedLane || diagramSelected || selectedCapability) ? 'none' : undefined,
               transition: propsResizing.current ? 'none' : 'width 0.2s',
               borderLeftWidth: propsCollapsed ? 0 : undefined,
             }}
@@ -1525,7 +1532,7 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
           </div>
         )}
         {/* Collapse button — rendered outside propertiesRef so bpmn-js content doesn't cover it */}
-        {showProperties && !propsCollapsed && !selectedApp && !selectedTask?.name && !selectedLane && !diagramSelected && (
+        {showProperties && !propsCollapsed && !selectedApp && !selectedTask?.name && !selectedLane && !diagramSelected && !selectedCapability && (
           <button
             className="absolute top-1 bg-white border border-gray-300 rounded shadow-sm text-gray-500 hover:text-gray-800 hover:bg-gray-50 text-xs px-1.5 py-0.5"
             style={{ right: propsWidth + 4, zIndex: 20 }}
@@ -1725,6 +1732,64 @@ const BpmnEditor = forwardRef<BpmnEditorHandle, BpmnEditorProps>(
               <button
                 className="mt-4 w-full text-xs py-1.5 px-3 rounded border border-gray-200 hover:bg-gray-50 text-gray-600"
                 onClick={() => setSelectedLane(null)}
+              >
+                ← Back to Properties
+              </button>
+            </div>
+          </div>
+        )}
+        {showProperties && !propsCollapsed && !selectedApp && !selectedTask?.name && !selectedLane && !diagramSelected && selectedCapability && (
+          <div className="border-l border-gray-200 bg-white absolute right-0 top-0 bottom-0 z-20 overflow-y-auto"
+            style={{ width: propsWidth, fontFamily: '"IBM Plex Sans", Arial, sans-serif' }}>
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className={`w-8 h-8 rounded ${isCapabilityAssigned ? 'bg-blue-50 border border-blue-200' : 'bg-orange-50 border border-orange-200'} flex items-center justify-center`}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isCapabilityAssigned ? '#1677ff' : '#cc7000'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Business Capability</div>
+                  <div className="font-semibold text-sm" style={{ color: isCapabilityAssigned ? '#333' : '#cc7000' }}>{selectedCapability.capabilityName}</div>
+                </div>
+              </div>
+              <div className="border-t border-gray-100 pt-3">
+                <table className="w-full text-xs">
+                  <tbody>
+                    <tr><td className="text-gray-500 py-1 pr-2 align-top">Status</td><td className="py-1"><span className={`px-1.5 py-0.5 rounded text-xs ${isCapabilityAssigned ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-orange-50 text-orange-700 border border-orange-300'}`}>{isCapabilityAssigned ? 'Assigned' : 'Unassigned'}</span></td></tr>
+                    <tr><td className="text-gray-500 py-1 pr-2 align-top">Confidence</td><td className="py-1 text-gray-700">{selectedCapability.confidence}%</td></tr>
+                    <tr><td className="text-gray-500 py-1 pr-2 align-top">ID</td><td className="py-1 text-gray-600">{selectedCapability.capabilityId}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="border-t border-gray-100 mt-3 pt-3 flex flex-col gap-1.5">
+                <button
+                  className={`w-full text-xs py-1.5 px-3 rounded border text-left flex items-center gap-1.5 ${isCapabilityAssigned ? 'border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700' : 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700'}`}
+                  onClick={() => onCapabilityAssignToggle?.(selectedCapability)}
+                  title={isCapabilityAssigned ? 'Unassign from diagram' : 'Assign to diagram'}
+                >
+                  {isCapabilityAssigned
+                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                    : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                  }
+                  {isCapabilityAssigned ? 'Unassign from Diagram →' : 'Assign to Diagram →'}
+                </button>
+                <button
+                  className="w-full text-xs py-1.5 px-3 rounded border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-left flex items-center gap-1.5"
+                  onClick={() => onCapabilityViewInCatalog?.(selectedCapability)}
+                  title="View in Capability Component"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+                  View in Capability Component →
+                </button>
+              </div>
+              {selectedCapability.justification ? (
+                <div className="border-t border-gray-100 mt-3 pt-3">
+                  <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Justification</div>
+                  <p className="text-xs text-gray-700 leading-5 m-0">{selectedCapability.justification}</p>
+                </div>
+              ) : null}
+              <button
+                className="mt-4 w-full text-xs py-1.5 px-3 rounded border border-gray-200 hover:bg-gray-50 text-gray-600"
+                onClick={() => onCapabilityBack?.()}
               >
                 ← Back to Properties
               </button>

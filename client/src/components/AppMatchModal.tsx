@@ -11,6 +11,8 @@ export interface AppMatchResult {
   original: string;
   /** Best matching reference application name (null if no good match) */
   refMatch: string | null;
+  /** Display label for the best scoring match value (acronym or full name) */
+  displayMatch?: string | null;
   /** Similarity score 0-1 */
   score: number;
   /** Whether this was an exact match */
@@ -66,6 +68,7 @@ export function computeAppMatches(
         results.push({
           original: app,
           refMatch: exactMatch.name,
+          displayMatch: String(exactMatch[matchedOn || 'name'] || exactMatch.name || '').trim() || exactMatch.name,
           score: 1,
           exact: true,
           matchedOn: matchedOn || null,
@@ -94,7 +97,14 @@ export function computeAppMatches(
       }
 
       if (bestScore >= FUZZY_THRESHOLD && bestRef) {
-        results.push({ original: app, refMatch: bestRef.name, score: bestScore, exact: false, matchedOn: bestField });
+        results.push({
+          original: app,
+          refMatch: bestRef.name,
+          displayMatch: bestField ? String(bestRef[bestField] || '').trim() || bestRef.name : bestRef.name,
+          score: bestScore,
+          exact: false,
+          matchedOn: bestField,
+        });
       } else {
         results.push({ original: app, refMatch: null, score: bestScore, exact: false, matchedOn: bestField });
       }
@@ -112,7 +122,7 @@ export function computeAppMatches(
     // Check exact match first
     const exactIdx = refLower.indexOf(appLower);
     if (exactIdx >= 0) {
-      results.push({ original: app, refMatch: refNames[exactIdx], score: 1, exact: true, matchedOn: 'name' });
+      results.push({ original: app, refMatch: refNames[exactIdx], displayMatch: refNames[exactIdx], score: 1, exact: true, matchedOn: 'name' });
       continue;
     }
     // Fuzzy match
@@ -126,7 +136,7 @@ export function computeAppMatches(
       }
     }
     if (bestScore >= FUZZY_THRESHOLD && bestRef) {
-      results.push({ original: app, refMatch: bestRef, score: bestScore, exact: false, matchedOn: 'name' });
+      results.push({ original: app, refMatch: bestRef, displayMatch: bestRef, score: bestScore, exact: false, matchedOn: 'name' });
     } else {
       results.push({ original: app, refMatch: null, score: bestScore, exact: false, matchedOn: null });
     }
@@ -196,11 +206,12 @@ export default function AppMatchModal({ open, matches, title, onApprove, onClose
       dataIndex: 'refMatch',
       render: (text: string | null, record: AppMatchResult) => {
         if (!text) return <Tag color="red">No match</Tag>;
+        const bestDisplay = String(record.displayMatch || text || '').trim() || text;
         const matchedLabel = record.matchedOn === 'name' ? 'full name' : record.matchedOn;
-        if (record.exact) return <Tag color="green">{text}</Tag>;
+        if (record.exact) return <Tag color="green">{bestDisplay}</Tag>;
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Tag color="orange">{text}</Tag>
+            <Tag color="orange">{bestDisplay}</Tag>
             {matchedLabel ? <Text type="secondary">Matched on {matchedLabel}</Text> : null}
           </div>
         );

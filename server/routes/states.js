@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const State = require('../models/State');
 const { VALID_STATES, getAllowedActions, getTargetState } = require('../services/stateTransitions');
+const { DEFAULT_NEIGHBORHOOD_NAME, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+const Component = require('../models/Component');
 
 // Models that support state transitions
 const { BusinessFlow, Product, Application, Actor: RefActor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
@@ -79,6 +81,73 @@ function extractApplicationIdentifiersFromXml(xml) {
   return [...new Set(identifiers)];
 }
 
+function normalizeBusinessFlowLookupValue(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function normalizeLookupValue(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeObjectMatchValue(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' ')
+    .replace(/\//g, ' ')
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getPlainRowValues(values) {
+  if (!values) return {};
+  if (values instanceof Map) return Object.fromEntries(values.entries());
+  if (typeof values.toObject === 'function') return values.toObject();
+  return { ...values };
+}
+
+function getCustomFactoryRowName(row) {
+  const values = getPlainRowValues(row?.values);
+  return String(values.name || '').trim();
+}
+
+function rowMatchesParent(row, parentName) {
+  const expected = normalizeObjectMatchValue(parentName);
+  if (!expected) return true;
+  const rawParentName = String(row?.parentName || '');
+  if (!rawParentName.trim()) return false;
+  return rawParentName
+    .split(/[|,]/)
+    .map((value) => normalizeObjectMatchValue(value))
+    .includes(expected);
+}
+
+async function hasMatchingBusinessFlowReference(name, neighborhoodName = DEFAULT_NEIGHBORHOOD_NAME) {
+  const normalizedName = normalizeBusinessFlowLookupValue(name);
+  if (!normalizedName) return false;
+  const businessFlowComponentFilter = combineFilters(
+    buildNeighborhoodFilter(neighborhoodName),
+    { name: { $regex: /^business[\s_]*flow$/i } }
+  );
+  const businessFlowComponent = await Component.findOne(businessFlowComponentFilter, { rows: 1 }).lean();
+  return (businessFlowComponent?.rows || []).some((row) => {
+    return normalizeBusinessFlowLookupValue(getCustomFactoryRowName(row)) === normalizedName;
+  });
+}
+
+function combineFilters(left, right) {
+  const leftFilter = left && Object.keys(left).length ? left : null;
+  const rightFilter = right && Object.keys(right).length ? right : null;
+  if (leftFilter && rightFilter) return { $and: [leftFilter, rightFilter] };
+  return leftFilter || rightFilter || {};
+}
+
 async function validateDiagramForSubmission(diagram) {
   const capabilityNames = [...new Set(
     (diagram.capabilities || [])
@@ -96,27 +165,36 @@ async function validateDiagramForSubmission(diagram) {
         )
       )];
   const laneNames = extractLaneNames(diagram.xml || '');
+  const neighborhoodName = String(diagram.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim() || DEFAULT_NEIGHBORHOOD_NAME;
+  const neighborhoodFilter = buildNeighborhoodFilter(neighborhoodName);
+  const taskComponentFilter = combineFilters(neighborhoodFilter, { name: { $regex: /^tasks?$/i } });
 
-  const [knownTaskNames, knownApplications, knownActorNames] = await Promise.all([
-    Task.distinct('name', businessFlow ? { businessFlow } : {}),
-    Application.find({}, { name: 1, acronym: 1, correlationId: 1 }).lean(),
-    Actor.distinct('name'),
+  const [taskComponent, knownApplications, knownActorNames] = await Promise.all([
+    Component.findOne(taskComponentFilter, { rows: 1 }).lean(),
+    Application.find(neighborhoodFilter, { name: 1, acronym: 1, correlationId: 1 }).lean(),
+    Actor.distinct('name', neighborhoodFilter),
   ]);
 
-  const taskSet = new Set(knownTaskNames.map((name) => String(name || '').toLowerCase().trim()));
+  const knownTaskNames = (taskComponent?.rows || [])
+    .filter((row) => rowMatchesParent(row, businessFlow))
+    .map((row) => getCustomFactoryRowName(row))
+    .filter(Boolean);
+
+  const taskSet = new Set(knownTaskNames.map((name) => normalizeObjectMatchValue(name)));
   const applicationSet = new Set(
     knownApplications.flatMap((application) => [application.correlationId, application.acronym, application.name]
-      .map((value) => String(value || '').toLowerCase().trim())
+      .map((value) => normalizeObjectMatchValue(value))
       .filter(Boolean))
   );
-  const actorSet = new Set(knownActorNames.map((name) => String(name || '').toLowerCase().trim()));
+  const actorSet = new Set(knownActorNames.map((name) => normalizeObjectMatchValue(name)));
 
-  const invalidTasks = taskNames.filter((name) => !taskSet.has(name.toLowerCase().trim()));
-  const invalidApplications = applicationNames.filter((name) => !applicationSet.has(name.toLowerCase().trim()));
-  const invalidActors = laneNames.filter((name) => !actorSet.has(name.toLowerCase().trim()));
+  const invalidTasks = taskNames.filter((name) => !taskSet.has(normalizeObjectMatchValue(name)));
+  const invalidApplications = applicationNames.filter((name) => !applicationSet.has(normalizeObjectMatchValue(name)));
+  const invalidActors = laneNames.filter((name) => !actorSet.has(normalizeObjectMatchValue(name)));
   const hasCapabilities = capabilityNames.length > 0;
+  const hasBusinessFlowReference = await hasMatchingBusinessFlowReference(businessFlow || diagram.name, neighborhoodName);
 
-  return { hasCapabilities, invalidTasks, invalidApplications, invalidActors };
+  return { hasCapabilities, hasBusinessFlowReference, invalidTasks, invalidApplications, invalidActors };
 }
 
 // GET /api/states — list all valid states
@@ -174,15 +252,23 @@ router.post('/transition', async (req, res) => {
     }
 
     if (collection === 'diagrams' && currentState === 'draft' && targetState === 'submitted') {
-      const { hasCapabilities, invalidTasks, invalidApplications, invalidActors } = await validateDiagramForSubmission(record);
-      if (!hasCapabilities || invalidTasks.length || invalidApplications.length || invalidActors.length) {
+      const {
+        hasCapabilities,
+        hasBusinessFlowReference,
+        invalidTasks,
+        invalidApplications,
+        invalidActors,
+      } = await validateDiagramForSubmission(record);
+      if (!hasBusinessFlowReference || !hasCapabilities || invalidTasks.length || invalidApplications.length || invalidActors.length) {
         const problems = [];
+        if (!hasBusinessFlowReference) problems.push('business flow reference does not exist in this model');
         if (!hasCapabilities) problems.push('at least one associated business capability is required');
         if (invalidTasks.length) problems.push(`invalid tasks: ${invalidTasks.join(', ')}`);
         if (invalidApplications.length) problems.push(`invalid applications: ${invalidApplications.join(', ')}`);
         if (invalidActors.length) problems.push(`invalid actors: ${invalidActors.join(', ')}`);
         return res.status(400).json({
           error: `Cannot submit diagram with invalid objects: ${problems.join(' | ')}`,
+          missingBusinessFlowReference: !hasBusinessFlowReference,
           missingCapabilities: !hasCapabilities,
           invalidTasks,
           invalidApplications,

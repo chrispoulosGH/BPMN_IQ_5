@@ -3,6 +3,7 @@ import { App as AntApp, Button, Card, Form, Input, List, Modal, Popconfirm, Sele
 import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, FolderAddOutlined, InboxOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
+import { parseFactorySearch } from '../utils/factorySearch';
 
 import {
   createFactoryNeighborhood,
@@ -32,6 +33,8 @@ interface NeighborhoodFactoryProps {
   showAddFactory?: boolean;
   showDeleteNeighborhood?: boolean;
   mode?: 'panel' | 'action';
+  defaultRowSearch?: string;
+  defaultRowSearchColumn?: string;
 }
 
 interface FactoryRowViewState {
@@ -45,7 +48,7 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
-export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel' }: NeighborhoodFactoryProps) {
+export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel', defaultRowSearch, defaultRowSearchColumn = 'name' }: NeighborhoodFactoryProps) {
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const PRIMARY_KEY_COLUMN = 'name';
@@ -190,6 +193,22 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     setRowSearchText(nextViewState?.searchText || '');
     setRowStatusFilter(nextViewState?.statusFilter);
   }, [ALL_COLUMNS_OPTION, factoryRowViewState, selectedFactoryId]);
+
+  useEffect(() => {
+    if (!selectedFactory?._id) return;
+    if (defaultRowSearch === undefined) return;
+
+    const parsed = parseFactorySearch(defaultRowSearch);
+    const nextSearchText = parsed.term;
+    const nextSearchColumn = defaultRowSearchColumn;
+
+    setRowSearchColumn(nextSearchColumn);
+    setRowSearchText(nextSearchText);
+    updateFactoryViewState(selectedFactory._id, {
+      searchColumn: nextSearchColumn,
+      searchText: nextSearchText,
+    });
+  }, [defaultRowSearch, defaultRowSearchColumn, selectedFactory, updateFactoryViewState]);
 
   const handleCreateNeighborhood = async () => {
     const name = neighborhoodDraftName.trim();
@@ -426,7 +445,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         width: 110,
         render: (value: string) => {
           const nextValue = String(value || 'staged').toLowerCase();
-          const color = nextValue === 'loaded'
+          const color = nextValue === 'staged'
             ? 'green'
             : nextValue === 'invalid'
               ? 'red'
@@ -452,8 +471,8 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
 
   const filteredRows = useMemo(() => {
     if (!selectedFactory) return [];
-
-    const normalizedSearch = deferredRowSearchText.trim().toLowerCase();
+    const parsedSearch = parseFactorySearch(deferredRowSearchText);
+    const normalizedSearch = parsedSearch.term.trim().toLowerCase();
 
     return selectedFactory.rows.filter((row) => {
       const matchesStatus = !rowStatusFilter || (row.state || 'staged') === rowStatusFilter;
@@ -464,7 +483,10 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         ? selectedFactory.columns
         : [rowSearchColumn];
 
-      return columnsToSearch.some((column) => String(row.values?.[column] ?? '').toLowerCase().includes(normalizedSearch));
+      return columnsToSearch.some((column) => {
+        const candidate = String(row.values?.[column] ?? '').toLowerCase();
+        return parsedSearch.exact ? candidate === normalizedSearch : candidate.includes(normalizedSearch);
+      });
     });
   }, [ALL_COLUMNS_OPTION, deferredRowSearchText, rowSearchColumn, rowStatusFilter, selectedFactory]);
 
@@ -688,7 +710,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, height: '100%' }}
         extra={selectedFactory ? (
           <Space>
-            <span style={{ color: '#64748b', fontSize: 12 }}>{selectedFactory.neighborhoodName} · loaded and invalid statuses are generated during import validation</span>
+            <span style={{ color: '#64748b', fontSize: 12 }}>{selectedFactory.neighborhoodName} · staged and invalid statuses are generated during import validation</span>
             {canManageFactories ? (
               <Popconfirm
                 title={`Delete component ${selectedFactory.name}?`}
@@ -755,7 +777,6 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                   if (selectedFactory?._id) updateFactoryViewState(selectedFactory._id, { statusFilter: value });
                 }}
                 options={[
-                  { label: 'loaded', value: 'loaded' },
                   { label: 'invalid', value: 'invalid' },
                   { label: 'staged', value: 'staged' },
                   { label: 'published', value: 'published' },
@@ -912,7 +933,6 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
           </Form.Item>
           <Form.Item name="state" label="Status">
             <Select options={[
-              { label: 'loaded', value: 'loaded' },
               { label: 'invalid', value: 'invalid' },
               { label: 'staged', value: 'staged' },
               { label: 'published', value: 'published' },

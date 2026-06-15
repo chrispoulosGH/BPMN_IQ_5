@@ -57,17 +57,22 @@ app.use('/api/auth', authRouter);
 
 // Session guard — protect all other /api routes
 app.use('/api', async (req, res, next) => {
-  const token = req.cookies?.bpmn_iq_sid;
-  if (!token) return res.status(401).json({ error: 'Session expired. Please log in again.' });
-  const sess = await Session.findOne({ token, expiresAt: { $gt: new Date() } }).lean();
-  if (!sess) {
-    res.clearCookie('bpmn_iq_sid');
-    return res.status(401).json({ error: 'Session expired. Please log in again.' });
+  try {
+    const token = req.cookies?.bpmn_iq_sid;
+    if (!token) return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    const sess = await Session.findOne({ token, expiresAt: { $gt: new Date() } }).lean();
+    if (!sess) {
+      res.clearCookie('bpmn_iq_sid');
+      return res.status(401).json({ error: 'Session expired. Please log in again.' });
+    }
+    // Resolve user role
+    const userDoc = await User.findOne({ userId: sess.userId }).lean();
+    req.currentUser = { userId: sess.userId, displayName: sess.displayName, role: userDoc?.role || null };
+    next();
+  } catch (err) {
+    console.error('Session middleware error:', err?.stack || err);
+    return res.status(500).json({ error: 'Failed to validate session.' });
   }
-  // Resolve user role
-  const userDoc = await User.findOne({ userId: sess.userId }).lean();
-  req.currentUser = { userId: sess.userId, displayName: sess.displayName, role: userDoc?.role || null };
-  next();
 });
 
 // Routes

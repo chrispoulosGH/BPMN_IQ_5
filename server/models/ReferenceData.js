@@ -87,13 +87,13 @@ applicationSchema.index(
   }
 );
 
-const BusinessFlow = mongoose.model('BusinessFlow', businessFlowSchema);
-const Product = mongoose.model('Product', refSchema);
-const Application = mongoose.model('Application', applicationSchema);
-const Actor = mongoose.model('Actor', refSchema);
-const Channel = mongoose.model('Channel', refSchema);
-const Domain = mongoose.model('Domain', refSchema);
-const Subdomain = mongoose.model('Subdomain', refSchema);
-const LineOfBusiness = mongoose.model('LineOfBusiness', refSchema);
+const BusinessFlow = mongoose.models.BusinessFlow || mongoose.model('BusinessFlow', businessFlowSchema);
+const Product = mongoose.models.Product || mongoose.model('Product', refSchema);
+const Application = mongoose.models.Application || mongoose.model('Application', applicationSchema);
+const Actor = mongoose.models.Actor || mongoose.model('Actor', refSchema);
+const Channel = mongoose.models.Channel || mongoose.model('Channel', refSchema);
+const Domain = mongoose.models.Domain || mongoose.model('Domain', refSchema);
+const Subdomain = mongoose.models.Subdomain || mongoose.model('Subdomain', refSchema);
+const LineOfBusiness = mongoose.models.LineOfBusiness || mongoose.model('LineOfBusiness', refSchema);
 
 module.exports = { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, LineOfBusiness };

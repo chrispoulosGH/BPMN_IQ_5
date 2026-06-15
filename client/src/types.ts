@@ -60,6 +60,37 @@ export interface DiagramUpdatePayload {
   updatedBy?: string;
 }
 
+export interface DiagramValidationRequest {
+  id?: string;
+  xml?: string;
+  name?: string;
+  businessFlow?: string;
+  capabilities?: CapabilityMatch[];
+  neighborhoodName?: string;
+}
+
+export interface DiagramValidationReport {
+  isValid: boolean;
+  neighborhoodName: string;
+  diagramName: string | null;
+  businessFlow: string | null;
+  summary: {
+    hasBusinessFlowReference: boolean;
+    hasCapabilities: boolean;
+    metadataInvalidFieldCount: number;
+    invalidTaskCount: number;
+    invalidApplicationCount: number;
+    invalidActorCount: number;
+  };
+  reasons: string[];
+  details: {
+    metadataInvalidFields: Array<{ fieldName: string; label: string; value: string }>;
+    invalidTasks: string[];
+    invalidApplications: string[];
+    invalidActors: string[];
+  };
+}
+
 export interface FileSaveResult {
   message: string;
   filename: string;

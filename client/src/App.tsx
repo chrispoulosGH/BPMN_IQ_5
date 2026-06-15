@@ -40,6 +40,7 @@ import {
   BranchesOutlined,
   DashboardOutlined,
   FileTextOutlined,
+  CheckCircleOutlined,
   RightOutlined,
   LeftOutlined,
   LogoutOutlined,
@@ -66,7 +67,7 @@ import ReportsPanel from './components/ReportsPanel';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
 import { encodeExactFactorySearch } from './utils/factorySearch';
-import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, batchImportDiagrams, getTaskReferenceForNeighborhood, getTaskNames, getTaskNamesForNeighborhood, getActorsForNeighborhood, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, setApiNeighborhoodScope } from './api';
+import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, batchImportDiagrams, getTaskReferenceForNeighborhood, getTaskNames, getTaskNamesForNeighborhood, getActorsForNeighborhood, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, setApiNeighborhoodScope, validateDiagramReport } from './api';
 import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem, CustomFactory, FactoryNeighborhoodSummary } from './types';
 
 const { Header, Sider, Content } = Layout;
@@ -78,6 +79,7 @@ interface ActiveDiagram {
   description: string;
   tags: string[];
   status?: string | null;
+  neighborhoodName?: string;
   /** 'db' = loaded from DB; 'local-match' = local file whose BF name already exists in DB */
   source?: 'db' | 'local-match';
 }
@@ -102,6 +104,32 @@ function extractApplicationsFromXml(xml: string): string[] {
     if (name && !apps.includes(name)) apps.push(name);
   }
   return apps;
+}
+
+function getCapabilityFocusName(rawName: string): string {
+  const levels = String(rawName || '')
+    .split(/[>,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  let clickedName = levels[levels.length - 1] || rawName;
+  let maxLevel = -1;
+  for (const segment of levels) {
+    const m = segment.match(/(?:^|\b)(?:l|level)\s*(\d+)(?:\b|$)/i) || segment.match(/^(\d+)(?:[.)\-\s]|$)/);
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > maxLevel) {
+      maxLevel = n;
+      clickedName = segment;
+    }
+  }
+
+  return (
+    clickedName
+      .replace(/^(?:l|level)\s*\d+\s*[:)\-\.]?\s*/i, '')
+      .replace(/^\d+[.)\-\s]+/, '')
+      .trim() || clickedName
+  );
 }
 
 /** Parse metadata from `<bpmndi:BPMNDiagram ... name="...">` attribute */
@@ -252,6 +280,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [activeAnalyticsTab, setActiveAnalyticsTab] = useState<string>('dashboard'); // inner Analytics sub-tabs
   const [activeAnalyticsModel, setActiveAnalyticsModel] = useState<string>(DEFAULT_NEIGHBORHOOD_NAME);
   const [activeAnalyticsTabsByModel, setActiveAnalyticsTabsByModel] = useState<Record<string, string>>({ [DEFAULT_NEIGHBORHOOD_NAME]: 'dashboard' });
+  const [activeDiagramNeighborhoodName, setActiveDiagramNeighborhoodName] = useState<string | null>(null);
   const [activeDataTab, setActiveDataTab] = useState<string>('applications');
   const getModelCatalogTabKey = useCallback((modelName: string) => `modelCatalog:${modelName}`, []);
   const getModelComponentsTabKey = useCallback((modelName: string) => `modelComponents:${modelName}`, []);
@@ -558,6 +587,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     ? ALL_NEIGHBORHOODS_TOKEN
     : activeOuterTab === 'analytics'
       ? (activeAnalyticsModel || DEFAULT_NEIGHBORHOOD_NAME)
+      : activeOuterTab === 'bpmn'
+        ? (activeDiagramNeighborhoodName || activeNeighborhoodTab)
       : activeNeighborhoodTab !== DEFAULT_NEIGHBORHOOD_NAME && GLOBAL_SHARED_FACTORY_TAB_KEYS.includes(activeTab)
         ? DEFAULT_NEIGHBORHOOD_NAME
         : activeNeighborhoodTab;
@@ -703,6 +734,10 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [canvasDiagramName, setCanvasDiagramName] = useState<string | null>(null);
   const [showNewDiagramPrompt, setShowNewDiagramPrompt] = useState(false);
 
+  useEffect(() => {
+    setActiveDiagramNeighborhoodName(activeDiagram?.neighborhoodName || null);
+  }, [activeDiagram]);
+
   // Sidebar
   const [refreshTick, setRefreshTick] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
@@ -753,6 +788,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [capMatches, setCapMatches] = useState<CapabilityMatch[]>([]);
   const [capLoading, setCapLoading] = useState(false);
   const [selectedCaps, setSelectedCaps] = useState<CapabilityMatch[]>([]);
+  const [selectedCapability, setSelectedCapability] = useState<CapabilityMatch | null>(null);
   const [capError, setCapError] = useState<string | null>(null);
   const [savedCaps, setSavedCaps] = useState<CapabilityMatch[]>([]);
   const savedXmlRef = useRef<string>(EMPTY_DIAGRAM);
@@ -774,8 +810,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   // Factory navigation (from diagram links)
   const [factorySearch, setFactorySearch] = useState<Record<string, string>>({});
   const [factoryAdd, setFactoryAdd] = useState<Record<string, string | TaskAddData>>({});
-  const [clickedCapabilityNames, setClickedCapabilityNames] = useState<string[]>([]);
-
+  const [modelCatalogSearchRequest, setModelCatalogSearchRequest] = useState<Record<string, { text: string; column?: string; exact?: boolean; trigger: number }>>({});
   // Selected task in diagram (for right sidebar link)
   const [selectedDiagramTask, setSelectedDiagramTask] = useState<{ name: string; id: string } | null>(null);
 
@@ -844,6 +879,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       key: 'resolve',
       title: 'Resolve',
       actions: [
+        { key: 'validate-diagram', tooltip: 'Validate diagram and show invalid reasons', icon: <CheckCircleOutlined />, onClick: handleValidateDiagram },
         { key: 'match-apps', tooltip: 'Match applications to reference data', icon: <LaptopOutlined />, onClick: runAppFuzzyMatch },
         { key: 'match-tasks', tooltip: 'Match tasks to reference data', icon: <AppstoreOutlined />, onClick: runTaskFuzzyMatch },
       ],
@@ -886,61 +922,96 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   }, [refreshReferenceData, scopedNeighborhoodName]);
 
   // Navigate from diagram panel to a factory tab
+  const resolveModelFactoryTabKey = useCallback(async (modelName: string, tab: string) => {
+    if (tab === 'diagramFactory') return getModelBpmnComponentTabKey(modelName);
+
+    const factories = neighborhoodFactories[modelName] || await getCustomFactories(modelName).catch(() => [] as CustomFactory[]);
+    const normalize = (value: string) => String(value || '').trim().toLowerCase().replace(/[_\s]+/g, '');
+    const normalizedTab = normalize(tab);
+
+    const aliases: Record<string, string[]> = {
+      tasks: ['task', 'tasks', 'businesstask', 'businesstasks'],
+      actors: ['actor', 'actors'],
+      capabilities: ['capability', 'capabilities'],
+      businessflows: ['businessflow', 'businessflows'],
+      products: ['product', 'products'],
+      channels: ['channel', 'channels'],
+      domains: ['domain', 'domains'],
+      subdomains: ['subdomain', 'subdomains'],
+      linesofbusiness: ['lineofbusiness', 'lineofbusinesses', 'lob'],
+    };
+
+    const expectedNames = new Set(aliases[normalizedTab] || [normalizedTab]);
+    const match = factories.find((factory) => expectedNames.has(normalize(factory.name)));
+    return match?._id || tab;
+  }, [getModelBpmnComponentTabKey, neighborhoodFactories]);
+
   const handleNavigateToFactory = useCallback((tab: string, searchTerm: string, mode: 'view' | 'add' = 'view', extra?: { applications?: string[]; actor?: string }) => {
-    if (mode === 'add') {
-      if (tab === 'tasks') {
-        // Use the current diagram name (renamed or DB name) as businessFlow, not the annotation value
-        const currentBusinessFlow = activeDiagram?.name || canvasDiagramName || diagramMeta.businessFlow;
-        setFactoryAdd((prev) => ({ ...prev, [tab]: { name: searchTerm, ...diagramMeta, ...extra, ...(currentBusinessFlow ? { businessFlow: currentBusinessFlow } : {}) } }));
+    const targetModel = activeDiagram?.neighborhoodName || activeNeighborhoodTab || DEFAULT_NEIGHBORHOOD_NAME;
+
+    const run = async () => {
+      const resolvedTabKey = await resolveModelFactoryTabKey(targetModel, tab);
+
+      if (mode === 'add') {
+        if (tab === 'tasks') {
+          // Use the current diagram name (renamed or DB name) as businessFlow, not the annotation value
+          const currentBusinessFlow = activeDiagram?.name || canvasDiagramName || diagramMeta.businessFlow;
+          setFactoryAdd((prev) => ({ ...prev, [resolvedTabKey]: { name: searchTerm, ...diagramMeta, ...extra, ...(currentBusinessFlow ? { businessFlow: currentBusinessFlow } : {}) } }));
+        } else {
+          setFactoryAdd((prev) => ({ ...prev, [resolvedTabKey]: searchTerm }));
+        }
+        setFactorySearch((prev) => ({ ...prev, [resolvedTabKey]: '' }));
       } else {
-        setFactoryAdd((prev) => ({ ...prev, [tab]: searchTerm }));
+        setFactorySearch((prev) => ({ ...prev, [resolvedTabKey]: encodeExactFactorySearch(searchTerm) }));
+        setFactoryAdd((prev) => ({ ...prev, [resolvedTabKey]: '' }));
       }
-      setFactorySearch((prev) => ({ ...prev, [tab]: '' }));
-    } else {
-      setFactorySearch((prev) => ({ ...prev, [tab]: encodeExactFactorySearch(searchTerm) }));
-      setFactoryAdd((prev) => ({ ...prev, [tab]: '' }));
-    }
-    if (tab === 'applications' || tab === 'servers' || tab === 'databases') {
-      setActiveOuterTab('data');
-      setActiveDataTab(tab);
-      return;
-    }
 
-    setActiveOuterTab('neighborhoods');
-    setActiveTab(tab);
-  }, [diagramMeta, activeDiagram, canvasDiagramName]);
-
-  const handleCapabilityClick = useCallback((_capability: CapabilityMatch, nextSelected: CapabilityMatch[]) => {
-    const rawName = nextSelected[nextSelected.length - 1]?.capabilityName || '';
-    const levels = rawName
-      .split(/[>,]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    // Prefer segment with the highest explicit numeric level marker (e.g. L3, Level 3).
-    // Fallback to the deepest/right-most segment when no numeric marker exists.
-    let clickedName = levels[levels.length - 1] || rawName;
-    let maxLevel = -1;
-    for (const segment of levels) {
-      const m = segment.match(/(?:^|\b)(?:l|level)\s*(\d+)(?:\b|$)/i) || segment.match(/^(\d+)(?:[.)\-\s]|$)/);
-      if (!m) continue;
-      const n = Number(m[1]);
-      if (Number.isFinite(n) && n > maxLevel) {
-        maxLevel = n;
-        clickedName = segment;
+      if (tab === 'applications' || tab === 'servers' || tab === 'databases') {
+        setActiveOuterTab('data');
+        setActiveDataTab(tab);
+        return;
       }
-    }
 
-    clickedName = clickedName
-      .replace(/^(?:l|level)\s*\d+\s*[:)\-\.]?\s*/i, '')
-      .replace(/^\d+[.)\-\s]+/, '')
-      .trim() || clickedName;
+      setActiveOuterTab('neighborhoods');
+      setActiveNeighborhoodTab(targetModel);
+      setActiveFactoryTabs((current) => ({ ...current, [targetModel]: getModelComponentsTabKey(targetModel) }));
+      setActiveModelComponentTabs((current) => ({ ...current, [targetModel]: resolvedTabKey }));
+    };
 
-    setClickedCapabilityNames([]);
-    setFactorySearch((prev) => ({ ...prev, capabilities: clickedName }));
-    setActiveOuterTab('neighborhoods');
-    setActiveTab('capabilities');
+    void run();
+  }, [
+    DEFAULT_NEIGHBORHOOD_NAME,
+    activeDiagram,
+    activeNeighborhoodTab,
+    canvasDiagramName,
+    diagramMeta,
+    getModelComponentsTabKey,
+    resolveModelFactoryTabKey,
+  ]);
+
+  const handleCapabilityClick = useCallback((capability: CapabilityMatch, nextSelected: CapabilityMatch[]) => {
+    setSelectedCaps(nextSelected);
+    setSelectedCapability(capability);
   }, []);
+
+  const handleViewCapabilityInCatalog = useCallback((capability: CapabilityMatch) => {
+    const clickedName = getCapabilityFocusName(capability.capabilityName);
+    const targetModel = activeDiagram?.neighborhoodName || activeNeighborhoodTab || DEFAULT_NEIGHBORHOOD_NAME;
+
+    setModelCatalogSearchRequest((current) => ({
+      ...current,
+      [targetModel]: {
+        text: clickedName,
+        column: 'name',
+        exact: false,
+        trigger: Date.now(),
+      },
+    }));
+
+    setActiveOuterTab('neighborhoods');
+    setActiveNeighborhoodTab(targetModel);
+    setActiveFactoryTabs((current) => ({ ...current, [targetModel]: getModelCatalogTabKey(targetModel) }));
+  }, [DEFAULT_NEIGHBORHOOD_NAME, activeDiagram, activeNeighborhoodTab, getModelCatalogTabKey]);
 
   const handleXmlChange = useCallback((xml: string) => {
     currentXmlRef.current = xml;
@@ -1028,6 +1099,66 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     await editorRef.current?.replaceTaskNames(replacements);
     message.success(`Replaced ${replacements.size} task name(s) with reference data`);
   }, [message]);
+
+  const handleValidateDiagram = useCallback(async () => {
+    const xml = await editorRef.current?.getXml() || currentXmlRef.current;
+    if (!xml || xml === EMPTY_DIAGRAM) {
+      message.info('Load or create a diagram before running validation.');
+      return;
+    }
+
+    try {
+      const report = await validateDiagramReport({
+        id: activeDiagram?._id,
+        xml,
+        name: activeDiagram?.name || canvasDiagramName || diagramMeta.businessFlow || undefined,
+        businessFlow: diagramMeta.businessFlow || activeDiagram?.name || canvasDiagramName || undefined,
+        capabilities: selectedCapsRef.current,
+        neighborhoodName: activeDiagram?.neighborhoodName || activeNeighborhoodTab,
+      });
+
+      const detailsBlock = (
+        <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          <p><strong>Model:</strong> {report.neighborhoodName}</p>
+          <p><strong>Diagram:</strong> {report.diagramName || 'Untitled'}</p>
+          <p><strong>Status:</strong> {report.isValid ? 'Valid' : 'Invalid'}</p>
+          <p><strong>Business Flow Reference:</strong> {report.summary.hasBusinessFlowReference ? 'OK' : 'Missing'}</p>
+          <p><strong>Capabilities:</strong> {report.summary.hasCapabilities ? 'OK' : 'Missing'}</p>
+          <p><strong>Invalid Metadata Fields:</strong> {report.summary.metadataInvalidFieldCount}</p>
+          <p><strong>Invalid Tasks:</strong> {report.summary.invalidTaskCount}</p>
+          <p><strong>Invalid Applications:</strong> {report.summary.invalidApplicationCount}</p>
+          <p><strong>Invalid Actors:</strong> {report.summary.invalidActorCount}</p>
+
+          {!!report.reasons.length && (
+            <>
+              <p style={{ marginTop: 12 }}><strong>Why Invalid:</strong></p>
+              <ul style={{ paddingLeft: 18 }}>
+                {report.reasons.map((reason, idx) => <li key={`${reason}-${idx}`}>{reason}</li>)}
+              </ul>
+            </>
+          )}
+
+          {!!report.details.invalidTasks.length && (
+            <p><strong>Invalid Task Names:</strong> {report.details.invalidTasks.slice(0, 15).join(', ')}{report.details.invalidTasks.length > 15 ? ' ...' : ''}</p>
+          )}
+          {!!report.details.invalidApplications.length && (
+            <p><strong>Invalid Application Names:</strong> {report.details.invalidApplications.slice(0, 15).join(', ')}{report.details.invalidApplications.length > 15 ? ' ...' : ''}</p>
+          )}
+          {!!report.details.invalidActors.length && (
+            <p><strong>Invalid Actor Names:</strong> {report.details.invalidActors.slice(0, 15).join(', ')}{report.details.invalidActors.length > 15 ? ' ...' : ''}</p>
+          )}
+        </div>
+      );
+
+      modal.info({
+        title: report.isValid ? 'Diagram Validation: Passed' : 'Diagram Validation: Failed',
+        width: 760,
+        content: detailsBlock,
+      });
+    } catch (err: any) {
+      message.error(err.response?.data?.error || err.message || 'Diagram validation failed.');
+    }
+  }, [activeDiagram, activeNeighborhoodTab, canvasDiagramName, diagramMeta.businessFlow, message, modal]);
 
   // ─── Capability Matching ────────────────────────────────────
   const runCapabilityMatch = useCallback(
@@ -1200,8 +1331,12 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
           description: diagram.description,
           tags: diagram.tags,
           status: diagram.status,
+          neighborhoodName: (diagram as any).neighborhoodName,
           source: 'db',
         });
+        if ((diagram as any).neighborhoodName) {
+          setActiveNeighborhoodTab((diagram as any).neighborhoodName);
+        }
         setCurrentXml(diagram.xml);
         setImportTrigger(t => t + 1);
         setDiagramMeta(extractDiagramMetadata(diagram.xml));
@@ -1221,7 +1356,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
           setSavedCaps([]);
         }
       } catch (err: any) {
-        message.error(err.message);
+        message.error(err?.response?.data?.error || err?.message || 'Failed to save diagram to MongoDB.');
       }
     },
     [message],
@@ -1297,6 +1432,25 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       }
     },
     [selectedCaps, activeDiagram, message],
+  );
+
+  const handleCapabilityAssignToggle = useCallback(
+    async (capability: CapabilityMatch) => {
+      const currentlyAssigned = selectedCaps.some((c) => c.capabilityId === capability.capabilityId);
+      if (currentlyAssigned) {
+        const wasSaved = savedCaps.some((c) => c.capabilityId === capability.capabilityId);
+        if (wasSaved) {
+          await handleDeleteCapability(capability.capabilityId);
+        } else {
+          setSelectedCaps((prev) => prev.filter((c) => c.capabilityId !== capability.capabilityId));
+        }
+        return;
+      }
+
+      setSelectedCaps((prev) => (prev.some((c) => c.capabilityId === capability.capabilityId) ? prev : [...prev, capability]));
+      message.success('Capability assigned');
+    },
+    [handleDeleteCapability, message, savedCaps, selectedCaps],
   );
 
   const handleSaveDb = useCallback(
@@ -1624,7 +1778,15 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         isAlreadyLoaded={activeDiagram?.source === 'local-match'}
                         readOnly={readOnly}
                         onNavigateToFactory={handleNavigateToFactory}
-                        onTaskSelect={setSelectedDiagramTask}
+                        onTaskSelect={(task) => {
+                          setSelectedDiagramTask(task);
+                          setSelectedCapability(null);
+                        }}
+                        selectedCapability={selectedCapability}
+                        isCapabilityAssigned={!!selectedCapability && selectedCaps.some((c) => c.capabilityId === selectedCapability.capabilityId)}
+                        onCapabilityAssignToggle={handleCapabilityAssignToggle}
+                        onCapabilityViewInCatalog={handleViewCapabilityInCatalog}
+                        onCapabilityBack={() => setSelectedCapability(null)}
                         onAddToFactory={() => setShowSaveDb(true)}
                         onDeleteAndReload={async () => {
                           if (!activeDiagram?._id) return;
@@ -1823,7 +1985,10 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                 key: getModelCatalogTabKey(neighborhood.name),
                                 label: fTabLabel(getModelCatalogTabKey(neighborhood.name), <><DatabaseOutlined /> Model Catalog</>),
                                 children: renderScrollablePane(
-                                  <ModelCatalog modelName={neighborhood.name} />,
+                                  <ModelCatalog
+                                    modelName={neighborhood.name}
+                                    requestedSearch={modelCatalogSearchRequest[neighborhood.name] || null}
+                                  />,
                                 ),
                               },
                               {
@@ -1843,7 +2008,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                         label: fTabLabel(getModelBpmnComponentTabKey(neighborhood.name), <><DatabaseOutlined /> BPMN Component</>),
                                         children: renderScrollablePane(
                                           <BpmnFactory
-                                            defaultSearch={factorySearch.diagramFactory}
+                                            defaultSearch={factorySearch[getModelBpmnComponentTabKey(neighborhood.name)] || factorySearch.diagramFactory}
                                             diagramMetadataConfig={getDiagramMetadataConfig(neighborhood.name)}
                                             onOpenDiagram={openDiagramInCanvas}
                                             onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }}
@@ -1861,6 +2026,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                             canManageFactories={canEditFactories}
                                             fixedNeighborhoodName={neighborhood.name}
                                             fixedFactoryId={factory._id}
+                                            defaultRowSearch={factorySearch[factory._id]}
+                                            defaultRowSearchColumn="name"
                                             hideFactoryList
                                             onNeighborhoodsChanged={loadNeighborhoodTabs}
                                             onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}

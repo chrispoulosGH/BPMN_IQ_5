@@ -5,7 +5,7 @@ import type { ApplicationItem, ServerItem } from '../types';
 import { getRefItems, createApplication, updateApplication, getApplicationServers, deleteRefItem } from '../api';
 import type { ColumnsType } from 'antd/es/table';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
-import { matchesFactorySearch } from '../utils/factorySearch';
+import { matchesFactorySearch, parseFactorySearch, encodeExactFactorySearch } from '../utils/factorySearch';
 import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 
 interface ApplicationFactoryProps {
@@ -48,6 +48,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [exactSearch, setExactSearch] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [detail, setDetail] = useState<ApplicationItem | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -76,7 +77,11 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   useEffect(() => { loadItems(); }, [loadItems]);
 
   useEffect(() => {
-    if (defaultSearch !== undefined) setSearch(defaultSearch);
+    if (defaultSearch !== undefined) {
+      const parsed = parseFactorySearch(defaultSearch);
+      setSearch(parsed.term);
+      setExactSearch(parsed.exact);
+    }
   }, [defaultSearch]);
 
   useEffect(() => {
@@ -114,9 +119,10 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     };
   }, [detail, message]);
 
+  const searchToken = exactSearch ? encodeExactFactorySearch(search) : search;
   const filtered = search
     ? items.filter((i) => {
-        return matchesFactorySearch([i.name, i.acronym, i.correlationId, i.shortDescription], search);
+        return matchesFactorySearch([i.name, i.acronym, i.correlationId, i.shortDescription], searchToken);
       })
     : items;
 
@@ -318,7 +324,10 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
           style={{ width: 300 }}
           allowClear
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setExactSearch(false);
+          }}
         />
         <Popover content={columnToggleContent} title="Toggle Columns" trigger="click" placement="bottomRight">
           <Button size="small" icon={<SettingOutlined />}>Columns</Button>

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog } from './types';
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, DiagramValidationRequest, DiagramValidationReport, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog } from './types';
 export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog };
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
@@ -65,6 +65,9 @@ export const batchImportDiagrams = (files: { xml: string; fileName: string }[], 
 
 export const searchDiagrams = (q: string): Promise<DiagramMeta[]> =>
   api.get('/diagrams/search', { params: { q } }).then((r) => r.data);
+
+export const validateDiagramReport = (data: DiagramValidationRequest): Promise<DiagramValidationReport> =>
+  api.post('/diagrams/validate', data).then((r) => r.data);
 
 // ── Files (Local FS) ────────────────────────────────────────
 export const getFiles = (): Promise<string[]> =>
