@@ -66,6 +66,7 @@ import Dashboard from './components/Dashboard';
 import ReportsPanel from './components/ReportsPanel';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
+import GlobalComponentSearch from './components/GlobalComponentSearch';
 import { encodeExactFactorySearch } from './utils/factorySearch';
 import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, batchImportDiagrams, getTaskReferenceForNeighborhood, getTaskNames, getTaskNamesForNeighborhood, getActorsForNeighborhood, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, setApiNeighborhoodScope, validateDiagramReport } from './api';
 import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem, CustomFactory, FactoryNeighborhoodSummary } from './types';
@@ -263,6 +264,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const readOnly = !(user.capabilities?.some(c => c.permission !== 'Read'));
   const canEditFactories = !readOnly;
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showGlobalComponentSearch, setShowGlobalComponentSearch] = useState(false);
   const [neighborhoodTabs, setNeighborhoodTabs] = useState<FactoryNeighborhoodSummary[]>([]);
   const [activeNeighborhoodTab, setActiveNeighborhoodTab] = useState<string>(DEFAULT_NEIGHBORHOOD_NAME);
   const [loadingNeighborhoodTabs, setLoadingNeighborhoodTabs] = useState(false);
@@ -1645,6 +1647,10 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         <Space size={4} className="toolbar-actions">
           <div className="toolbar-divider" />
 
+          <Tooltip title="Search all components">
+            <Button type="text" icon={<SearchOutlined />} onClick={() => setShowGlobalComponentSearch(true)} className="toolbar-btn" size="small" />
+          </Tooltip>
+
           <Tooltip title={`Signed in as ${user.userId}`}>
             <span className="text-gray-400 text-xs mr-1"><UserOutlined /> {user.userId}</span>
           </Tooltip>
@@ -2251,6 +2257,11 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       </Modal>
 
       {hasAdminAccess && <AdminPanel open={showAdmin} onClose={() => setShowAdmin(false)} />}
+      <GlobalComponentSearch
+        visible={showGlobalComponentSearch}
+        neighborhoodName={activeNeighborhoodTab}
+        onClose={() => setShowGlobalComponentSearch(false)}
+      />
     </Layout>
   );
 }

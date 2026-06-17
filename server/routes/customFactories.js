@@ -1414,4 +1414,124 @@ router.delete('/:factoryId', requireAdminWrite, async (req, res) => {
   }
 });
 
+// Global component search - searches all components in a neighborhood and returns hierarchy paths
+router.get('/search/global', async (req, res) => {
+  try {
+    const neighborhoodName = String(req.query?.neighborhoodName || '').trim();
+    const searchTerm = String(req.query?.term || '').trim();
+    
+    if (!neighborhoodName) {
+      return res.status(400).json({ error: 'neighborhoodName is required' });
+    }
+    
+    if (!searchTerm || searchTerm.length < 2) {
+      return res.status(400).json({ error: 'Search term must be at least 2 characters' });
+    }
+
+    // Get all components in the neighborhood
+    const components = await Component.find({ neighborhoodName })
+      .sort({ name: 1 })
+      .lean();
+
+    if (!components.length) {
+      return res.json({ results: [], totalMatches: 0 });
+    }
+
+    // Create a map of component names for quick lookup
+    const componentMap = new Map(components.map(c => [getComparableValue(c.name), c]));
+    
+    // Search term regex (case-insensitive)
+    const searchRegex = new RegExp(escapeRegExp(searchTerm), 'i');
+    
+    // Build results with hierarchy paths
+    const results = [];
+    
+    components.forEach(component => {
+      const rows = component.rows || [];
+      
+      rows.forEach((row, rowIndex) => {
+        const rowValues = getModelCatalogRowValues(row);
+        const rowName = getNormalizedText(rowValues[PRIMARY_KEY_COLUMN] || '');
+        
+        // Check if row matches search term
+        if (!searchRegex.test(rowName)) {
+          return;
+        }
+        
+        // Build hierarchy path for this row
+        const hierarchyPath = [];
+        let currentComponent = component;
+        let currentParentName = row.parentName || '';
+        
+        // Start from the current row
+        hierarchyPath.unshift({
+          componentName: currentComponent.name,
+          rowName: rowName,
+          componentId: String(currentComponent._id),
+          rowId: String(row._id),
+          level: 0,
+          values: rowValues,
+        });
+        
+        // Walk up the hierarchy
+        let level = 1;
+        while (currentParentName && level <= components.length) {
+          const parentComponent = componentMap.get(getComparableValue(currentComponent.parentFactoryName || ''));
+          
+          if (!parentComponent) {
+            break;
+          }
+          
+          const parentRow = parentComponent.rows?.find(r => {
+            const pRowValues = getModelCatalogRowValues(r);
+            return getComparableValue(pRowValues[PRIMARY_KEY_COLUMN] || '') === getComparableValue(currentParentName);
+          });
+          
+          if (!parentRow) {
+            break;
+          }
+          
+          const parentRowValues = getModelCatalogRowValues(parentRow);
+          hierarchyPath.unshift({
+            componentName: parentComponent.name,
+            rowName: currentParentName,
+            componentId: String(parentComponent._id),
+            rowId: String(parentRow._id),
+            level: level,
+            values: parentRowValues,
+          });
+          
+          currentComponent = parentComponent;
+          currentParentName = parentRow.parentName || '';
+          level += 1;
+        }
+        
+        results.push({
+          searchMatchComponentId: String(component._id),
+          searchMatchComponentName: component.name,
+          searchMatchRowId: String(row._id),
+          searchMatchRowName: rowName,
+          hierarchy: hierarchyPath,
+          hierarchyPath: hierarchyPath.map(h => h.rowName).join(' > '),
+          state: row.state || 'staged',
+          owner: row.owner || '',
+          createdBy: row.createdBy || '',
+          updatedBy: row.updatedBy || '',
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        });
+      });
+    });
+    
+    res.json({
+      results: results.sort((a, b) => a.hierarchyPath.localeCompare(b.hierarchyPath)),
+      totalMatches: results.length,
+      searchTerm,
+      neighborhoodName,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
