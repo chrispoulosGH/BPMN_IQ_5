@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select, List, Spin, Typography, Space } from 'antd';
 import { SearchOutlined, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ApplicationItem, ServerItem } from '../types';
@@ -14,6 +14,7 @@ interface ApplicationFactoryProps {
   userRole?: string | null;
   readOnly?: boolean;
   onNavigateToFactory?: (tab: string, search: string) => void;
+  requestedDetailRequest?: { correlationId: string; nonce: number } | null;
 }
 
 /** All possible columns with their keys, labels, and default visibility */
@@ -43,7 +44,7 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'owner', title: 'Owner', defaultVisible: true },
 ];
 
-export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, onNavigateToFactory }: ApplicationFactoryProps) {
+export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, onNavigateToFactory, requestedDetailRequest }: ApplicationFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,6 +61,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   const [detailServersLoading, setDetailServersLoading] = useState(false);
   const [fullAppDetail, setFullAppDetail] = useState<ApplicationItem | null>(null);
   const [fullAppDetailLoading, setFullAppDetailLoading] = useState(false);
+  const handledDetailRequestNonceRef = useRef<number | null>(null);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
     () => new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
   );
@@ -77,6 +79,36 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   }, [message]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
+
+  useEffect(() => {
+    if (!requestedDetailRequest?.correlationId) return;
+    if (handledDetailRequestNonceRef.current === requestedDetailRequest.nonce) return;
+    handledDetailRequestNonceRef.current = requestedDetailRequest.nonce;
+
+    const nextDetail = items.find(
+      (item) => item.correlationId === requestedDetailRequest.correlationId || (item as any).correlation_id === requestedDetailRequest.correlationId
+    );
+
+    if (nextDetail) {
+      setDetail(nextDetail);
+      return;
+    }
+
+    let cancelled = false;
+    getApplicationByCorrelationId(requestedDetailRequest.correlationId)
+      .then((fullApp) => {
+        if (!cancelled && fullApp) {
+          setDetail(fullApp);
+        }
+      })
+      .catch(() => {
+        // Ignore lookup failures; the click should still leave the user on the Applications tab.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, requestedDetailRequest]);
 
   useEffect(() => {
     if (defaultSearch !== undefined) {

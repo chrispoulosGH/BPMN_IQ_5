@@ -295,13 +295,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const activeTab = activeFactoryTabs[activeNeighborhoodTab]
     || getModelCatalogTabKey(activeNeighborhoodTab);
   
-  // Map component names to Data tab factory keys
-  const componentNameToDataTabKey: Record<string, string> = {
-    'application': 'applications',
-    'server': 'servers',
-    'database': 'databases',
-  };
-  
   const setActiveTab = useCallback((tab: string) => {
     const modelCatalogTabKey = getModelCatalogTabKey(activeNeighborhoodTab);
     const modelComponentsTabKey = getModelComponentsTabKey(activeNeighborhoodTab);
@@ -312,18 +305,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     }
     setActiveFactoryTabs((current) => ({ ...current, [activeNeighborhoodTab]: tab }));
   }, [activeNeighborhoodTab, getModelCatalogTabKey, getModelComponentsTabKey]);
-
-  // Navigate to the correct factory tab when clicking a search result component
-  const navigateToComponentFactory = useCallback((componentName: string, searchValue: string) => {
-    const dataTabKey = componentNameToDataTabKey[componentName];
-    if (dataTabKey) {
-      // Navigate to Data tab with exact search encoding
-      setActiveOuterTab('data');
-      setActiveDataTab(dataTabKey);
-      setFactorySearch((prev) => ({ ...prev, [dataTabKey]: encodeExactFactorySearch(searchValue) }));
-    }
-    // For custom component types in ModelComponents, they would need different handling
-  }, [componentNameToDataTabKey]);
 
   const formatFactoryTabTitle = useCallback((name: string) => {
     const trimmedName = String(name || '').trim();
@@ -836,6 +817,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [factorySearch, setFactorySearch] = useState<Record<string, string>>({});
   const [factoryAdd, setFactoryAdd] = useState<Record<string, string | TaskAddData>>({});
   const [modelCatalogSearchRequest, setModelCatalogSearchRequest] = useState<Record<string, { text: string; column?: string; exact?: boolean; trigger: number }>>({});
+  const [requestedApplicationDetail, setRequestedApplicationDetail] = useState<{ correlationId: string; nonce: number } | null>(null);
   // Selected task in diagram (for right sidebar link)
   const [selectedDiagramTask, setSelectedDiagramTask] = useState<{ name: string; id: string } | null>(null);
 
@@ -989,12 +971,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       } else {
         setFactorySearch((prev) => ({ ...prev, [resolvedTabKey]: encodeExactFactorySearch(searchTerm) }));
         setFactoryAdd((prev) => ({ ...prev, [resolvedTabKey]: '' }));
-      }
-
-      if (tab === 'applications' || tab === 'servers' || tab === 'databases') {
-        setActiveOuterTab('data');
-        setActiveDataTab(tab);
-        return;
       }
 
       setActiveOuterTab('neighborhoods');
@@ -1879,7 +1855,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         key: 'applications',
                         label: dataTabLabel('applications', <span><LaptopOutlined /> Application Component</span>),
                         children: renderScrollablePane(
-                          <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} readOnly={readOnly} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveDataTab(tab); }} />,
+                          <ApplicationFactory defaultSearch={factorySearch.applications} defaultAdd={typeof factoryAdd.applications === 'string' ? factoryAdd.applications : ''} userRole={user.role} readOnly={readOnly} requestedDetailRequest={requestedApplicationDetail} onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveDataTab(tab); }} />,
                         ),
                       },
                       {
@@ -2042,7 +2018,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                             onRowClick={(componentId, rowId, searchTerm, componentName) => {
                                               // Navigate to the component factory with the search term
                                               if (componentName && searchTerm) {
-                                                navigateToComponentFactory(componentName, searchTerm);
+                                                handleNavigateToFactory(componentName, searchTerm);
                                               }
                                             }}
                                           />,
@@ -2076,6 +2052,16 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                             hideFactoryList
                                             onNeighborhoodsChanged={loadNeighborhoodTabs}
                                             onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
+                                            onApplicationLinkClick={(applicationName, correlationId) => {
+                                              if (!correlationId) return;
+                                              setActiveOuterTab('data');
+                                              setActiveDataTab('applications');
+                                              setFactorySearch((current) => ({
+                                                ...current,
+                                                applications: encodeExactFactorySearch(applicationName),
+                                              }));
+                                              setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
+                                            }}
                                           />,
                                         ),
                                       })),
@@ -2305,7 +2291,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         onRowClick={(componentId, rowId, searchTerm, componentName) => {
           // Navigate to the component factory with the search term
           if (componentName && searchTerm) {
-            navigateToComponentFactory(componentName, searchTerm);
+            handleNavigateToFactory(componentName, searchTerm);
           }
           // Close the modal after navigation
           setShowGlobalComponentSearch(false);

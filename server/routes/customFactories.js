@@ -1505,29 +1505,47 @@ router.get('/search/typeahead', async (req, res) => {
 router.get('/search/indexed', async (req, res) => {
   try {
     const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
-    const searchTerm = String(req.query?.term || '').trim();
+    const rawSearchTerm = String(req.query?.term || '').trim();
     
-    if (!searchTerm || searchTerm.length < 2) {
+    if (!rawSearchTerm || rawSearchTerm.length < 2) {
       return res.status(400).json({ error: 'Search term must be at least 2 characters' });
     }
+
+    const exactPrefix = '__exact__:';
+    const isExactSearch = rawSearchTerm.startsWith(exactPrefix);
+    const searchTerm = isExactSearch ? rawSearchTerm.slice(exactPrefix.length) : rawSearchTerm;
+    const normalizeSearchValue = (value) => String(value || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '');
     
     // Escape regex special characters
     function escapeRegExp(string) {
       return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
-    
-    // Search with word boundaries (both start and end)
-    const searchRegex = escapeRegExp(searchTerm);
-    const searchPattern = `\\b${searchRegex}\\b`;
-    
-    console.log(`[INDEX SEARCH] Searching for: "${searchTerm}" with pattern: "${searchPattern}" in ${neighborhoodName}`);
-    
-    // Query the search index for matching rows
-    const indexResults = await ComponentSearchIndex.find({
-      neighborhoodName,
-      searchableTextLower: { $regex: searchPattern, $options: 'i' }
-    })
-      .lean();
+
+    let indexResults = [];
+
+    if (isExactSearch) {
+      const normalizedSearchTerm = normalizeSearchValue(searchTerm);
+      const searchRegex = escapeRegExp(searchTerm);
+      const searchPattern = `\\b${searchRegex}\\b`;
+      console.log(`[INDEX SEARCH] Exact search for: "${searchTerm}" normalized="${normalizedSearchTerm}" in ${neighborhoodName}`);
+
+      const candidateResults = await ComponentSearchIndex.find({
+        neighborhoodName,
+        searchableTextLower: { $regex: searchPattern, $options: 'i' }
+      }).lean();
+
+      indexResults = candidateResults.filter((doc) => normalizeSearchValue(doc.rowName) === normalizedSearchTerm);
+    } else {
+      // Search with word boundaries (both start and end)
+      const searchRegex = escapeRegExp(searchTerm);
+      const searchPattern = `\\b${searchRegex}\\b`;
+      console.log(`[INDEX SEARCH] Searching for: "${searchTerm}" with pattern: "${searchPattern}" in ${neighborhoodName}`);
+
+      indexResults = await ComponentSearchIndex.find({
+        neighborhoodName,
+        searchableTextLower: { $regex: searchPattern, $options: 'i' }
+      }).lean();
+    }
     
     console.log(`[INDEX SEARCH] Found ${indexResults.length} matching rows`);
     
@@ -1593,6 +1611,7 @@ router.get('/search/indexed', async (req, res) => {
       results,
       totalMatches: results.length,
       searchTerm,
+      exact: isExactSearch,
       neighborhoodName,
       source: 'index'
     });

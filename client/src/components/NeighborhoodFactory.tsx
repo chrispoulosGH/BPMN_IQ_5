@@ -35,6 +35,7 @@ interface NeighborhoodFactoryProps {
   mode?: 'panel' | 'action';
   defaultRowSearch?: string;
   defaultRowSearchColumn?: string;
+  onApplicationLinkClick?: (applicationName: string, correlationId?: string | null) => void;
 }
 
 interface FactoryRowViewState {
@@ -48,7 +49,7 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
-export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel', defaultRowSearch, defaultRowSearchColumn = 'name' }: NeighborhoodFactoryProps) {
+export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel', defaultRowSearch, defaultRowSearchColumn = 'name', onApplicationLinkClick }: NeighborhoodFactoryProps) {
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const PRIMARY_KEY_COLUMN = 'name';
@@ -384,13 +385,33 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   }, [DEFAULT_NEIGHBORHOOD_NAME, fixedNeighborhoodName, message, onNeighborhoodDeleted, onNeighborhoodsChanged]);
 
   const rowColumns: ColumnsType<CustomFactoryRow> = useMemo(() => {
+    const isApplicationComponent = String(selectedFactory?.name || '').trim().toLowerCase() === 'application';
     const dynamicColumns = (selectedFactory?.columns || []).map((column) => ({
       title: column,
       key: column,
       dataIndex: ['values', column],
       ellipsis: true,
       sorter: (left: CustomFactoryRow, right: CustomFactoryRow) => String(left.values?.[column] ?? '').localeCompare(String(right.values?.[column] ?? ''), undefined, { sensitivity: 'base', numeric: true }),
-      render: (value: unknown) => displayValue(value),
+      render: (value: unknown, row: CustomFactoryRow) => {
+        const display = displayValue(value);
+        const normalizedColumn = String(column || '').trim().toLowerCase();
+        const correlationId = String(row.values?.correlation_id || row.values?.correlationId || '').trim();
+
+        if (isApplicationComponent && onApplicationLinkClick && correlationId && (normalizedColumn === 'name' || normalizedColumn === 'application' || normalizedColumn === 'applications')) {
+          return (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => onApplicationLinkClick(display, correlationId)}
+              style={{ padding: 0, height: 'auto' }}
+            >
+              {display}
+            </Button>
+          );
+        }
+
+        return display;
+      },
     }));
 
     return [
@@ -466,7 +487,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         ) : null,
       },
     ];
-  }, [canManageFactories, selectedFactory]);
+  }, [canManageFactories, onApplicationLinkClick, selectedFactory]);
 
   const filteredRows = useMemo(() => {
     if (!selectedFactory) return [];
