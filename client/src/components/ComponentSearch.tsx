@@ -13,12 +13,17 @@ import {
   Select,
   Card,
   Collapse,
+  Pagination,
   AutoComplete,
 } from 'antd';
 import {
   SearchOutlined,
+  DownOutlined,
+  RightOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import { message } from 'antd';
+import { buildMergedHierarchyTree, type MergedHierarchyTreeNode } from '../utils/mergedHierarchyTree';
 
 interface HierarchyNode {
   componentName: string;
@@ -67,6 +72,9 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
   const [hasSearched, setHasSearched] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [collapsedTreeNodes, setCollapsedTreeNodes] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Fetch type-ahead suggestions
   const handleTypeahead = useCallback(
@@ -218,10 +226,19 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
     return sorted;
   }, [results, sortBy]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortBy, viewMode]);
+
+  const paginatedResults = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return sortedResults.slice(startIndex, startIndex + pageSize);
+  }, [sortedResults, currentPage, pageSize]);
+
   // Group results by component
   const groupedResults = useMemo(() => {
     const groups = new Map<string, SearchResult[]>();
-    sortedResults.forEach(result => {
+    paginatedResults.forEach(result => {
       const key = result.searchMatchComponentId;
       if (!groups.has(key)) {
         groups.set(key, []);
@@ -233,7 +250,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
       componentName: items[0]?.searchMatchComponentName || '',
       results: items,
     }));
-  }, [sortedResults]);
+  }, [paginatedResults]);
 
   // Find max hierarchy depth
   const maxHierarchyDepth = useMemo(() => {
@@ -342,71 +359,145 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
     },
   ];
 
-  const treeView = useMemo(() => {
-    return sortedResults.map((result, idx) => (
-      <Card
-        key={`${result.searchMatchRowId}-${idx}`}
-        size="small"
-        style={{ marginBottom: '12px' }}
-        hoverable
-      >
-        <div style={{ marginBottom: '8px' }}>
-          <strong>{result.hierarchyPath}</strong>
-        </div>
-        
-        <div style={{ marginLeft: '12px', fontSize: '12px', color: '#666', marginBottom: '8px' }}>
-          {result.hierarchy.map((node, level) => (
-            <div key={`${node.rowId}-${level}`} style={{ marginBottom: '4px' }}>
-              <span style={{ marginRight: '8px', color: '#999' }}>
-                {Array(level * 2)
-                  .fill('─')
-                  .join('')}
-              </span>
-              <span style={{ fontWeight: node.level === result.hierarchy.length - 1 ? 'bold' : 'normal' }}>
-                <Tag color={node.level === result.hierarchy.length - 1 ? 'blue' : 'default'}>
-                  {node.componentName}
-                </Tag>
-                {onRowClick ? (
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => onRowClick(node.componentId, node.rowId, node.rowName, node.componentName)}
-                    style={{ padding: '0 4px', height: 'auto' }}
-                  >
-                    {node.rowName}
-                  </Button>
-                ) : (
-                  <span>{node.rowName}</span>
-                )}
-              </span>
-            </div>
-          ))}
-        </div>
+  const mergedTree = useMemo(() => buildMergedHierarchyTree(sortedResults), [sortedResults]);
 
-        <div style={{ fontSize: '12px', color: '#999', borderTop: '1px solid #f0f0f0', paddingTop: '8px' }}>
-          <Space size="small" wrap>
-            <Tag color={result.state === 'published' ? 'green' : result.state === 'invalid' ? 'red' : 'orange'}>
-              {result.state}
-            </Tag>
-            {result.createdBy && <span>Created by: {result.createdBy}</span>}
-            {onRowClick && (
-              <Button
-                type="primary"
-                size="small"
-                onClick={() => onRowClick(result.searchMatchComponentId, result.searchMatchRowId, result.searchMatchRowName)}
-              >
-                View
-              </Button>
+  useEffect(() => {
+    setCollapsedTreeNodes(new Set());
+  }, [sortedResults]);
+
+  const renderTreeNodes = useCallback(
+    (nodes: MergedHierarchyTreeNode<SearchResult>[]) =>
+      nodes.map((node) => {
+        const hasChildren = node.children.length > 0;
+        const matchCount = node.results.length;
+        const isCollapsed = collapsedTreeNodes.has(node.key);
+
+        return (
+          <div
+            key={node.key}
+            style={{
+              marginBottom: '10px',
+              paddingLeft: '12px',
+              borderLeft: hasChildren ? '1px solid #e5e7eb' : '1px solid transparent',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {hasChildren ? (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={isCollapsed ? <RightOutlined /> : <DownOutlined />}
+                  onClick={() => {
+                    setCollapsedTreeNodes((current) => {
+                      const next = new Set(current);
+                      if (next.has(node.key)) {
+                        next.delete(node.key);
+                      } else {
+                        next.add(node.key);
+                      }
+                      return next;
+                    });
+                  }}
+                  style={{ padding: 0, width: 20, height: 20, color: '#999' }}
+                />
+              ) : (
+                <span style={{ width: 20 }} />
+              )}
+              <Tag color={hasChildren ? 'default' : 'blue'}>{node.componentName}</Tag>
+              {onRowClick ? (
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => onRowClick(node.componentId, node.rowId, node.rowName, node.componentName)}
+                  style={{ padding: '0 4px', height: 'auto' }}
+                >
+                  {node.rowName}
+                </Button>
+              ) : (
+                <span>{node.rowName}</span>
+              )}
+              {matchCount > 0 && <Tag color="geekblue">{matchCount} match{matchCount === 1 ? '' : 'es'}</Tag>}
+              <Tooltip title="Copy hierarchy path">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(node.path);
+                    message.success('Copied to clipboard');
+                  }}
+                />
+              </Tooltip>
+            </div>
+
+            {node.results.length > 0 && node.results[0] && (
+              <div style={{ marginTop: '4px', marginLeft: '20px', fontSize: '12px', color: '#999' }}>
+                <Tag color={node.results[0].state === 'published' ? 'green' : node.results[0].state === 'invalid' ? 'red' : 'orange'}>
+                  {node.results[0].state}
+                </Tag>
+                {node.results[0].createdBy && <span style={{ marginLeft: '8px' }}>Created by: {node.results[0].createdBy}</span>}
+                {node.results[0].updatedBy && <span style={{ marginLeft: '8px' }}>Updated by: {node.results[0].updatedBy}</span>}
+              </div>
             )}
+
+            {hasChildren && !isCollapsed && (
+              <div style={{ marginLeft: '18px', marginTop: '8px' }}>{renderTreeNodes(node.children)}</div>
+            )}
+          </div>
+        );
+      }),
+    [collapsedTreeNodes, onRowClick]
+  );
+
+  const treeView = useMemo(() => {
+    if (mergedTree.length === 0) {
+      return null;
+    }
+
+    return (
+      <Card size="small">
+        <div
+          style={{
+            maxHeight: 'calc(100vh - 380px)',
+            overflowY: 'auto',
+            paddingRight: '8px',
+            paddingBottom: '180px',
+            scrollPaddingBottom: '180px',
+          }}
+        >
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            <div style={{ fontWeight: 600, marginBottom: '4px' }}>Merged hierarchy tree</div>
+            {renderTreeNodes(mergedTree)}
           </Space>
         </div>
       </Card>
-    ));
-  }, [sortedResults, onRowClick]);
+    );
+  }, [mergedTree, renderTreeNodes]);
+
+  const paginationBar = sortedResults.length > 0 ? (
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <Pagination
+        current={currentPage}
+        pageSize={pageSize}
+        total={sortedResults.length}
+        showSizeChanger
+        pageSizeOptions={['10', '25', '50', '100']}
+        onChange={(page, size) => {
+          setCurrentPage(page);
+          if (size && size !== pageSize) {
+            setPageSize(size);
+          }
+        }}
+        onShowSizeChange={(_, size) => {
+          setPageSize(size);
+          setCurrentPage(1);
+        }}
+      />
+    </div>
+  ) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
-      {/* Search Controls */}
       <Card size="small">
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Space style={{ width: '100%', display: 'flex' }}>
@@ -431,12 +522,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
               prefix={<SearchOutlined />}
               allowClear
             />
-            <Button
-              type="primary"
-              onClick={handleSearch}
-              loading={loading}
-              icon={<SearchOutlined />}
-            >
+            <Button type="primary" onClick={handleSearch} loading={loading} icon={<SearchOutlined />}>
               Search
             </Button>
           </Space>
@@ -446,10 +532,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
             <Segmented
               value={viewMode}
               onChange={(value) => setViewMode(value as ViewMode)}
-              options={[
-                { label: 'List', value: 'list' },
-                { label: 'Tree', value: 'tree' },
-              ]}
+              options={[{ label: 'List', value: 'list' }, { label: 'Tree', value: 'tree' }]}
               size="small"
             />
 
@@ -473,27 +556,21 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
 
           {sortedResults.length > 0 && (
             <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
-              Found {sortedResults.length} matching component{sortedResults.length !== 1 ? 's' : ''} in {groupedResults.length} component{groupedResults.length !== 1 ? 's' : ''}
+              Found {sortedResults.length} matching component{sortedResults.length !== 1 ? 's' : ''}
             </Typography.Text>
           )}
         </Space>
       </Card>
 
-      {/* Results */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: '8px' }}>
         <Spin spinning={loading}>
           {!hasSearched ? (
-            <Empty
-              description="Enter a search term above"
-              style={{ marginTop: '40px' }}
-            />
+            <Empty description="Enter a search term above" style={{ marginTop: '40px' }} />
           ) : sortedResults.length === 0 ? (
-            <Empty
-              description="No results found"
-              style={{ marginTop: '40px' }}
-            />
+            <Empty description="No results found" style={{ marginTop: '40px' }} />
           ) : viewMode === 'list' ? (
             <>
+              {paginationBar}
               {groupedResults.length > 1 ? (
                 <Collapse
                   items={groupedResults.map((group) => ({
@@ -513,7 +590,6 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
                         rowKey={(record) => record.searchMatchRowId}
                         pagination={false}
                         size="small"
-                        scroll={{ x: 1000, y: 400 }}
                       />
                     ),
                   }))}
@@ -521,11 +597,27 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
               ) : (
                 <Table
                   columns={columns}
-                  dataSource={sortedResults}
+                  dataSource={paginatedResults}
                   rowKey={(record) => record.searchMatchRowId}
-                  pagination={false}
+                  pagination={{
+                    current: currentPage,
+                    pageSize,
+                    total: sortedResults.length,
+                    position: ['topRight'],
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '25', '50', '100'],
+                    onChange: (page, size) => {
+                      setCurrentPage(page);
+                      if (size && size !== pageSize) {
+                        setPageSize(size);
+                      }
+                    },
+                    onShowSizeChange: (_, size) => {
+                      setPageSize(size);
+                      setCurrentPage(1);
+                    },
+                  }}
                   size="small"
-                  scroll={{ x: 1000, y: 600 }}
                   style={{ width: '100%' }}
                 />
               )}

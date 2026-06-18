@@ -12,14 +12,18 @@ import {
   Tooltip,
   Segmented,
   Select,
+  Pagination,
   AutoComplete,
 } from 'antd';
 import {
   SearchOutlined,
   CloseOutlined,
+  DownOutlined,
+  RightOutlined,
   CopyOutlined,
 } from '@ant-design/icons';
 import { message } from 'antd';
+import { buildMergedHierarchyTree, type MergedHierarchyTreeNode } from '../utils/mergedHierarchyTree';
 
 interface HierarchyNode {
   componentName: string;
@@ -27,7 +31,6 @@ interface HierarchyNode {
   componentId: string;
   rowId: string;
   level: number;
-  values: Record<string, any>;
 }
 
 interface SearchResult {
@@ -35,6 +38,8 @@ interface SearchResult {
   searchMatchComponentName: string;
   searchMatchRowId: string;
   searchMatchRowName: string;
+  searchMatchFieldName: string;
+  searchMatchFieldValue: string;
   hierarchy: HierarchyNode[];
   hierarchyPath: string;
   state: string;
@@ -47,30 +52,32 @@ interface SearchResult {
 
 interface GlobalComponentSearchProps {
   open: boolean;
-  neighborhoodName: string;
   onClose: () => void;
-  initialSearchTerm?: string;
+  neighborhoodName: string;
   onRowClick?: (componentId: string, rowId: string, searchTerm?: string, componentName?: string) => void;
+  initialSearchTerm?: string;
 }
 
 type ViewMode = 'list' | 'tree';
 
 const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
   open,
-  neighborhoodName,
   onClose,
-  initialSearchTerm = '',
+  neighborhoodName,
   onRowClick,
+  initialSearchTerm = '',
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortBy, setSortBy] = useState<'hierarchy' | 'component' | 'name'>('hierarchy');
+  const [hasSearched, setHasSearched] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [collapsedTreeNodes, setCollapsedTreeNodes] = useState<Set<string>>(new Set());
+  const pageSize = 10;
 
   // Fetch type-ahead suggestions
   const handleTypeahead = useCallback(
@@ -96,7 +103,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
         const data = await response.json();
         setSuggestions(
           data.suggestions?.map((s: any) => ({
-            label: `${s.value} (${s.frequency} occurrences)`,
+            label: `${s.value} (${s.frequency} occurrences${s.componentNames?.length > 1 ? `, ${s.componentNames.length} components` : ''})`,
             value: s.value,
           })) || []
         );
@@ -323,73 +330,120 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     },
   ];
 
-  const treeView = useMemo(() => {
-    return paginatedResults.map((result, idx) => (
-      <div
-        key={`${result.searchMatchRowId}-${idx}`}
-        style={{
-          marginBottom: '16px',
-          padding: '12px',
-          border: '1px solid #f0f0f0',
-          borderRadius: '4px',
-          backgroundColor: '#fafafa',
-        }}
-      >
-        <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
-          <span>{result.hierarchyPath}</span>
-          <Button
-            type="text"
-            size="small"
-            icon={<CopyOutlined />}
-            style={{ marginLeft: '8px' }}
-            onClick={() => {
-              navigator.clipboard.writeText(result.hierarchyPath);
-              message.success('Copied to clipboard');
-            }}
-          />
-        </div>
-        
-        <div style={{ marginLeft: '12px', fontSize: '12px', color: '#666' }}>
-          {result.hierarchy.map((node, level) => (
-            <div key={`${node.rowId}-${level}`} style={{ marginBottom: '4px' }}>
-              <span style={{ marginRight: '8px', color: '#999' }}>
-                {Array(level * 2)
-                  .fill('─')
-                  .join('')}
-              </span>
-              <span style={{ fontWeight: node.level === result.hierarchy.length - 1 ? 'bold' : 'normal' }}>
-                <Tag color={node.level === result.hierarchy.length - 1 ? 'blue' : 'default'}>
-                  {node.componentName}
-                </Tag>
-                <Button
-                  type="link"
-                  size="small"
-                  onClick={() => {
-                    if (onRowClick) {
-                      onRowClick(node.componentId, node.rowId, node.rowName, node.componentName);
-                    }
-                    onClose();
-                  }}
-                  title={node.rowName}
-                  style={{ padding: '4px 0', height: 'auto', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  {node.rowName}
-                </Button>
-              </span>
-            </div>
-          ))}
-        </div>
+  const mergedTree = useMemo(() => buildMergedHierarchyTree(sortedResults), [sortedResults]);
 
-        <div style={{ marginTop: '8px', fontSize: '12px', color: '#999' }}>
-          <Tag color={result.state === 'published' ? 'green' : result.state === 'invalid' ? 'red' : 'orange'}>
-            {result.state}
-          </Tag>
-          {result.createdBy && <span> | Created by: {result.createdBy}</span>}
-          {result.updatedBy && <span> | Updated by: {result.updatedBy}</span>}
+  useEffect(() => {
+    setCollapsedTreeNodes(new Set());
+  }, [paginatedResults]);
+
+  const renderTreeNodes = useCallback(
+    (nodes: MergedHierarchyTreeNode<SearchResult>[]) =>
+      nodes.map((node) => {
+        const hasChildren = node.children.length > 0;
+        const matchCount = node.results.length;
+        const isCollapsed = collapsedTreeNodes.has(node.key);
+
+        return (
+          <div
+            key={node.key}
+            style={{
+              marginBottom: '10px',
+              paddingLeft: '12px',
+              borderLeft: hasChildren ? '1px solid #e5e7eb' : '1px solid transparent',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {hasChildren ? (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={isCollapsed ? <RightOutlined /> : <DownOutlined />}
+                  onClick={() => {
+                    setCollapsedTreeNodes((current) => {
+                      const next = new Set(current);
+                      if (next.has(node.key)) {
+                        next.delete(node.key);
+                      } else {
+                        next.add(node.key);
+                      }
+                      return next;
+                    });
+                  }}
+                  style={{ padding: 0, width: 20, height: 20, color: '#999' }}
+                />
+              ) : (
+                <span style={{ width: 20 }} />
+              )}
+              <Tag color={hasChildren ? 'default' : 'blue'}>{node.componentName}</Tag>
+              <Button
+                type="link"
+                size="small"
+                onClick={() => {
+                  if (onRowClick) {
+                    onRowClick(node.componentId, node.rowId, node.rowName, node.componentName);
+                  }
+                  onClose();
+                }}
+                title={node.rowName}
+                style={{ padding: '0 4px', height: 'auto', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {node.rowName}
+              </Button>
+              {matchCount > 0 && <Tag color="geekblue">{matchCount} match{matchCount === 1 ? '' : 'es'}</Tag>}
+              <Tooltip title="Copy hierarchy path">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CopyOutlined />}
+                  onClick={() => {
+                    navigator.clipboard.writeText(node.path);
+                    message.success('Copied to clipboard');
+                  }}
+                />
+              </Tooltip>
+            </div>
+
+            {node.results.length > 0 && node.results[0] && (
+              <div style={{ marginTop: '4px', marginLeft: '20px', fontSize: '12px', color: '#999' }}>
+                <Tag color={node.results[0].state === 'published' ? 'green' : node.results[0].state === 'invalid' ? 'red' : 'orange'}>
+                  {node.results[0].state}
+                </Tag>
+                {node.results[0].createdBy && <span style={{ marginLeft: '8px' }}>Created by: {node.results[0].createdBy}</span>}
+                {node.results[0].updatedBy && <span style={{ marginLeft: '8px' }}>Updated by: {node.results[0].updatedBy}</span>}
+              </div>
+            )}
+
+            {hasChildren && !isCollapsed && (
+              <div style={{ marginLeft: '18px', marginTop: '8px' }}>{renderTreeNodes(node.children)}</div>
+            )}
+          </div>
+        );
+      }),
+    [collapsedTreeNodes, onClose, onRowClick]
+  );
+
+  const treeView = useMemo(() => {
+    if (mergedTree.length === 0) {
+      return null;
+    }
+
+    return (
+      <div style={{ marginBottom: '16px', padding: '12px', border: '1px solid #f0f0f0', borderRadius: '4px', backgroundColor: '#fafafa' }}>
+        <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>Merged hierarchy tree</div>
+        <div
+          style={{
+            maxHeight: '50vh',
+            overflowY: 'auto',
+            paddingRight: '8px',
+            paddingBottom: '180px',
+            scrollPaddingBottom: '180px',
+          }}
+        >
+          {renderTreeNodes(mergedTree)}
         </div>
       </div>
-    ));
-  }, [paginatedResults, onRowClick, onClose]);
+    );
+  }, [mergedTree, renderTreeNodes]);
 
   return (
     <Modal
@@ -492,7 +546,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
             }
             style={{ marginTop: '40px' }}
           />
-        ) : viewMode === 'list' ? (
+          ) : viewMode === 'list' ? (
           <Table
             columns={columns}
             dataSource={paginatedResults}
@@ -516,26 +570,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
           />
         ) : (
           <div>
-            <div style={{ padding: '16px', maxHeight: '600px', overflowY: 'auto' }}>{treeView}</div>
-            {sortedResults.length > pageSize && (
-              <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center' }}>
-                <Button
-                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
-                <span style={{ fontSize: '14px', minWidth: '120px', textAlign: 'center' }}>
-                  Page {currentPage} of {Math.ceil(sortedResults.length / pageSize)}
-                </span>
-                <Button
-                  onClick={() => setCurrentPage(Math.min(Math.ceil(sortedResults.length / pageSize), currentPage + 1))}
-                  disabled={currentPage >= Math.ceil(sortedResults.length / pageSize)}
-                >
-                  Next
-                </Button>
-              </div>
-            )}
+              <div style={{ padding: '16px', maxHeight: '600px', overflowY: 'auto' }}>{treeView}</div>
           </div>
         )}
       </Spin>

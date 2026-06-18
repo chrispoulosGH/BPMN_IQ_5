@@ -179,6 +179,9 @@ html, body, #root {
 .factory-tabs .ant-table-body {
   max-height: calc(100dvh - 360px) !important;
   overflow-y: auto !important;
+  padding-bottom: 180px;
+  scroll-padding-bottom: 180px;
+  box-sizing: border-box;
 }
 
 .factory-tabs.model-factory-tabs .ant-table-body {
@@ -187,10 +190,31 @@ html, body, #root {
 
 .component-rows-table .ant-table-body {
   overflow-y: auto !important;
+  padding-bottom: 180px;
+  scroll-padding-bottom: 180px;
+  box-sizing: border-box;
 }
 
 .component-rows-table.component-rows-table--nested .ant-table-body {
   max-height: calc(100dvh - 590px) !important;
+}
+
+/* Give all scrollable list/table bodies extra room below the final row.
+   This keeps the last item from sitting flush against the bottom edge of the scroller. */
+.ant-table-body,
+.ant-list .ant-list-items,
+.ant-list .ant-list-item {
+  scroll-padding-bottom: 180px;
+}
+
+.ant-list .ant-list-items {
+  padding-bottom: 180px;
+  box-sizing: border-box;
+}
+
+.ant-table-body {
+  padding-bottom: 180px;
+  box-sizing: border-box;
 }
 
 .model-factory-tabs .ant-tabs-tab {
