@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
 import {
-  Modal,
   Input,
   Button,
   Table,
@@ -12,11 +11,11 @@ import {
   Tooltip,
   Segmented,
   Select,
+  Card,
+  Collapse,
 } from 'antd';
 import {
   SearchOutlined,
-  CloseOutlined,
-  CopyOutlined,
 } from '@ant-design/icons';
 import { message } from 'antd';
 
@@ -34,6 +33,8 @@ interface SearchResult {
   searchMatchComponentName: string;
   searchMatchRowId: string;
   searchMatchRowName: string;
+  searchMatchFieldName: string;
+  searchMatchFieldValue: string;
   hierarchy: HierarchyNode[];
   hierarchyPath: string;
   state: string;
@@ -44,24 +45,23 @@ interface SearchResult {
   updatedAt: string;
 }
 
-interface GlobalComponentSearchProps {
-  open: boolean;
+interface ComponentSearchProps {
   neighborhoodName: string;
-  onClose: () => void;
+  onRowClick?: (componentId: string, rowId: string) => void;
 }
 
 type ViewMode = 'list' | 'tree';
 
-const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
-  open,
+const ComponentSearch: React.FC<ComponentSearchProps> = ({
   neighborhoodName,
-  onClose,
+  onRowClick,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortBy, setSortBy] = useState<'hierarchy' | 'component' | 'name'>('hierarchy');
+  const [hasSearched, setHasSearched] = useState(false);
 
   const handleSearch = useCallback(async () => {
     if (!searchTerm || searchTerm.length < 2) {
@@ -70,6 +70,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     }
 
     setLoading(true);
+    setHasSearched(true);
     try {
       const response = await fetch(
         `/api/custom-factories/search/global?neighborhoodName=${encodeURIComponent(
@@ -122,24 +123,45 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     return sorted;
   }, [results, sortBy]);
 
+  // Group results by component
+  const groupedResults = useMemo(() => {
+    const groups = new Map<string, SearchResult[]>();
+    sortedResults.forEach(result => {
+      const key = result.searchMatchComponentId;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(result);
+    });
+    return Array.from(groups.entries()).map(([componentId, items]) => ({
+      componentId,
+      componentName: items[0]?.searchMatchComponentName || '',
+      results: items,
+    }));
+  }, [sortedResults]);
+
   const columns = [
     {
       title: 'Hierarchy Path',
       dataIndex: 'hierarchyPath',
       key: 'hierarchyPath',
-      width: '40%',
-      render: (text: string, record: SearchResult) => (
+      width: '35%',
+      render: (text: string) => (
         <Tooltip title={text}>
           <span>{text}</span>
         </Tooltip>
       ),
     },
     {
-      title: 'Component',
-      dataIndex: 'searchMatchComponentName',
-      key: 'component',
-      width: '20%',
-      render: (text: string) => <Tag>{text}</Tag>,
+      title: 'Matched Field',
+      dataIndex: 'searchMatchFieldName',
+      key: 'matchedField',
+      width: '15%',
+      render: (fieldName: string, record: SearchResult) => (
+        <Tooltip title={`${fieldName}: ${record.searchMatchFieldValue}`}>
+          <span>{fieldName}</span>
+        </Tooltip>
+      ),
     },
     {
       title: 'Value',
@@ -160,19 +182,29 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     {
       title: 'Actions',
       key: 'actions',
-      width: '15%',
+      width: '25%',
       render: (_: any, record: SearchResult) => (
         <Space size="small">
-          <Tooltip title="Copy hierarchy path">
+          {onRowClick && (
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => onRowClick(record.searchMatchComponentId, record.searchMatchRowId)}
+            >
+              View
+            </Button>
+          )}
+          <Tooltip title="Copy path">
             <Button
               type="text"
               size="small"
-              icon={<CopyOutlined />}
               onClick={() => {
                 navigator.clipboard.writeText(record.hierarchyPath);
                 message.success('Copied to clipboard');
               }}
-            />
+            >
+              Copy
+            </Button>
           </Tooltip>
         </Space>
       ),
@@ -181,31 +213,17 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
 
   const treeView = useMemo(() => {
     return sortedResults.map((result, idx) => (
-      <div
+      <Card
         key={`${result.searchMatchRowId}-${idx}`}
-        style={{
-          marginBottom: '16px',
-          padding: '12px',
-          border: '1px solid #f0f0f0',
-          borderRadius: '4px',
-          backgroundColor: '#fafafa',
-        }}
+        size="small"
+        style={{ marginBottom: '12px' }}
+        hoverable
       >
-        <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
-          <span>{result.hierarchyPath}</span>
-          <Button
-            type="text"
-            size="small"
-            icon={<CopyOutlined />}
-            style={{ marginLeft: '8px' }}
-            onClick={() => {
-              navigator.clipboard.writeText(result.hierarchyPath);
-              message.success('Copied to clipboard');
-            }}
-          />
+        <div style={{ marginBottom: '8px' }}>
+          <strong>{result.hierarchyPath}</strong>
         </div>
         
-        <div style={{ marginLeft: '12px', fontSize: '12px', color: '#666' }}>
+        <div style={{ marginLeft: '12px', fontSize: '12px', color: '#666', marginBottom: '8px' }}>
           {result.hierarchy.map((node, level) => (
             <div key={`${node.rowId}-${level}`} style={{ marginBottom: '4px' }}>
               <span style={{ marginRight: '8px', color: '#999' }}>
@@ -223,31 +241,31 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
           ))}
         </div>
 
-        <div style={{ marginTop: '8px', fontSize: '12px', color: '#999' }}>
-          <Tag color={result.state === 'published' ? 'green' : result.state === 'invalid' ? 'red' : 'orange'}>
-            {result.state}
-          </Tag>
-          {result.createdBy && <span> | Created by: {result.createdBy}</span>}
-          {result.updatedBy && <span> | Updated by: {result.updatedBy}</span>}
+        <div style={{ fontSize: '12px', color: '#999', borderTop: '1px solid #f0f0f0', paddingTop: '8px' }}>
+          <Space size="small" wrap>
+            <Tag color={result.state === 'published' ? 'green' : result.state === 'invalid' ? 'red' : 'orange'}>
+              {result.state}
+            </Tag>
+            {result.createdBy && <span>Created by: {result.createdBy}</span>}
+            {onRowClick && (
+              <Button
+                type="primary"
+                size="small"
+                onClick={() => onRowClick(result.searchMatchComponentId, result.searchMatchRowId)}
+              >
+                View
+              </Button>
+            )}
+          </Space>
         </div>
-      </div>
+      </Card>
     ));
-  }, [sortedResults]);
+  }, [sortedResults, onRowClick]);
 
   return (
-    <Modal
-      title="Global Component Search"
-      open={open}
-      onCancel={onClose}
-      width={1200}
-      bodyStyle={{ maxHeight: '70vh', overflowY: 'auto' }}
-      footer={[
-        <Button key="close" onClick={onClose}>
-          Close
-        </Button>,
-      ]}
-    >
-      <div style={{ marginBottom: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
+      {/* Search Controls */}
+      <Card size="small">
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Space style={{ width: '100%' }}>
             <Input
@@ -270,27 +288,29 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
           </Space>
 
           <Space wrap>
-            <span style={{ color: '#666' }}>View:</span>
+            <span style={{ color: '#666', fontSize: '12px' }}>View:</span>
             <Segmented
               value={viewMode}
               onChange={(value) => setViewMode(value as ViewMode)}
               options={[
-                { label: 'List View', value: 'list' },
-                { label: 'Tree View', value: 'tree' },
+                { label: 'List', value: 'list' },
+                { label: 'Tree', value: 'tree' },
               ]}
+              size="small"
             />
 
             {viewMode === 'list' && (
               <>
-                <span style={{ color: '#666' }}>Sort by:</span>
+                <span style={{ color: '#666', fontSize: '12px' }}>Sort by:</span>
                 <Select
                   value={sortBy}
                   onChange={setSortBy}
-                  style={{ width: 180 }}
+                  style={{ width: 150 }}
+                  size="small"
                   options={[
                     { label: 'Hierarchy Path', value: 'hierarchy' },
-                    { label: 'Component Name', value: 'component' },
-                    { label: 'Row Value', value: 'name' },
+                    { label: 'Component', value: 'component' },
+                    { label: 'Value', value: 'name' },
                   ]}
                 />
               </>
@@ -298,36 +318,71 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
           </Space>
 
           {sortedResults.length > 0 && (
-            <Typography.Text type="secondary">
-              Found {sortedResults.length} matching component{sortedResults.length !== 1 ? 's' : ''}
+            <Typography.Text type="secondary" style={{ fontSize: '12px' }}>
+              Found {sortedResults.length} matching component{sortedResults.length !== 1 ? 's' : ''} in {groupedResults.length} component{groupedResults.length !== 1 ? 's' : ''}
             </Typography.Text>
           )}
         </Space>
-      </div>
+      </Card>
 
-      <Spin spinning={loading}>
-        {sortedResults.length === 0 && !loading ? (
-          <Empty
-            description={
-              searchTerm ? 'No results found' : 'Enter a search term and click Search'
-            }
-            style={{ marginTop: '40px' }}
-          />
-        ) : viewMode === 'list' ? (
-          <Table
-            columns={columns}
-            dataSource={sortedResults}
-            rowKey={(record) => `${record.searchMatchRowId}`}
-            pagination={false}
-            size="small"
-            scroll={{ x: 1200, y: 600 }}
-          />
-        ) : (
-          <div style={{ padding: '16px', maxHeight: '600px', overflowY: 'auto' }}>{treeView}</div>
-        )}
-      </Spin>
-    </Modal>
+      {/* Results */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: '8px' }}>
+        <Spin spinning={loading}>
+          {!hasSearched ? (
+            <Empty
+              description="Enter a search term above"
+              style={{ marginTop: '40px' }}
+            />
+          ) : sortedResults.length === 0 ? (
+            <Empty
+              description="No results found"
+              style={{ marginTop: '40px' }}
+            />
+          ) : viewMode === 'list' ? (
+            <>
+              {groupedResults.length > 1 ? (
+                <Collapse
+                  items={groupedResults.map((group) => ({
+                    key: group.componentId,
+                    label: (
+                      <div>
+                        <Tag>{group.componentName}</Tag>
+                        <span style={{ marginLeft: '8px', color: '#666' }}>
+                          ({group.results.length} match{group.results.length !== 1 ? 'es' : ''})
+                        </span>
+                      </div>
+                    ),
+                    children: (
+                      <Table
+                        columns={columns}
+                        dataSource={group.results}
+                        rowKey={(record) => record.searchMatchRowId}
+                        pagination={false}
+                        size="small"
+                        scroll={{ x: 1000, y: 400 }}
+                      />
+                    ),
+                  }))}
+                />
+              ) : (
+                <Table
+                  columns={columns}
+                  dataSource={sortedResults}
+                  rowKey={(record) => record.searchMatchRowId}
+                  pagination={false}
+                  size="small"
+                  scroll={{ x: 1000, y: 600 }}
+                  style={{ width: '100%' }}
+                />
+              )}
+            </>
+          ) : (
+            <div>{treeView}</div>
+          )}
+        </Spin>
+      </div>
+    </div>
   );
 };
 
-export default GlobalComponentSearch;
+export default ComponentSearch;

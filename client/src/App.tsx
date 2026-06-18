@@ -67,6 +67,7 @@ import ReportsPanel from './components/ReportsPanel';
 import Login from './components/Login';
 import AdminPanel from './components/AdminPanel';
 import GlobalComponentSearch from './components/GlobalComponentSearch';
+import ComponentSearch from './components/ComponentSearch';
 import { encodeExactFactorySearch } from './utils/factorySearch';
 import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, batchImportDiagrams, getTaskReferenceForNeighborhood, getTaskNames, getTaskNamesForNeighborhood, getActorsForNeighborhood, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, setApiNeighborhoodScope, validateDiagramReport } from './api';
 import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem, CustomFactory, FactoryNeighborhoodSummary } from './types';
@@ -287,6 +288,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const getModelCatalogTabKey = useCallback((modelName: string) => `modelCatalog:${modelName}`, []);
   const getModelComponentsTabKey = useCallback((modelName: string) => `modelComponents:${modelName}`, []);
   const getModelBpmnComponentTabKey = useCallback((modelName: string) => `modelBpmnComponent:${modelName}`, []);
+  const getComponentSearchTabKey = useCallback((modelName: string) => `componentSearch:${modelName}`, []);
   const [activeFactoryTabs, setActiveFactoryTabs] = useState<Record<string, string>>({ [DEFAULT_NEIGHBORHOOD_NAME]: getModelCatalogTabKey(DEFAULT_NEIGHBORHOOD_NAME) });
   const [activeModelComponentTabs, setActiveModelComponentTabs] = useState<Record<string, string>>({});
   const activeTab = activeFactoryTabs[activeNeighborhoodTab]
@@ -661,7 +663,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     } finally {
       setLoadingNeighborhoodFactories((current) => ({ ...current, [neighborhoodName]: false }));
     }
-  }, [getModelBpmnComponentTabKey, getModelCatalogTabKey, getModelComponentsTabKey]);
+  }, [getModelBpmnComponentTabKey, getModelCatalogTabKey, getModelComponentsTabKey, getComponentSearchTabKey]);
 
   useEffect(() => {
     loadNeighborhoodFactoriesFor(activeNeighborhoodTab);
@@ -2010,6 +2012,18 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                     }}
                                     items={[
                                       {
+                                        key: getComponentSearchTabKey(neighborhood.name),
+                                        label: fTabLabel(getComponentSearchTabKey(neighborhood.name), <><SearchOutlined /> Search</>),
+                                        children: renderScrollablePane(
+                                          <ComponentSearch
+                                            neighborhoodName={neighborhood.name}
+                                            onRowClick={(componentId, rowId) => {
+                                              setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
+                                            }}
+                                          />,
+                                        ),
+                                      },
+                                      {
                                         key: getModelBpmnComponentTabKey(neighborhood.name),
                                         label: fTabLabel(getModelBpmnComponentTabKey(neighborhood.name), <><DatabaseOutlined /> BPMN Component</>),
                                         children: renderScrollablePane(
@@ -2041,6 +2055,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                         ),
                                       })),
                                     ].sort((a, b) => {
+                                      if (a.key === getComponentSearchTabKey(neighborhood.name)) return -1;
+                                      if (b.key === getComponentSearchTabKey(neighborhood.name)) return 1;
                                       if (a.key === getModelBpmnComponentTabKey(neighborhood.name)) return -1;
                                       if (b.key === getModelBpmnComponentTabKey(neighborhood.name)) return 1;
                                       const leftIndex = factoryTabOrder.indexOf(a.key);
@@ -2258,7 +2274,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
       {hasAdminAccess && <AdminPanel open={showAdmin} onClose={() => setShowAdmin(false)} />}
       <GlobalComponentSearch
-        visible={showGlobalComponentSearch}
+        open={showGlobalComponentSearch}
         neighborhoodName={activeNeighborhoodTab}
         onClose={() => setShowGlobalComponentSearch(false)}
       />

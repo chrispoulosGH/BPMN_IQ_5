@@ -1415,6 +1415,7 @@ router.delete('/:factoryId', requireAdminWrite, async (req, res) => {
 });
 
 // Global component search - searches all components in a neighborhood and returns hierarchy paths
+// Builds complete lineage paths from search matches up to root
 router.get('/search/global', async (req, res) => {
   try {
     const neighborhoodName = String(req.query?.neighborhoodName || '').trim();
@@ -1437,95 +1438,197 @@ router.get('/search/global', async (req, res) => {
       return res.json({ results: [], totalMatches: 0 });
     }
 
-    // Create a map of component names for quick lookup
+    // Create maps for quick lookup
     const componentMap = new Map(components.map(c => [getComparableValue(c.name), c]));
     
-    // Search term regex (case-insensitive)
-    const searchRegex = new RegExp(escapeRegExp(searchTerm), 'i');
+    // Search term regex (case-insensitive, word boundaries for whole-word match)
+    const searchRegex = new RegExp(`\\b${escapeRegExp(searchTerm)}\\b`, 'i');
+    console.log(`[SEARCH DEBUG] Searching for: "${searchTerm}" with regex: ${searchRegex}`);
+    console.log(`[SEARCH DEBUG] Found ${components.length} components to search`);
     
-    // Build results with hierarchy paths
+    let totalRowsChecked = 0;
     const results = [];
     
+    // Search through all components
     components.forEach(component => {
       const rows = component.rows || [];
+      totalRowsChecked += rows.length;
+      console.log(`[SEARCH DEBUG] Component "${component.name}" has ${rows.length} rows`);
       
       rows.forEach((row, rowIndex) => {
         const rowValues = getModelCatalogRowValues(row);
-        const rowName = getNormalizedText(rowValues[PRIMARY_KEY_COLUMN] || '');
         
-        // Check if row matches search term
-        if (!searchRegex.test(rowName)) {
+        // Search through ALL field values in the row
+        let matchFound = false;
+        let matchedFieldName = '';
+        let matchedFieldValue = '';
+        
+        for (const [fieldName, fieldValue] of Object.entries(rowValues)) {
+          const fieldValueStr = getNormalizedText(fieldValue);
+          if (searchRegex.test(fieldValueStr)) {
+            matchFound = true;
+            matchedFieldName = fieldName;
+            matchedFieldValue = fieldValueStr;
+            console.log(`[SEARCH DEBUG] MATCH in "${component.name}": Field="${fieldName}", Value="${matchedFieldValue}"`);
+            break;
+          }
+        }
+        
+        if (!matchFound) {
           return;
         }
         
-        // Build hierarchy path for this row
-        const hierarchyPath = [];
-        let currentComponent = component;
-        let currentParentName = row.parentName || '';
+        // Handle parentName that might contain multiple values separated by |
+        const parentNames = row.parentName 
+          ? row.parentName.split('|').map(p => p.trim()).filter(p => p)
+          : [];
         
-        // Start from the current row
-        hierarchyPath.unshift({
-          componentName: currentComponent.name,
-          rowName: rowName,
-          componentId: String(currentComponent._id),
-          rowId: String(row._id),
-          level: 0,
-          values: rowValues,
-        });
-        
-        // Walk up the hierarchy
-        let level = 1;
-        while (currentParentName && level <= components.length) {
-          const parentComponent = componentMap.get(getComparableValue(currentComponent.parentFactoryName || ''));
+        if (parentNames.length === 0) {
+          // No parents - just create a single result for this row
+          const rowName = getNormalizedText(rowValues[PRIMARY_KEY_COLUMN] || '');
+          const hierarchyPath = [{
+            componentName: component.name,
+            rowName: rowName,
+            componentId: String(component._id),
+            rowId: String(row._id),
+            level: 0,
+            values: rowValues,
+          }];
           
-          if (!parentComponent) {
-            break;
-          }
-          
-          const parentRow = parentComponent.rows?.find(r => {
-            const pRowValues = getModelCatalogRowValues(r);
-            return getComparableValue(pRowValues[PRIMARY_KEY_COLUMN] || '') === getComparableValue(currentParentName);
+          results.push({
+            searchMatchComponentId: String(component._id),
+            searchMatchComponentName: component.name,
+            searchMatchRowId: String(row._id),
+            searchMatchRowName: rowName,
+            searchMatchFieldName: matchedFieldName,
+            searchMatchFieldValue: matchedFieldValue,
+            hierarchy: hierarchyPath,
+            hierarchyPath: hierarchyPath.map(h => h.rowName).join(' > '),
+            state: row.state || 'staged',
+            owner: row.owner || '',
+            createdBy: row.createdBy || '',
+            updatedBy: row.updatedBy || '',
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
           });
-          
-          if (!parentRow) {
-            break;
-          }
-          
-          const parentRowValues = getModelCatalogRowValues(parentRow);
-          hierarchyPath.unshift({
-            componentName: parentComponent.name,
-            rowName: currentParentName,
-            componentId: String(parentComponent._id),
-            rowId: String(parentRow._id),
-            level: level,
-            values: parentRowValues,
+        } else {
+          // Multiple parents - create a result for EACH parent
+          // Use simple walk-up approach: for each parent, walk to root following first parent at each level
+          parentNames.forEach(parentName => {
+            const parentComponent = componentMap.get(getComparableValue(component.parentFactoryName || ''));
+            if (!parentComponent) return; // No parent component
+            
+            const parentRow = parentComponent.rows?.find(r => {
+              const pRowValues = getModelCatalogRowValues(r);
+              return getComparableValue(pRowValues[PRIMARY_KEY_COLUMN] || '') === getComparableValue(parentName);
+            });
+            
+            if (!parentRow) return; // Parent row not found
+            
+            // Build hierarchy by walking up from this parent
+            const hierarchyPath = [];
+            let currentComponent = parentComponent;
+            let currentRow = parentRow;
+            let level = 0;
+            
+            // Keep walking up until we run out of parents or hit a loop
+            const visitedKeys = new Set();
+            
+            while (currentComponent && currentRow && level < 20) {
+              const currentRowValues = getModelCatalogRowValues(currentRow);
+              const currentRowName = getNormalizedText(currentRowValues[PRIMARY_KEY_COLUMN] || '');
+              
+              // Prevent infinite loops
+              const key = `${currentComponent.name}:${currentRowName}`;
+              if (visitedKeys.has(key)) break;
+              visitedKeys.add(key);
+              
+              hierarchyPath.unshift({
+                componentName: currentComponent.name,
+                rowName: currentRowName,
+                componentId: String(currentComponent._id),
+                rowId: String(currentRow._id),
+                level: 0, // We'll adjust levels after building
+                values: currentRowValues,
+              });
+              
+              // Get first parent (if multiple, take only the first one)
+              const parentNames = currentRow.parentName
+                ? currentRow.parentName.split('|').map(p => p.trim()).filter(p => p)
+                : [];
+              
+              if (parentNames.length === 0) break; // No more parents
+              
+              const nextParentComponent = componentMap.get(getComparableValue(currentComponent.parentFactoryName || ''));
+              if (!nextParentComponent) break;
+              
+              const nextParentRow = nextParentComponent.rows?.find(r => {
+                const pRowValues = getModelCatalogRowValues(r);
+                return getComparableValue(pRowValues[PRIMARY_KEY_COLUMN] || '') === getComparableValue(parentNames[0]); // Take FIRST parent only
+              });
+              
+              if (!nextParentRow) break;
+              
+              currentComponent = nextParentComponent;
+              currentRow = nextParentRow;
+              level++;
+            }
+            
+            // Adjust levels
+            hierarchyPath.forEach((node, idx) => {
+              node.level = idx;
+            });
+            
+            // Add the matched row at the end
+            const rowName = getNormalizedText(rowValues[PRIMARY_KEY_COLUMN] || '');
+            hierarchyPath.push({
+              componentName: component.name,
+              rowName: rowName,
+              componentId: String(component._id),
+              rowId: String(row._id),
+              level: hierarchyPath.length,
+              values: rowValues,
+            });
+            
+            results.push({
+              searchMatchComponentId: String(component._id),
+              searchMatchComponentName: component.name,
+              searchMatchRowId: String(row._id),
+              searchMatchRowName: rowName,
+              searchMatchFieldName: matchedFieldName,
+              searchMatchFieldValue: matchedFieldValue,
+              hierarchy: hierarchyPath,
+              hierarchyPath: hierarchyPath.map(h => h.rowName).join(' > '),
+              state: row.state || 'staged',
+              owner: row.owner || '',
+              createdBy: row.createdBy || '',
+              updatedBy: row.updatedBy || '',
+              createdAt: row.createdAt,
+              updatedAt: row.updatedAt,
+            });
           });
-          
-          currentComponent = parentComponent;
-          currentParentName = parentRow.parentName || '';
-          level += 1;
         }
-        
-        results.push({
-          searchMatchComponentId: String(component._id),
-          searchMatchComponentName: component.name,
-          searchMatchRowId: String(row._id),
-          searchMatchRowName: rowName,
-          hierarchy: hierarchyPath,
-          hierarchyPath: hierarchyPath.map(h => h.rowName).join(' > '),
-          state: row.state || 'staged',
-          owner: row.owner || '',
-          createdBy: row.createdBy || '',
-          updatedBy: row.updatedBy || '',
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-        });
       });
     });
     
+    // Deduplicate results by hierarchyPath (same path = same result)
+    const uniqueResults = new Map();
+    results.forEach(result => {
+      const key = result.hierarchyPath;
+      if (!uniqueResults.has(key)) {
+        uniqueResults.set(key, result);
+      }
+    });
+    
+    const deduplicatedResults = Array.from(uniqueResults.values());
+    
+    console.log(`[SEARCH DEBUG] Total rows checked: ${totalRowsChecked}`);
+    console.log(`[SEARCH DEBUG] Total results before dedup: ${results.length}`);
+    console.log(`[SEARCH DEBUG] Total results after dedup: ${deduplicatedResults.length}`);
+    
     res.json({
-      results: results.sort((a, b) => a.hierarchyPath.localeCompare(b.hierarchyPath)),
-      totalMatches: results.length,
+      results: deduplicatedResults.sort((a, b) => a.hierarchyPath.localeCompare(b.hierarchyPath)),
+      totalMatches: deduplicatedResults.length,
       searchTerm,
       neighborhoodName,
     });
