@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Input,
   Button,
@@ -13,6 +13,7 @@ import {
   Select,
   Card,
   Collapse,
+  AutoComplete,
 } from 'antd';
 import {
   SearchOutlined,
@@ -47,7 +48,8 @@ interface SearchResult {
 
 interface ComponentSearchProps {
   neighborhoodName: string;
-  onRowClick?: (componentId: string, rowId: string) => void;
+  onRowClick?: (componentId: string, rowId: string, searchTerm?: string, componentName?: string) => void;
+  initialSearchTerm?: string;
 }
 
 type ViewMode = 'list' | 'tree';
@@ -55,13 +57,104 @@ type ViewMode = 'list' | 'tree';
 const ComponentSearch: React.FC<ComponentSearchProps> = ({
   neighborhoodName,
   onRowClick,
+  initialSearchTerm = '',
 }) => {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortBy, setSortBy] = useState<'hierarchy' | 'component' | 'name'>('hierarchy');
   const [hasSearched, setHasSearched] = useState(false);
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  // Fetch type-ahead suggestions
+  const handleTypeahead = useCallback(
+    async (value: string) => {
+      if (!value || value.length < 1) {
+        setSuggestions([]);
+        return;
+      }
+
+      setLoadingSuggestions(true);
+      try {
+        const response = await fetch(
+          `/api/custom-factories/search/typeahead?neighborhoodName=${encodeURIComponent(
+            neighborhoodName
+          )}&prefix=${encodeURIComponent(value)}&limit=10`
+        );
+
+        if (!response.ok) {
+          setSuggestions([]);
+          return;
+        }
+
+        const data = await response.json();
+        setSuggestions(
+          data.suggestions?.map((s: any) => ({
+            label: `${s.value} (${s.frequency} occurrences${s.componentNames?.length > 1 ? `, ${s.componentNames.length} components` : ''})`,
+            value: s.value,
+          })) || []
+        );
+      } catch (err) {
+        setSuggestions([]);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    },
+    [neighborhoodName]
+  );
+
+  // Debounce typeahead
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm) {
+        handleTypeahead(searchTerm);
+      } else {
+        // Clear results if search is cleared
+        setResults([]);
+        setSuggestions([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, handleTypeahead]);
+
+  // Auto-execute search if initialSearchTerm is provided
+  useEffect(() => {
+    if (initialSearchTerm && initialSearchTerm.length >= 2) {
+      setSearchTerm(initialSearchTerm);
+      // Schedule search execution after a short delay to ensure state is updated
+      const timer = setTimeout(() => {
+        (async () => {
+          setLoading(true);
+          setHasSearched(true);
+          setResults([]);
+          try {
+            const response = await fetch(
+              `/api/custom-factories/search/indexed?neighborhoodName=${encodeURIComponent(
+                neighborhoodName
+              )}&term=${encodeURIComponent(initialSearchTerm)}`
+            );
+
+            if (!response.ok) {
+              const error = await response.json();
+              throw new Error(error.error || 'Search failed');
+            }
+
+            const data = await response.json();
+            setResults(data.results || []);
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Search failed';
+            console.error(`Search error: ${errorMsg}`);
+            setResults([]);
+          } finally {
+            setLoading(false);
+          }
+        })();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [initialSearchTerm, neighborhoodName]);
 
   const handleSearch = useCallback(async () => {
     if (!searchTerm || searchTerm.length < 2) {
@@ -71,9 +164,11 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
 
     setLoading(true);
     setHasSearched(true);
+    setResults([]); // Clear previous results
     try {
+      // Use indexed search endpoint for fast results
       const response = await fetch(
-        `/api/custom-factories/search/global?neighborhoodName=${encodeURIComponent(
+        `/api/custom-factories/search/indexed?neighborhoodName=${encodeURIComponent(
           neighborhoodName
         )}&term=${encodeURIComponent(searchTerm)}`
       );
@@ -140,34 +235,70 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
     }));
   }, [sortedResults]);
 
+  // Find max hierarchy depth
+  const maxHierarchyDepth = useMemo(() => {
+    if (results.length === 0) return 0;
+    return Math.max(...results.map(r => r.hierarchy.length));
+  }, [results]);
+
+  // Extract component names for each level to use as column headers
+  const levelComponentNames = useMemo(() => {
+    const names = new Map<number, string>();
+    if (results.length > 0) {
+      results.forEach(result => {
+        result.hierarchy.forEach(node => {
+          if (!names.has(node.level)) {
+            names.set(node.level, node.componentName);
+          }
+        });
+      });
+    }
+    return names;
+  }, [results]);
+
+  // Build dynamic hierarchy columns
+  const hierarchyColumns = useMemo(() => {
+    const cols = [];
+    for (let level = 0; level < maxHierarchyDepth; level++) {
+      cols.push({
+        title: levelComponentNames.get(level) || `Level ${level}`,
+        key: `hierarchy_${level}`,
+        width: `${Math.max(150, Math.floor(100 / maxHierarchyDepth))}px`,
+        render: (_: any, record: SearchResult) => {
+          const node = record.hierarchy[level];
+          if (!node) return '-';
+          return (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                if (onRowClick) {
+                  onRowClick(node.componentId, node.rowId, node.rowName, node.componentName);
+                }
+              }}
+              style={{ padding: '4px 0', height: 'auto' }}
+            >
+              {node.rowName}
+            </Button>
+          );
+        },
+      });
+    }
+    return cols;
+  }, [maxHierarchyDepth, levelComponentNames, onRowClick]);
+
   const columns = [
-    {
-      title: 'Hierarchy Path',
-      dataIndex: 'hierarchyPath',
-      key: 'hierarchyPath',
-      width: '35%',
-      render: (text: string) => (
-        <Tooltip title={text}>
-          <span>{text}</span>
-        </Tooltip>
-      ),
-    },
+    ...hierarchyColumns,
     {
       title: 'Matched Field',
       dataIndex: 'searchMatchFieldName',
       key: 'matchedField',
-      width: '15%',
+      width: '12%',
       render: (fieldName: string, record: SearchResult) => (
         <Tooltip title={`${fieldName}: ${record.searchMatchFieldValue}`}>
           <span>{fieldName}</span>
         </Tooltip>
       ),
-    },
-    {
-      title: 'Value',
-      dataIndex: 'searchMatchRowName',
-      key: 'value',
-      width: '15%',
     },
     {
       title: 'State',
@@ -182,14 +313,14 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
     {
       title: 'Actions',
       key: 'actions',
-      width: '25%',
+      width: '10%',
       render: (_: any, record: SearchResult) => (
         <Space size="small">
           {onRowClick && (
             <Button
               type="primary"
               size="small"
-              onClick={() => onRowClick(record.searchMatchComponentId, record.searchMatchRowId)}
+              onClick={() => onRowClick(record.searchMatchComponentId, record.searchMatchRowId, record.searchMatchRowName)}
             >
               View
             </Button>
@@ -235,7 +366,18 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
                 <Tag color={node.level === result.hierarchy.length - 1 ? 'blue' : 'default'}>
                   {node.componentName}
                 </Tag>
-                {node.rowName}
+                {onRowClick ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={() => onRowClick(node.componentId, node.rowId, node.rowName, node.componentName)}
+                    style={{ padding: '0 4px', height: 'auto' }}
+                  >
+                    {node.rowName}
+                  </Button>
+                ) : (
+                  <span>{node.rowName}</span>
+                )}
               </span>
             </div>
           ))}
@@ -251,7 +393,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
               <Button
                 type="primary"
                 size="small"
-                onClick={() => onRowClick(result.searchMatchComponentId, result.searchMatchRowId)}
+                onClick={() => onRowClick(result.searchMatchComponentId, result.searchMatchRowId, result.searchMatchRowName)}
               >
                 View
               </Button>
@@ -267,15 +409,27 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
       {/* Search Controls */}
       <Card size="small">
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Space style={{ width: '100%' }}>
-            <Input
+          <Space style={{ width: '100%', display: 'flex' }}>
+            <AutoComplete
               placeholder="Search component values (min 2 characters)..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onSearch={(value) => setSearchTerm(value)}
+              onSelect={(value) => setSearchTerm(value)}
+              onChange={(value) => setSearchTerm(value)}
+              options={suggestions}
+              loading={loadingSuggestions}
               onKeyDown={handleKeyDown}
+              style={{ flex: 1, minWidth: '300px' }}
+              popupMatchSelectWidth={false}
+              notFoundContent={
+                loadingSuggestions ? (
+                  <div style={{ padding: '8px 12px' }}><Spin size="small" /></div>
+                ) : searchTerm.length > 0 ? (
+                  <div style={{ padding: '8px 12px', color: '#999' }}>No suggestions found</div>
+                ) : null
+              }
               prefix={<SearchOutlined />}
               allowClear
-              style={{ flex: 1 }}
             />
             <Button
               type="primary"

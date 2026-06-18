@@ -7,6 +7,7 @@ import type { FilterValue } from 'antd/es/table/interface';
 import { deleteServer, getServers } from '../api';
 import type { ServerItem } from '../types';
 import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
+import { matchesFactorySearch, parseFactorySearch, encodeExactFactorySearch } from '../utils/factorySearch';
 
 interface ServerFactoryProps {
   defaultSearch?: string;
@@ -68,13 +69,22 @@ export default function ServerFactory({ defaultSearch, onNavigateToFactory, read
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ServerItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState(defaultSearch || '');
+  const [search, setSearch] = useState('');
+  const [exactSearch, setExactSearch] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [detail, setDetail] = useState<ServerItem | null>(null);
   const [tableFilters, setTableFilters] = useState<Record<string, FilterValue | null>>({});
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
     () => new Set(ALL_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key))
   );
+
+  useEffect(() => {
+    if (defaultSearch !== undefined) {
+      const parsed = parseFactorySearch(defaultSearch);
+      setSearch(parsed.term);
+      setExactSearch(parsed.exact);
+    }
+  }, [defaultSearch]);
 
   const toFilterValue = (value: unknown) => {
     if (value === null || value === undefined || value === '') return '—';
@@ -86,6 +96,13 @@ export default function ServerFactory({ defaultSearch, onNavigateToFactory, read
       .sort((a, b) => a.localeCompare(b))
       .slice(0, 500)
       .map((value) => ({ text: value, value }));
+
+  const searchToken = exactSearch ? encodeExactFactorySearch(search) : search;
+  const filtered = search
+    ? items.filter((i) => {
+        return matchesFactorySearch([i.name, i.hostName, i.ipAddress, i.environment], searchToken);
+      })
+    : items;
 
   const columnFilters = useMemo(() => ({
     _id: buildFilters(items.map((item) => toFilterValue(item._id))),
@@ -577,8 +594,8 @@ export default function ServerFactory({ defaultSearch, onNavigateToFactory, read
       </div>
 
       <Table
-        dataSource={items}
-        columns={enhanceColumnsWithSortAndFilters(columns as any, items)}
+        dataSource={filtered}
+        columns={enhanceColumnsWithSortAndFilters(columns as any, filtered)}
         rowKey="_id"
         size="small"
         loading={loading}

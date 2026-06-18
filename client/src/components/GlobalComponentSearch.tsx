@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Modal,
   Input,
@@ -12,6 +12,7 @@ import {
   Tooltip,
   Segmented,
   Select,
+  AutoComplete,
 } from 'antd';
 import {
   SearchOutlined,
@@ -48,6 +49,8 @@ interface GlobalComponentSearchProps {
   open: boolean;
   neighborhoodName: string;
   onClose: () => void;
+  initialSearchTerm?: string;
+  onRowClick?: (componentId: string, rowId: string, searchTerm?: string, componentName?: string) => void;
 }
 
 type ViewMode = 'list' | 'tree';
@@ -56,12 +59,105 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
   open,
   neighborhoodName,
   onClose,
+  initialSearchTerm = '',
+  onRowClick,
 }) => {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortBy, setSortBy] = useState<'hierarchy' | 'component' | 'name'>('hierarchy');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+
+  // Fetch type-ahead suggestions
+  const handleTypeahead = useCallback(
+    async (value: string) => {
+      if (!value || value.length < 1) {
+        setSuggestions([]);
+        return;
+      }
+
+      setLoadingSuggestions(true);
+      try {
+        const response = await fetch(
+          `/api/custom-factories/search/typeahead?neighborhoodName=${encodeURIComponent(
+            neighborhoodName
+          )}&prefix=${encodeURIComponent(value)}&limit=10`
+        );
+
+        if (!response.ok) {
+          setSuggestions([]);
+          return;
+        }
+
+        const data = await response.json();
+        setSuggestions(
+          data.suggestions?.map((s: any) => ({
+            label: `${s.value} (${s.frequency} occurrences)`,
+            value: s.value,
+          })) || []
+        );
+      } catch (err) {
+        setSuggestions([]);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    },
+    [neighborhoodName]
+  );
+
+  // Debounce typeahead
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm) {
+        handleTypeahead(searchTerm);
+      } else {
+        // Clear results if search is cleared
+        setResults([]);
+        setSuggestions([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, handleTypeahead]);
+
+  // Auto-execute search if initialSearchTerm is provided
+  useEffect(() => {
+    if (initialSearchTerm && initialSearchTerm.length >= 2) {
+      setSearchTerm(initialSearchTerm);
+      // Schedule search execution after a short delay to ensure state is updated
+      const timer = setTimeout(() => {
+        (async () => {
+          setLoading(true);
+          setResults([]);
+          try {
+            const response = await fetch(
+              `/api/custom-factories/search/indexed?neighborhoodName=${encodeURIComponent(
+                neighborhoodName
+              )}&term=${encodeURIComponent(initialSearchTerm)}`
+            );
+
+            if (!response.ok) {
+              const error = await response.json();
+              throw new Error(error.error || 'Search failed');
+            }
+
+            const data = await response.json();
+            setResults(data.results || []);
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : 'Search failed';
+            console.error(`Search error: ${errorMsg}`);
+            setResults([]);
+          } finally {
+            setLoading(false);
+          }
+        })();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [initialSearchTerm, neighborhoodName]);
 
   const handleSearch = useCallback(async () => {
     if (!searchTerm || searchTerm.length < 2) {
@@ -70,9 +166,11 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     }
 
     setLoading(true);
+    setResults([]); // Clear previous results
     try {
+      // Use indexed search endpoint for fast results
       const response = await fetch(
-        `/api/custom-factories/search/global?neighborhoodName=${encodeURIComponent(
+        `/api/custom-factories/search/indexed?neighborhoodName=${encodeURIComponent(
           neighborhoodName
         )}&term=${encodeURIComponent(searchTerm)}`
       );
@@ -94,6 +192,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
       setResults([]);
     } finally {
       setLoading(false);
+      setCurrentPage(1); // Reset pagination on new search
     }
   }, [searchTerm, neighborhoodName]);
 
@@ -122,36 +221,81 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     return sorted;
   }, [results, sortBy]);
 
+  // Calculate paginated data
+  const paginatedResults = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return sortedResults.slice(startIndex, endIndex);
+  }, [sortedResults, currentPage, pageSize]);
+
+  // Find max hierarchy depth
+  const maxHierarchyDepth = useMemo(() => {
+    if (results.length === 0) return 0;
+    return Math.max(...results.map(r => r.hierarchy.length));
+  }, [results]);
+
+  // Extract component names for each level to use as column headers
+  const levelComponentNames = useMemo(() => {
+    const names = new Map<number, string>();
+    if (results.length > 0) {
+      results.forEach(result => {
+        result.hierarchy.forEach(node => {
+          if (!names.has(node.level)) {
+            names.set(node.level, node.componentName);
+          }
+        });
+      });
+    }
+    return names;
+  }, [results]);
+
+  // Build dynamic hierarchy columns
+  const hierarchyColumns = useMemo(() => {
+    const cols = [];
+    for (let level = 0; level < maxHierarchyDepth; level++) {
+      cols.push({
+        title: levelComponentNames.get(level) || `Level ${level}`,
+        key: `hierarchy_${level}`,
+        width: `${Math.max(120, Math.floor(80 / maxHierarchyDepth))}px`,
+        render: (_: any, record: SearchResult) => {
+          const node = record.hierarchy[level];
+          if (!node) return '-';
+          return (
+            <Button
+              type="link"
+              size="small"
+              onClick={() => {
+                if (onRowClick) {
+                  onRowClick(node.componentId, node.rowId, node.rowName, node.componentName);
+                }
+                onClose();
+              }}
+              title={node.rowName}
+              style={{ padding: '4px 0', height: 'auto', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {node.rowName}
+            </Button>
+          );
+        },
+      });
+    }
+    return cols;
+  }, [maxHierarchyDepth, levelComponentNames, onClose]);
+
   const columns = [
-    {
-      title: 'Hierarchy Path',
-      dataIndex: 'hierarchyPath',
-      key: 'hierarchyPath',
-      width: '40%',
-      render: (text: string, record: SearchResult) => (
-        <Tooltip title={text}>
-          <span>{text}</span>
-        </Tooltip>
-      ),
-    },
+    ...hierarchyColumns,
     {
       title: 'Component',
       dataIndex: 'searchMatchComponentName',
       key: 'component',
-      width: '20%',
+      width: '12%',
       render: (text: string) => <Tag>{text}</Tag>,
-    },
-    {
-      title: 'Value',
-      dataIndex: 'searchMatchRowName',
-      key: 'value',
-      width: '15%',
     },
     {
       title: 'State',
       dataIndex: 'state',
       key: 'state',
-      width: '10%',
+      width: '8%',
       render: (state: string) => {
         const color = state === 'published' ? 'green' : state === 'invalid' ? 'red' : 'orange';
         return <Tag color={color}>{state}</Tag>;
@@ -160,7 +304,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     {
       title: 'Actions',
       key: 'actions',
-      width: '15%',
+      width: '10%',
       render: (_: any, record: SearchResult) => (
         <Space size="small">
           <Tooltip title="Copy hierarchy path">
@@ -180,7 +324,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
   ];
 
   const treeView = useMemo(() => {
-    return sortedResults.map((result, idx) => (
+    return paginatedResults.map((result, idx) => (
       <div
         key={`${result.searchMatchRowId}-${idx}`}
         style={{
@@ -217,7 +361,20 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
                 <Tag color={node.level === result.hierarchy.length - 1 ? 'blue' : 'default'}>
                   {node.componentName}
                 </Tag>
-                {node.rowName}
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => {
+                    if (onRowClick) {
+                      onRowClick(node.componentId, node.rowId, node.rowName, node.componentName);
+                    }
+                    onClose();
+                  }}
+                  title={node.rowName}
+                  style={{ padding: '4px 0', height: 'auto', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  {node.rowName}
+                </Button>
               </span>
             </div>
           ))}
@@ -232,7 +389,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
         </div>
       </div>
     ));
-  }, [sortedResults]);
+  }, [paginatedResults, onRowClick, onClose]);
 
   return (
     <Modal
@@ -249,15 +406,27 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     >
       <div style={{ marginBottom: '16px' }}>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Space style={{ width: '100%' }}>
-            <Input
+          <Space style={{ width: '100%', display: 'flex' }}>
+            <AutoComplete
               placeholder="Search component values (min 2 characters)..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onSearch={(value) => setSearchTerm(value)}
+              onSelect={(value) => setSearchTerm(value)}
+              onChange={(value) => setSearchTerm(value)}
+              options={suggestions}
+              loading={loadingSuggestions}
               onKeyDown={handleKeyDown}
+              style={{ flex: 1, minWidth: '300px' }}
+              popupMatchSelectWidth={false}
+              notFoundContent={
+                loadingSuggestions ? (
+                  <div style={{ padding: '8px 12px' }}><Spin size="small" /></div>
+                ) : searchTerm.length > 0 ? (
+                  <div style={{ padding: '8px 12px', color: '#999' }}>No suggestions found</div>
+                ) : null
+              }
               prefix={<SearchOutlined />}
               allowClear
-              style={{ flex: 1 }}
             />
             <Button
               type="primary"
@@ -269,31 +438,41 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
             </Button>
           </Space>
 
-          <Space wrap>
-            <span style={{ color: '#666' }}>View:</span>
-            <Segmented
-              value={viewMode}
-              onChange={(value) => setViewMode(value as ViewMode)}
-              options={[
-                { label: 'List View', value: 'list' },
-                { label: 'Tree View', value: 'tree' },
-              ]}
-            />
+          <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+            <Space wrap>
+              <span style={{ color: '#666' }}>View:</span>
+              <Segmented
+                value={viewMode}
+                onChange={(value) => setViewMode(value as ViewMode)}
+                options={[
+                  { label: 'List View', value: 'list' },
+                  { label: 'Tree View', value: 'tree' },
+                ]}
+              />
 
-            {viewMode === 'list' && (
-              <>
-                <span style={{ color: '#666' }}>Sort by:</span>
-                <Select
-                  value={sortBy}
-                  onChange={setSortBy}
-                  style={{ width: 180 }}
-                  options={[
-                    { label: 'Hierarchy Path', value: 'hierarchy' },
-                    { label: 'Component Name', value: 'component' },
-                    { label: 'Row Value', value: 'name' },
-                  ]}
-                />
-              </>
+              {viewMode === 'list' && (
+                <>
+                  <span style={{ color: '#666' }}>Sort by:</span>
+                  <Select
+                    value={sortBy}
+                    onChange={setSortBy}
+                    style={{ width: 180 }}
+                    options={[
+                      { label: 'Hierarchy Path', value: 'hierarchy' },
+                      { label: 'Component Name', value: 'component' },
+                      { label: 'Row Value', value: 'name' },
+                    ]}
+                  />
+                </>
+              )}
+            </Space>
+            
+            {sortedResults.length > 0 && (
+              <span style={{ fontSize: '12px', color: '#666' }}>
+                {paginatedResults.length === 0 && currentPage > 1
+                  ? '0'
+                  : `${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, sortedResults.length)}`} of {sortedResults.length} results
+              </span>
             )}
           </Space>
 
@@ -316,14 +495,48 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
         ) : viewMode === 'list' ? (
           <Table
             columns={columns}
-            dataSource={sortedResults}
+            dataSource={paginatedResults}
             rowKey={(record) => `${record.searchMatchRowId}`}
-            pagination={false}
+            pagination={{
+              current: currentPage,
+              pageSize: pageSize,
+              total: sortedResults.length,
+              onChange: (page) => setCurrentPage(page),
+              onShowSizeChange: (_, size) => {
+                setPageSize(size);
+                setCurrentPage(1);
+              },
+              pageSizeOptions: ['25', '50', '100', '200'],
+              showSizeChanger: true,
+              showTotal: (total) => `${total} results`,
+              position: ['topRight'],
+            }}
             size="small"
             scroll={{ x: 1200, y: 600 }}
           />
         ) : (
-          <div style={{ padding: '16px', maxHeight: '600px', overflowY: 'auto' }}>{treeView}</div>
+          <div>
+            <div style={{ padding: '16px', maxHeight: '600px', overflowY: 'auto' }}>{treeView}</div>
+            {sortedResults.length > pageSize && (
+              <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center' }}>
+                <Button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <span style={{ fontSize: '14px', minWidth: '120px', textAlign: 'center' }}>
+                  Page {currentPage} of {Math.ceil(sortedResults.length / pageSize)}
+                </span>
+                <Button
+                  onClick={() => setCurrentPage(Math.min(Math.ceil(sortedResults.length / pageSize), currentPage + 1))}
+                  disabled={currentPage >= Math.ceil(sortedResults.length / pageSize)}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
+          </div>
         )}
       </Spin>
     </Modal>

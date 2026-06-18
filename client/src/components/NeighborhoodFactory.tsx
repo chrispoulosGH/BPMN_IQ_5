@@ -353,7 +353,6 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
 
   const handleDeleteNeighborhood = useCallback((name: string) => {
     Modal.confirm({
-      title: `Delete neighborhood ${name}?`,
       title: `Delete model ${name}?`,
       icon: <ExclamationCircleOutlined />,
       okText: 'Delete Model',

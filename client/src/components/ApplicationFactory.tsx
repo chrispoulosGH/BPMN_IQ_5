@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select, List, Spin, Typography, Space } from 'antd';
 import { SearchOutlined, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ApplicationItem, ServerItem } from '../types';
-import { getRefItems, createApplication, updateApplication, getApplicationServers, deleteRefItem } from '../api';
+import { getRefItems, createApplication, updateApplication, getApplicationServers, deleteRefItem, getApplicationByCorrelationId } from '../api';
 import type { ColumnsType } from 'antd/es/table';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 import { matchesFactorySearch, parseFactorySearch, encodeExactFactorySearch } from '../utils/factorySearch';
@@ -58,6 +58,8 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [detailServers, setDetailServers] = useState<ServerItem[]>([]);
   const [detailServersLoading, setDetailServersLoading] = useState(false);
+  const [fullAppDetail, setFullAppDetail] = useState<ApplicationItem | null>(null);
+  const [fullAppDetailLoading, setFullAppDetailLoading] = useState(false);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
     () => new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
   );
@@ -118,6 +120,41 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
       cancelled = true;
     };
   }, [detail, message]);
+
+  // Hydrate full application details when viewing a component with correlation_id
+  useEffect(() => {
+    if (!detail) {
+      setFullAppDetail(null);
+      return;
+    }
+
+    // Check if detail has a correlation_id field (indicates it's from component collection)
+    const correlationId = (detail as any)?.correlation_id || detail.correlationId;
+    if (!correlationId) {
+      setFullAppDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+    setFullAppDetailLoading(true);
+    getApplicationByCorrelationId(correlationId)
+      .then((fullApp) => {
+        if (!cancelled) setFullAppDetail(fullApp);
+      })
+      .catch((e: any) => {
+        if (!cancelled) {
+          setFullAppDetail(null);
+          // Don't show error message - full details are optional
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFullAppDetailLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detail]);
 
   const searchToken = exactSearch ? encodeExactFactorySearch(search) : search;
   const filtered = search
@@ -366,7 +403,26 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
       >
         {detail && (
           <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label="Correlation ID">{detail.correlationId || '—'}</Descriptions.Item>
+            <Descriptions.Item label="Correlation ID">
+              {(detail as any)?.correlation_id || detail.correlationId || '—'}
+            </Descriptions.Item>
+            {fullAppDetailLoading && (
+              <Descriptions.Item label="Full Details">
+                <Spin size="small" /> Loading full application details...
+              </Descriptions.Item>
+            )}
+            {!fullAppDetailLoading && fullAppDetail && (
+              <>
+                <Descriptions.Item label="Full Details Status">
+                  <Tag color="blue">Linked from Application Catalog</Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="Full Acronym">{fullAppDetail.acronym || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Full Short Description">{fullAppDetail.shortDescription || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Full Type">{fullAppDetail.applicationType || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Full Criticality">{fullAppDetail.businessCriticality || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Full Lifecycle Status">{fullAppDetail.lifecycleStatus || '—'}</Descriptions.Item>
+              </>
+            )}
             <Descriptions.Item label="Acronym">{detail.acronym || '—'}</Descriptions.Item>
             <Descriptions.Item label="Short Description">{detail.shortDescription || '—'}</Descriptions.Item>
             <Descriptions.Item label="Application Type">{detail.applicationType || '—'}</Descriptions.Item>

@@ -266,6 +266,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const canEditFactories = !readOnly;
   const [showAdmin, setShowAdmin] = useState(false);
   const [showGlobalComponentSearch, setShowGlobalComponentSearch] = useState(false);
+  const [componentSearchTerms, setComponentSearchTerms] = useState<Record<string, string>>({}); // Key: ${neighborhoodName}:${componentId}
   const [neighborhoodTabs, setNeighborhoodTabs] = useState<FactoryNeighborhoodSummary[]>([]);
   const [activeNeighborhoodTab, setActiveNeighborhoodTab] = useState<string>(DEFAULT_NEIGHBORHOOD_NAME);
   const [loadingNeighborhoodTabs, setLoadingNeighborhoodTabs] = useState(false);
@@ -293,6 +294,14 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [activeModelComponentTabs, setActiveModelComponentTabs] = useState<Record<string, string>>({});
   const activeTab = activeFactoryTabs[activeNeighborhoodTab]
     || getModelCatalogTabKey(activeNeighborhoodTab);
+  
+  // Map component names to Data tab factory keys
+  const componentNameToDataTabKey: Record<string, string> = {
+    'application': 'applications',
+    'server': 'servers',
+    'database': 'databases',
+  };
+  
   const setActiveTab = useCallback((tab: string) => {
     const modelCatalogTabKey = getModelCatalogTabKey(activeNeighborhoodTab);
     const modelComponentsTabKey = getModelComponentsTabKey(activeNeighborhoodTab);
@@ -303,6 +312,18 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     }
     setActiveFactoryTabs((current) => ({ ...current, [activeNeighborhoodTab]: tab }));
   }, [activeNeighborhoodTab, getModelCatalogTabKey, getModelComponentsTabKey]);
+
+  // Navigate to the correct factory tab when clicking a search result component
+  const navigateToComponentFactory = useCallback((componentName: string, searchValue: string) => {
+    const dataTabKey = componentNameToDataTabKey[componentName];
+    if (dataTabKey) {
+      // Navigate to Data tab with exact search encoding
+      setActiveOuterTab('data');
+      setActiveDataTab(dataTabKey);
+      setFactorySearch((prev) => ({ ...prev, [dataTabKey]: encodeExactFactorySearch(searchValue) }));
+    }
+    // For custom component types in ModelComponents, they would need different handling
+  }, [componentNameToDataTabKey]);
 
   const formatFactoryTabTitle = useCallback((name: string) => {
     const trimmedName = String(name || '').trim();
@@ -2017,8 +2038,12 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                         children: renderScrollablePane(
                                           <ComponentSearch
                                             neighborhoodName={neighborhood.name}
-                                            onRowClick={(componentId, rowId) => {
-                                              setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
+                                            initialSearchTerm={componentSearchTerms[`${neighborhood.name}:${activeModelComponentTabs[neighborhood.name] || ''}`] || ''}
+                                            onRowClick={(componentId, rowId, searchTerm, componentName) => {
+                                              // Navigate to the component factory with the search term
+                                              if (componentName && searchTerm) {
+                                                navigateToComponentFactory(componentName, searchTerm);
+                                              }
                                             }}
                                           />,
                                         ),
@@ -2277,6 +2302,14 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         open={showGlobalComponentSearch}
         neighborhoodName={activeNeighborhoodTab}
         onClose={() => setShowGlobalComponentSearch(false)}
+        onRowClick={(componentId, rowId, searchTerm, componentName) => {
+          // Navigate to the component factory with the search term
+          if (componentName && searchTerm) {
+            navigateToComponentFactory(componentName, searchTerm);
+          }
+          // Close the modal after navigation
+          setShowGlobalComponentSearch(false);
+        }}
       />
     </Layout>
   );

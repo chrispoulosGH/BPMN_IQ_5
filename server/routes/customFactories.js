@@ -5,10 +5,12 @@ const XLSX = require('xlsx');
 
 const User = require('../models/User');
 const Component = require('../models/Component');
+const ComponentSearchIndex = require('../models/ComponentSearchIndex');
 const Model = require('../models/Model');
 const { Application, Actor, Product } = require('../models/ReferenceData');
 const Server = require('../models/Server');
 const DatabaseInstance = require('../models/DatabaseInstance');
+const { rebuildSearchIndex } = require('../utils/searchIndexBuilder');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -764,8 +766,13 @@ async function buildComponentUploadFactories({ neighborhoodName, rows, component
       const rowState = existsInDataCatalog ? 'staged' : 'invalid';
 
       if (!existingRow) {
+        const rowValues = { [PRIMARY_KEY_COLUMN]: componentValue };
+        // Add correlation_id for application component
+        if (dataComponentType === 'application' && applicationCorrelationId) {
+          rowValues.correlation_id = applicationCorrelationId;
+        }
         rowMap.set(primaryKey, {
-          values: { [PRIMARY_KEY_COLUMN]: componentValue },
+          values: rowValues,
           owner,
           state: rowState,
           sourcedFrom: sourceFileName,
@@ -787,18 +794,26 @@ async function buildComponentUploadFactories({ neighborhoodName, rows, component
   }
 
   return componentColumns
-    .map((column) => ({
-      neighborhoodName,
-      name: column.name,
-      sourceColumnName: column.sourceColumnName,
-      parentFactoryName: column.parentFactoryName,
-      qualifierColumns: [],
-      columns: [PRIMARY_KEY_COLUMN],
-      owner,
-      createdBy,
-      sourceFileName,
-      rows: Array.from(factoryRowMaps.get(column.name).values()),
-    }))
+    .map((column) => {
+      const dataComponentType = getDataComponentType(column.name);
+      const columnsArray = [PRIMARY_KEY_COLUMN];
+      // Add correlation_id column for application component
+      if (dataComponentType === 'application') {
+        columnsArray.push('correlation_id');
+      }
+      return {
+        neighborhoodName,
+        name: column.name,
+        sourceColumnName: column.sourceColumnName,
+        parentFactoryName: column.parentFactoryName,
+        qualifierColumns: [],
+        columns: columnsArray,
+        owner,
+        createdBy,
+        sourceFileName,
+        rows: Array.from(factoryRowMaps.get(column.name).values()),
+      };
+    })
     .filter((factory) => factory.rows.length > 0);
 }
 
@@ -1155,6 +1170,7 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
       await Promise.all([
         Model.deleteOne({ _id: neighborhood._id }).catch(() => null),
         Component.deleteMany({ neighborhoodName: name }).catch(() => null),
+        ComponentSearchIndex.deleteMany({ neighborhoodName: name }).catch(() => null),
       ]);
     }
     if (err?.code === 11000) return res.status(409).json({ error: 'Model already exists' });
@@ -1170,9 +1186,10 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
     const neighborhood = await Model.findOne({ name }, { _id: 1, name: 1 }).lean();
     if (!neighborhood) return res.status(404).json({ error: 'Model not found' });
 
-    const [deletedFactories, deletedNeighborhood] = await Promise.all([
+    const [deletedFactories, deletedNeighborhood, deletedIndex] = await Promise.all([
       Component.deleteMany({ neighborhoodName: name }),
       Model.deleteOne({ _id: neighborhood._id }),
+      ComponentSearchIndex.deleteMany({ neighborhoodName: name }),
     ]);
 
     if ((deletedNeighborhood.deletedCount || 0) !== 1) {
@@ -1334,6 +1351,12 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
       throw writeError;
     }
 
+    // Rebuild search index after component upload
+    await rebuildSearchIndex(neighborhoodName).catch((err) => {
+      console.error(`[INDEX] Failed to rebuild search index after upload: ${err.message}`);
+      // Don't fail the upload if index rebuild fails - it can be rebuilt manually
+    });
+
     res.status(201).json({ factories: savedFactories, parts: savedFactories, components: savedFactories });
   } catch (err) {
     res.status(err?.status || 500).json({ error: getValidationMessage(err) });
@@ -1411,6 +1434,171 @@ router.delete('/:factoryId', requireAdminWrite, async (req, res) => {
     res.json({ success: true, factoryId: String(factory._id), partId: String(factory._id), componentId: String(factory._id), neighborhoodName: factory.neighborhoodName, name: factory.name });
   } catch (err) {
     res.status(err?.status || 500).json({ error: getValidationMessage(err) });
+  }
+});
+
+// Rebuild search index for a neighborhood (admin endpoint)
+router.post('/search/index/rebuild', async (req, res) => {
+  try {
+    const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
+    
+    const result = await rebuildSearchIndex(neighborhoodName);
+    res.json({ success: true, message: `Search index rebuilt for ${neighborhoodName}`, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Type-ahead search endpoint
+router.get('/search/typeahead', async (req, res) => {
+  try {
+    const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
+    const prefix = String(req.query?.prefix || '').trim().toLowerCase();
+    const componentName = req.query?.componentName ? String(req.query.componentName).trim() : null;
+    const limit = Math.min(parseInt(req.query?.limit) || 10, 100);
+    
+    if (!prefix || prefix.length < 1) {
+      return res.json({ suggestions: [] });
+    }
+    
+    // Build query
+    const query = {
+      neighborhoodName,
+      searchableTextLower: { $regex: `^${prefix}`, $options: 'i' }
+    };
+    
+    if (componentName) {
+      query.componentName = componentName;
+    }
+    
+    // Find unique suggestions, grouped by value and sorted by frequency
+    const suggestions = await ComponentSearchIndex.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: '$rowName',
+          frequency: { $sum: '$frequency' },
+          componentNames: { $addToSet: '$componentName' },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { frequency: -1, count: -1 } },
+      { $limit: limit },
+      {
+        $project: {
+          _id: 0,
+          value: '$_id',
+          frequency: 1,
+          componentNames: 1,
+          count: 1
+        }
+      }
+    ]);
+    
+    res.json({ suggestions, prefix, neighborhoodName });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Search using the index (fast search)
+router.get('/search/indexed', async (req, res) => {
+  try {
+    const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
+    const searchTerm = String(req.query?.term || '').trim();
+    
+    if (!searchTerm || searchTerm.length < 2) {
+      return res.status(400).json({ error: 'Search term must be at least 2 characters' });
+    }
+    
+    // Escape regex special characters
+    function escapeRegExp(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    
+    // Search with word boundaries (both start and end)
+    const searchRegex = escapeRegExp(searchTerm);
+    const searchPattern = `\\b${searchRegex}\\b`;
+    
+    console.log(`[INDEX SEARCH] Searching for: "${searchTerm}" with pattern: "${searchPattern}" in ${neighborhoodName}`);
+    
+    // Query the search index for matching rows
+    const indexResults = await ComponentSearchIndex.find({
+      neighborhoodName,
+      searchableTextLower: { $regex: searchPattern, $options: 'i' }
+    })
+      .lean();
+    
+    console.log(`[INDEX SEARCH] Found ${indexResults.length} matching rows`);
+    
+    // Expand cachedHierarchies or cachedLineagePaths: create one result per hierarchy path
+    const results = [];
+    
+    for (const indexDoc of indexResults) {
+      // Use new structured hierarchies if available, otherwise fall back to string paths
+      let hierarchiesData;
+      
+      if (indexDoc.cachedHierarchies && indexDoc.cachedHierarchies.length > 0) {
+        // New format: array of structured hierarchies
+        hierarchiesData = indexDoc.cachedHierarchies.map(h => ({
+          nodes: h,
+          pathStr: h.map(node => node.rowName).join(' > ')
+        }));
+      } else {
+        // Fallback for old format: parse string paths
+        const paths = indexDoc.cachedLineagePaths || [indexDoc.rowName];
+        hierarchiesData = paths.map(pathStr => ({
+          nodes: pathStr.split(' > ').map((partName, level) => ({
+            componentName: level === pathStr.split(' > ').length - 1 ? indexDoc.componentName : 'Unknown',
+            componentId: level === pathStr.split(' > ').length - 1 ? indexDoc.componentId : null,
+            rowName: partName,
+            rowId: level === pathStr.split(' > ').length - 1 ? indexDoc.rowId : null
+          })),
+          pathStr
+        }));
+      }
+      
+      for (const hierarchyData of hierarchiesData) {
+        const hierarchy = hierarchyData.nodes.map((node, level) => ({
+          componentName: node.componentName,
+          rowName: node.rowName,
+          componentId: String(node.componentId || ''),
+          rowId: String(node.rowId || ''),
+          level,
+          values: level === hierarchyData.nodes.length - 1 ? indexDoc.fieldByValue : {}
+        }));
+        
+        results.push({
+          searchMatchComponentId: String(indexDoc.componentId),
+          searchMatchComponentName: indexDoc.componentName,
+          searchMatchRowId: String(indexDoc.rowId),
+          searchMatchRowName: indexDoc.rowName,
+          searchMatchFieldName: 'indexed',
+          searchMatchFieldValue: indexDoc.rowName,
+          hierarchy,
+          hierarchyPath: hierarchyData.pathStr,
+          state: 'indexed',
+          owner: '',
+          createdBy: '',
+          updatedBy: '',
+          createdAt: indexDoc.updatedAt,
+          updatedAt: indexDoc.updatedAt,
+        });
+      }
+    }
+    
+    console.log(`[INDEX SEARCH] Expanded to ${results.length} results from ${indexResults.length} index entries`);
+    
+    res.json({
+      results,
+      totalMatches: results.length,
+      searchTerm,
+      neighborhoodName,
+      source: 'index'
+    });
+  } catch (err) {
+    console.error('[INDEX SEARCH] Error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
