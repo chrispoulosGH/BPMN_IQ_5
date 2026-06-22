@@ -9,12 +9,26 @@ const modelQualifierSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const modelForeignKeySchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    sourceColumnName: { type: String, required: true, trim: true },
+    fieldName: { type: String, required: true, trim: true },
+    targetReference: { type: String, default: '', trim: true },
+    targetGroup: { type: String, default: '', trim: true },
+    targetScope: { type: String, default: '', trim: true },
+    targetColumnName: { type: String, default: '', trim: true },
+  },
+  { _id: false }
+);
+
 const modelFactorySchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     sourceColumnName: { type: String, required: true, trim: true },
     parentFactoryName: { type: String, default: '', trim: true },
     qualifierColumns: { type: [modelQualifierSchema], default: [] },
+    foreignKeyColumns: { type: [modelForeignKeySchema], default: [] },
     level: { type: Number, default: 0 },
   },
   { _id: false }

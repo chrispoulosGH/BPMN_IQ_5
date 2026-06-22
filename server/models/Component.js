@@ -9,6 +9,19 @@ const componentQualifierSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const componentForeignKeySchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    sourceColumnName: { type: String, required: true, trim: true },
+    fieldName: { type: String, required: true, trim: true },
+    targetReference: { type: String, default: '', trim: true },
+    targetGroup: { type: String, default: '', trim: true },
+    targetScope: { type: String, default: '', trim: true },
+    targetColumnName: { type: String, default: '', trim: true },
+  },
+  { _id: false }
+);
+
 const componentRowSchema = new mongoose.Schema(
   {
     values: {
@@ -35,6 +48,7 @@ const componentSchema = new mongoose.Schema(
     parentFactoryName: { type: String, default: '', trim: true },
     columns: [{ type: String, required: true, trim: true }],
     qualifierColumns: { type: [componentQualifierSchema], default: [] },
+    foreignKeyColumns: { type: [componentForeignKeySchema], default: [] },
     owner: { type: String, default: '' },
     createdBy: { type: String, default: '' },
     sourceFileName: { type: String, default: '' },

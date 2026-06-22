@@ -50,76 +50,29 @@ function createValidationError(message, status = 400) {
   return error;
 }
 
-function getValidationMessage(err) {
-  if (!err) return 'Unknown error';
-  if (typeof err.message === 'string') return err.message;
-  return err.toString?.() || 'Unknown error';
-}
-
-function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelColumns = [], uploadRows = [] }) {
-  const normalizedModelRows = (modelCatalogRows || []).map((row) => {
-    const values = getModelCatalogRowValues(row);
-    const canonicalValues = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(values, column.sourceColumnName));
-      return acc;
-    }, {});
-    const originalValues = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getNormalizedText(getRowValueByColumnName(values, column.sourceColumnName));
-      return acc;
-    }, {});
-
-    return { canonicalValues, originalValues };
-  });
-
-  const unmatchedRows = [];
-  (uploadRows || []).forEach((uploadRow, index) => {
-    const comparableRow = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(uploadRow, column.sourceColumnName));
-      return acc;
-    }, {});
-
-    const hasMatch = normalizedModelRows.some((modelRow) => matchedModelColumns
-      .every((column) => modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName]));
-
-    if (!hasMatch) {
-      const mismatchPreview = matchedModelColumns
-        .map((column) => `${column.sourceColumnName}=${String(getRowValueByColumnName(uploadRow, column.sourceColumnName) ?? '').trim()}`)
-        .join(', ');
-
-      let bestCandidate = null;
-      let bestScore = -1;
-      normalizedModelRows.forEach((modelRow) => {
-        const score = matchedModelColumns.reduce((sum, column) => {
-          return sum + (modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName] ? 1 : 0);
-        }, 0);
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestCandidate = modelRow.originalValues;
-        }
-      });
-
-      const bestCandidatePreview = bestCandidate
-        ? matchedModelColumns
-          .map((column) => `${column.sourceColumnName}=${bestCandidate[column.sourceColumnName] || ''}`)
-          .join(', ')
-        : 'none';
-
-      unmatchedRows.push(`row ${index + 2} (${mismatchPreview}) -> closest model: ${bestCandidatePreview}`);
+function getValidationMessage(error) {
+  if (!error) return 'Unknown error';
+  if (error?.errors && typeof error.errors === 'object') {
+    const firstKey = Object.keys(error.errors)[0];
+    if (firstKey && error.errors[firstKey]?.message) {
+      return `${firstKey}: ${error.errors[firstKey].message}`;
     }
-  });
-
-  if (unmatchedRows.length) {
-    throw createValidationError(`Component upload is incompatible with model data. ${unmatchedRows.length} row(s) did not match model hierarchy. Examples: ${unmatchedRows.slice(0, 12).join('; ')}${unmatchedRows.length > 12 ? '; ...' : ''}`);
   }
+  return error.message || 'Unknown error';
 }
 
-async function getCurrentRole(req) {
-  const userId = req.currentUser?.userId;
-  if (!userId) return null;
-  const user = await User.findOne({ userId }).lean();
-  if (!user?.role) return null;
-  return mongoose.connection.collection('roles').findOne({ name: user.role });
+async function ensureDefaultNeighborhood() {
+  await Model.updateOne(
+    { name: DEFAULT_NEIGHBORHOOD_NAME },
+    {
+      $setOnInsert: {
+        name: DEFAULT_NEIGHBORHOOD_NAME,
+        owner: 'System',
+        createdBy: 'system',
+      },
+    },
+    { upsert: true }
+  );
 }
 
 async function migrateFactoriesToDefaultNeighborhood() {
@@ -166,6 +119,14 @@ async function ensureNeighborhoodRecordsFromFactories() {
   ).catch((error) => {
     if (error?.code !== 11000) throw error;
   });
+}
+
+async function getCurrentRole(req) {
+  const userId = req.currentUser?.userId;
+  if (!userId) return null;
+  const user = await User.findOne({ userId }).lean();
+  if (!user?.role) return null;
+  return mongoose.connection.collection('roles').findOne({ name: user.role });
 }
 
 async function requireAdminWrite(req, res, next) {
@@ -593,7 +554,6 @@ function splitUploadColumns(columns) {
   return { componentColumns };
 }
 
-function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelColumns = [], uploadRows = [] }) {
   const normalizedModelRows = (modelCatalogRows || []).map((row) => {
     const values = getModelCatalogRowValues(row);
     const canonicalValues = matchedModelColumns.reduce((acc, column) => {
@@ -1075,14 +1035,45 @@ function buildNeighborhoodFactories({ neighborhoodName, rows, definitions, sourc
       neighborhoodName,
       name: definition.name,
       sourceColumnName: definition.sourceColumnName,
-      parentFactoryName: definition.parentFactoryName || '',
-      columns,
+        return buildHierarchyColumnPlan(headers).map((factory, index) => ({
+          name: factory.name,
+          sourceColumnName: factory.sourceColumnName,
+          columnIndex: factory.index ?? index,
+          parentFactoryName: factory.parentFactoryName,
+          level: index,
+          qualifiers: (factory.qualifierColumns || []).map((qualifier) => ({
+            name: qualifier.name,
+            sourceColumnName: qualifier.sourceColumnName,
+            fieldName: qualifier.fieldName,
+            columnIndex: qualifier.columnIndex,
+          })),
+          foreignKeyColumns: (factory.foreignKeyColumns || []).map((fk) => ({
+            name: fk.name,
+            sourceColumnName: fk.sourceColumnName,
+            fieldName: fk.fieldName,
+            targetReference: fk.targetReference,
+            targetGroup: fk.targetGroup,
+            targetScope: fk.targetScope,
+            targetColumnName: fk.targetColumnName,
+            columnIndex: fk.columnIndex,
+          })),
+        }));
+
+    values[PRIMARY_KEY_COLUMN] = primaryKeyValue;
+
+    nextRows.push({
+      values,
       owner,
+      state: 'invalid',
+      sourcedFrom: sourceFileName,
       createdBy,
-      sourceFileName,
-      rows: builtRows,
-    };
-  });
+      updatedBy: createdBy,
+      parentFactoryName: existingFactory.parentFactoryName || '',
+      parentName: row.parentName || '',
+    });
+    existingKeys.add(normalizedPrimaryKey);
+    return nextRows;
+  }, []);
 }
 
 function serializeFactory(factory) {
