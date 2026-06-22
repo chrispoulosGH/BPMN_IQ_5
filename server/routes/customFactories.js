@@ -2,6 +2,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const XLSX = require('xlsx');
+const fs = require('fs');
+const path = require('path');
 
 const User = require('../models/User');
 const Component = require('../models/Component');
@@ -56,7 +58,7 @@ function getValidationMessage(err) {
   return err.toString?.() || 'Unknown error';
 }
 
-function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelColumns = [], uploadRows = [] }) {
+function collectValidationErrors({ modelCatalogRows = [], matchedModelColumns = [], uploadRows = [] }) {
   const normalizedModelRows = (modelCatalogRows || []).map((row) => {
     const values = getModelCatalogRowValues(row);
     const canonicalValues = matchedModelColumns.reduce((acc, column) => {
@@ -71,7 +73,7 @@ function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelCol
     return { canonicalValues, originalValues };
   });
 
-  const unmatchedRows = [];
+  const errorRows = [];
   (uploadRows || []).forEach((uploadRow, index) => {
     const comparableRow = matchedModelColumns.reduce((acc, column) => {
       acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(uploadRow, column.sourceColumnName));
@@ -82,10 +84,6 @@ function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelCol
       .every((column) => modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName]));
 
     if (!hasMatch) {
-      const mismatchPreview = matchedModelColumns
-        .map((column) => `${column.sourceColumnName}=${String(getRowValueByColumnName(uploadRow, column.sourceColumnName) ?? '').trim()}`)
-        .join(', ');
-
       let bestCandidate = null;
       let bestScore = -1;
       normalizedModelRows.forEach((modelRow) => {
@@ -99,18 +97,96 @@ function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelCol
         }
       });
 
-      const bestCandidatePreview = bestCandidate
-        ? matchedModelColumns
-          .map((column) => `${column.sourceColumnName}=${bestCandidate[column.sourceColumnName] || ''}`)
-          .join(', ')
-        : 'none';
+      const errorRecord = {
+        rowNumber: index + 2,
+        uploadedValues: {},
+        closestModelMatch: bestCandidate || {},
+        matchScore: bestScore,
+      };
 
-      unmatchedRows.push(`row ${index + 2} (${mismatchPreview}) -> closest model: ${bestCandidatePreview}`);
+      matchedModelColumns.forEach((column) => {
+        errorRecord.uploadedValues[column.sourceColumnName] = String(getRowValueByColumnName(uploadRow, column.sourceColumnName) ?? '').trim();
+      });
+
+      errorRows.push(errorRecord);
     }
   });
 
-  if (unmatchedRows.length) {
-    throw createValidationError(`Component upload is incompatible with model data. ${unmatchedRows.length} row(s) did not match model hierarchy. Examples: ${unmatchedRows.slice(0, 12).join('; ')}${unmatchedRows.length > 12 ? '; ...' : ''}`);
+  return errorRows;
+}
+
+function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelColumns = [], uploadRows = [] }) {
+  const errorRows = collectValidationErrors({ modelCatalogRows, matchedModelColumns, uploadRows });
+
+  if (errorRows.length) {
+    const preview = errorRows.slice(0, 12)
+      .map((err) => {
+        const values = matchedModelColumns.map((col) => `${col.sourceColumnName}=${err.uploadedValues[col.sourceColumnName]}`).join(', ');
+        const model = matchedModelColumns.map((col) => `${col.sourceColumnName}=${err.closestModelMatch[col.sourceColumnName] || ''}`).join(', ');
+        return `row ${err.rowNumber} (${values}) -> closest: ${model}`;
+      })
+      .join('; ');
+    throw createValidationError(`Component upload is incompatible with model data. ${errorRows.length} row(s) did not match model hierarchy. Examples: ${preview}${errorRows.length > 12 ? '; ...' : ''}`);
+  }
+}
+
+function saveValidationErrorReport({ neighborhoodName, errorRows = [], matchedModelColumns = [], sourceFileName = '' }) {
+  try {
+    const errorReportsDir = path.join(__dirname, '..', '..', 'data', 'error-reports');
+    
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(errorReportsDir)) {
+      fs.mkdirSync(errorReportsDir, { recursive: true });
+    }
+
+    // Build spreadsheet data
+    const headers = ['Row Number', 'Match Score'];
+    const columnNames = matchedModelColumns.map((col) => col.sourceColumnName || col);
+    
+    headers.push(...columnNames.map((col) => `${col} (Uploaded)`));
+    headers.push(...columnNames.map((col) => `${col} (Model)`));
+
+    const rows = errorRows.map((error) => {
+      const row = [error.rowNumber, error.matchScore];
+      columnNames.forEach((col) => {
+        row.push(error.uploadedValues?.[col] || '');
+      });
+      columnNames.forEach((col) => {
+        row.push(error.closestModelMatch?.[col] || '');
+      });
+      return row;
+    });
+
+    // Create workbook
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Failed Rows');
+
+    // Set column widths
+    const colWidths = headers.map(() => 20);
+    worksheet['!cols'] = colWidths;
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('Z')[0];
+    const safeSourceName = String(sourceFileName || 'upload').replace(/[^a-z0-9.-]/gi, '_');
+    const filename = `validation-errors-${neighborhoodName}-${timestamp}-${safeSourceName}.xlsx`;
+    const filepath = path.join(errorReportsDir, filename);
+
+    // Write file
+    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+    fs.writeFileSync(filepath, buffer);
+
+    console.log(`[ERROR-REPORT] Saved validation errors to: ${filepath}`);
+
+    return {
+      filename,
+      filepath,
+      relativePath: `data/error-reports/${filename}`,
+      errorCount: errorRows.length,
+    };
+  } catch (err) {
+    console.error(`[ERROR-REPORT] Failed to save validation error report: ${err.message}`, err);
+    return null;
   }
 }
 
@@ -341,6 +417,25 @@ function getComponentColumnBaseName(header) {
   return getTreeComponentColumnBaseName(header);
 }
 
+function isIgnoredMetadataColumn(columnName) {
+  const normalized = getComparableValue(columnName);
+  if (!normalized) return true;
+
+  // Global metadata columns to ignore
+  const ignoredPatterns = [
+    /^sequence/i,           // sequence_uml, domain_sequence, etc.
+    /^editor$/i,             // editor
+    /^action$/i,             // action
+    /^api$/i,                // api
+    /^date\s*updated/i,      // Date Updated, Date Updated Qualifier
+    /^column\d+$/i,          // Column1, Column2, etc (empty columns)
+    /^e2eux/i,               // e2eux_sequence, e2eux
+    /^sox\s*control/i,       // SOX Control
+  ];
+
+  return ignoredPatterns.some((pattern) => pattern.test(normalized));
+}
+
 function parseForeignKeyColumnHeader(header) {
   const trimmedHeader = getNormalizedText(header);
   if (!FK_COLUMN_PREFIX.test(trimmedHeader)) return null;
@@ -376,6 +471,9 @@ function buildHierarchyColumnPlan(columns) {
   columns.forEach((column, index) => {
     const sourceColumnName = getNormalizedText(column);
     if (!sourceColumnName) return;
+
+    // Skip ignored metadata columns
+    if (isIgnoredMetadataColumn(sourceColumnName)) return;
 
     if (isTreeComponentHeader(sourceColumnName)) {
       const componentName = getTreeComponentColumnBaseName(sourceColumnName);
@@ -554,41 +652,59 @@ function getModelCatalogRowValues(row) {
   return { ...row };
 }
 
+function classifyComponentColumnsAgainstModel({ modelCatalogColumns = [], componentColumns = [] }) {
+  const catalogColumnNames = new Set(
+    (modelCatalogColumns || [])
+      .map((col) => getComparableValue(typeof col === 'string' ? col : col?.sourceColumnName))
+      .filter(Boolean)
+  );
+
+  const matchedModelColumns = [];
+  const unmatchedComponentColumns = [];
+
+  for (const componentColumn of componentColumns || []) {
+    const comparableName = getComparableValue(componentColumn.sourceColumnName);
+    if (catalogColumnNames.has(comparableName)) {
+      matchedModelColumns.push(componentColumn);
+    } else {
+      unmatchedComponentColumns.push(componentColumn);
+    }
+  }
+
+  return {
+    matchedModelColumns,
+    unmatchedComponentColumns,
+  };
+}
+
 function splitUploadColumns(columns) {
-  const componentColumns = [];
-  const seenComponentNames = new Set();
-
-  columns.forEach((column, index) => {
-    const sourceColumnName = getNormalizedText(column);
-    if (!sourceColumnName) return;
-
-    const componentName = getComponentColumnBaseName(sourceColumnName);
-    if (!componentName) {
-      return;
-    }
-
-    const normalizedComponentName = getComparableValue(componentName);
-    if (!normalizedComponentName) {
-      throw createValidationError(`Invalid component column name: ${sourceColumnName}`);
-    }
-    if (seenComponentNames.has(normalizedComponentName)) {
-      throw createValidationError(`Duplicate component column found: ${sourceColumnName}`);
-    }
-
-    const parentFactoryName = componentColumns[componentColumns.length - 1]?.name || '';
-    componentColumns.push({
-      sourceColumnName,
-      name: componentName,
-      normalizedName: normalizedComponentName,
-      parentFactoryName,
-      index,
-    });
-    seenComponentNames.add(normalizedComponentName);
-  });
-
-  if (!componentColumns.length) {
+  const hierarchyPlan = buildHierarchyColumnPlan(columns);
+  
+  if (!hierarchyPlan.length) {
     throw createValidationError('Upload must include at least one component column (for example: Application Component)');
   }
+
+  const componentColumns = hierarchyPlan.map((component, index) => ({
+    sourceColumnName: component.sourceColumnName,
+    name: component.name,
+    normalizedName: component.normalizedName,
+    parentFactoryName: component.parentFactoryName || '',
+    index: component.index ?? index,
+    qualifierColumns: (component.qualifierColumns || []).map((qualifier) => ({
+      name: qualifier.name,
+      sourceColumnName: qualifier.sourceColumnName,
+      fieldName: qualifier.fieldName,
+    })),
+    foreignKeyColumns: (component.foreignKeyColumns || []).map((foreignKey) => ({
+      name: foreignKey.name,
+      sourceColumnName: foreignKey.sourceColumnName,
+      fieldName: foreignKey.fieldName,
+      targetReference: foreignKey.targetReference,
+      targetGroup: foreignKey.targetGroup,
+      targetScope: foreignKey.targetScope,
+      targetColumnName: foreignKey.targetColumnName,
+    })),
+  }));
 
   return { componentColumns };
 }
@@ -1335,15 +1451,38 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
     const { columns: uploadColumns, rows: uploadRows } = parseModelCatalogWorkbook(req.file.buffer, req.file.originalname);
     const { componentColumns } = splitUploadColumns(uploadColumns);
     const { matchedModelColumns, unmatchedComponentColumns } = classifyComponentColumnsAgainstModel({
-      schemaFactories: neighborhood.schemaFactories,
+      modelCatalogColumns: neighborhood.modelCatalogColumns,
       componentColumns,
     });
 
-    validateUploadRowsAgainstModel({
+    // Check for validation errors but collect them instead of throwing
+    const errorRows = collectValidationErrors({
       modelCatalogRows: neighborhood.modelCatalogRows,
       matchedModelColumns,
       uploadRows,
     });
+
+    if (errorRows.length) {
+      // Save error report to disk
+      const errorReport = saveValidationErrorReport({
+        neighborhoodName,
+        errorRows,
+        matchedModelColumns,
+        sourceFileName: req.file.originalname,
+      });
+
+      return res.status(409).json({
+        error: `Component upload validation failed. ${errorRows.length} row(s) did not match model hierarchy.`,
+        errorCount: errorRows.length,
+        errorRows,
+        matchedModelColumns,
+        errorReport: errorReport ? {
+          filename: errorReport.filename,
+          relativePath: errorReport.relativePath,
+          errorCount: errorReport.errorCount,
+        } : null,
+      });
+    }
 
     const owner = req.currentUser?.displayName || req.currentUser?.userId || '';
     const createdBy = req.currentUser?.userId || '';
@@ -1455,6 +1594,49 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
             }
           );
         }
+      }
+
+      // Populate model catalog rows with component data from upload rows
+      try {
+        const model = await Model.findOne({ name: neighborhoodName });
+        if (model && Array.isArray(model.modelCatalogRows) && model.modelCatalogRows.length > 0) {
+          // Update existing model catalog rows with component column values from uploadRows
+          for (let i = 0; i < model.modelCatalogRows.length; i += 1) {
+            const modelRow = model.modelCatalogRows[i];
+            if (!modelRow.values) modelRow.values = {};
+
+            // Find matching upload row and fill in missing component columns
+            for (const uploadRow of uploadRows) {
+              // Check if this could be the same row by comparing known values
+              let couldMatch = true;
+              for (const col of neighborhood.modelCatalogColumns) {
+                const modelVal = String(modelRow.values?.[col] || '').trim().toLowerCase();
+                const uploadVal = String(uploadRow[col] || '').trim().toLowerCase();
+                
+                // If both have values and they don't match, it's not the same row
+                if (modelVal && uploadVal && modelVal !== uploadVal) {
+                  couldMatch = false;
+                  break;
+                }
+              }
+
+              if (couldMatch) {
+                // Fill in all values from upload row
+                for (const col of neighborhood.modelCatalogColumns) {
+                  const uploadValue = uploadRow[col];
+                  if (uploadValue && !modelRow.values[col]) {
+                    modelRow.values[col] = uploadValue;
+                  }
+                }
+                break;
+              }
+            }
+          }
+          await model.save();
+        }
+      } catch (updateError) {
+        console.error(`[COMPONENT] Failed to update model catalog rows: ${updateError.message}`);
+        // Don't fail the upload if model catalog update fails
       }
     } catch (writeError) {
       if (createdFactoryIds.length) {
@@ -1972,6 +2154,52 @@ router.get('/search/global', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/validation-errors-report', requireAdminWrite, async (req, res) => {
+  try {
+    const { neighborhoodName, errorRows = [], matchedModelColumns = [] } = req.body;
+    
+    if (!neighborhoodName) return res.status(400).json({ error: 'Model name is required' });
+    if (!Array.isArray(errorRows) || !errorRows.length) {
+      return res.status(400).json({ error: 'Error rows data is required' });
+    }
+
+    // Build spreadsheet data
+    const headers = ['Row Number', 'Match Score'];
+    const columnNames = matchedModelColumns.map((col) => col.sourceColumnName || col);
+    
+    headers.push(...columnNames.map((col) => `${col} (Uploaded)`));
+    headers.push(...columnNames.map((col) => `${col} (Model)`));
+
+    const rows = errorRows.map((error) => {
+      const row = [error.rowNumber, error.matchScore];
+      columnNames.forEach((col) => {
+        row.push(error.uploadedValues?.[col] || '');
+      });
+      columnNames.forEach((col) => {
+        row.push(error.closestModelMatch?.[col] || '');
+      });
+      return row;
+    });
+
+    // Create workbook
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Failed Rows');
+
+    // Set column widths
+    const colWidths = headers.map(() => 20);
+    worksheet['!cols'] = colWidths;
+
+    // Return Excel file
+    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="validation-errors-${neighborhoodName}-${Date.now()}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(err?.status || 500).json({ error: getValidationMessage(err) });
   }
 });
 

@@ -58,6 +58,7 @@ import ServerFactory from './components/ServerFactory';
 import DatabaseFactory from './components/DatabaseFactory';
 import NeighborhoodFactory from './components/NeighborhoodFactory';
 import ModelCatalog from './components/ModelCatalog';
+import ComponentsViewer from './components/ComponentsViewer';
 import BusinessFlowFactory from './components/BusinessFlowFactory';
 import CapabilitiesFactory from './components/CapabilitiesFactory';
 import ActorFactory from './components/ActorFactory';
@@ -1999,84 +2000,41 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                               {
                                 key: getModelComponentsTabKey(neighborhood.name),
                                 label: fTabLabel(getModelComponentsTabKey(neighborhood.name), <><AppstoreOutlined /> Components</>),
-                                children: (
-                                  <Tabs
-                                    className="factory-tabs model-factory-tabs"
-                                    defaultActiveKey={getModelBpmnComponentTabKey(neighborhood.name)}
-                                    activeKey={activeModelComponentTabs[neighborhood.name] || getModelBpmnComponentTabKey(neighborhood.name)}
-                                    onChange={(key) => {
-                                      setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: key }));
+                                children: renderScrollablePane(
+                                  <ComponentsViewer
+                                    neighborhoodName={neighborhood.name}
+                                    availableComponentIds={(neighborhoodFactories[neighborhood.name] || []).map((f) => f._id)}
+                                    onComponentTabSelect={(componentId, componentName) => {
+                                      setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
                                     }}
-                                    items={[
-                                      {
-                                        key: getComponentSearchTabKey(neighborhood.name),
-                                        label: fTabLabel(getComponentSearchTabKey(neighborhood.name), <><SearchOutlined /> Search</>),
-                                        children: renderScrollablePane(
-                                          <ComponentSearch
-                                            neighborhoodName={neighborhood.name}
-                                            initialSearchTerm={componentSearchTerms[`${neighborhood.name}:${activeModelComponentTabs[neighborhood.name] || ''}`] || ''}
-                                            onRowClick={(componentId, rowId, searchTerm, componentName) => {
-                                              // Navigate to the component factory with the search term
-                                              if (componentName && searchTerm) {
-                                                handleNavigateToFactory(componentName, searchTerm);
-                                              }
-                                            }}
-                                          />,
-                                        ),
-                                      },
-                                      {
-                                        key: getModelBpmnComponentTabKey(neighborhood.name),
-                                        label: fTabLabel(getModelBpmnComponentTabKey(neighborhood.name), <><DatabaseOutlined /> BPMN Component</>),
-                                        children: renderScrollablePane(
-                                          <BpmnFactory
-                                            defaultSearch={factorySearch[getModelBpmnComponentTabKey(neighborhood.name)] || factorySearch.diagramFactory}
-                                            diagramMetadataConfig={getDiagramMetadataConfig(neighborhood.name)}
-                                            onOpenDiagram={openDiagramInCanvas}
-                                            onNavigateToFactory={(tab, search) => { setFactorySearch((prev) => ({ ...prev, [tab]: search })); setActiveTab(tab); }}
-                                            readOnly={readOnly}
-                                            refreshTick={refreshTick}
-                                            userRole={user.role}
-                                          />,
-                                        ),
-                                      },
-                                      ...(neighborhoodFactories[neighborhood.name] || []).map((factory) => ({
-                                        key: factory._id,
-                                        label: fTabLabel(factory._id, <><FolderOpenOutlined /> {formatFactoryTabTitle(factory.name)}</>),
-                                        children: renderScrollablePane(
-                                          <NeighborhoodFactory
-                                            canManageFactories={canEditFactories}
-                                            fixedNeighborhoodName={neighborhood.name}
-                                            fixedFactoryId={factory._id}
-                                            defaultRowSearch={factorySearch[factory._id]}
-                                            defaultRowSearchColumn="name"
-                                            hideFactoryList
-                                            onNeighborhoodsChanged={loadNeighborhoodTabs}
-                                            onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
-                                            onApplicationLinkClick={(applicationName, correlationId) => {
-                                              if (!correlationId) return;
-                                              setActiveOuterTab('data');
-                                              setActiveDataTab('applications');
-                                              setFactorySearch((current) => ({
-                                                ...current,
-                                                applications: encodeExactFactorySearch(applicationName),
-                                              }));
-                                              setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
-                                            }}
-                                          />,
-                                        ),
-                                      })),
-                                    ].sort((a, b) => {
-                                      if (a.key === getComponentSearchTabKey(neighborhood.name)) return -1;
-                                      if (b.key === getComponentSearchTabKey(neighborhood.name)) return 1;
-                                      if (a.key === getModelBpmnComponentTabKey(neighborhood.name)) return -1;
-                                      if (b.key === getModelBpmnComponentTabKey(neighborhood.name)) return 1;
-                                      const leftIndex = factoryTabOrder.indexOf(a.key);
-                                      const rightIndex = factoryTabOrder.indexOf(b.key);
-                                      const safeLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
-                                      const safeRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
-                                      return safeLeft - safeRight;
-                                    })}
-                                  />
+                                    renderComponentContent={(componentId, componentName) => {
+                                      const factoryComponent = (neighborhoodFactories[neighborhood.name] || []).find((f) => f._id === componentId);
+                                      if (!factoryComponent) return <div>Component not found</div>;
+                                      
+                                      return (
+                                        <NeighborhoodFactory
+                                          canManageFactories={canEditFactories}
+                                          fixedNeighborhoodName={neighborhood.name}
+                                          fixedFactoryId={componentId}
+                                          defaultRowSearch={factorySearch[componentId]}
+                                          defaultRowSearchColumn="name"
+                                          hideFactoryList
+                                          onNeighborhoodsChanged={loadNeighborhoodTabs}
+                                          onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
+                                          onApplicationLinkClick={(applicationName, correlationId) => {
+                                            if (!correlationId) return;
+                                            setActiveOuterTab('data');
+                                            setActiveDataTab('applications');
+                                            setFactorySearch((current) => ({
+                                              ...current,
+                                              applications: encodeExactFactorySearch(applicationName),
+                                            }));
+                                            setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
+                                          }}
+                                        />
+                                      );
+                                    }}
+                                  />,
                                 ),
                               },
                             ]}

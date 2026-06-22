@@ -144,9 +144,36 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
         const pathKey = currentPath.join('|');
 
         if (!pathToNode.has(pathKey)) {
+          const colors = ['#EFF6FF', '#F0FDF4', '#FEF3C7', '#FCE7F3', '#F3E8FF', '#ECFDF5'];
+          const bgColor = colors[depth % colors.length];
+          const typeColor = ['#0C63E4', '#15803D', '#B45309', '#BE185D', '#6D28D9', '#0891B2'];
+          const textColor = typeColor[depth % typeColor.length];
+
           const node: DataNode = {
             key: pathKey,
-            title: valueStr,
+            title: (
+              <div style={{ display: 'flex', gap: '24px', alignItems: 'center', width: '100%', padding: '4px 8px' }}>
+                <div
+                  style={{
+                    minWidth: '130px',
+                    maxWidth: '130px',
+                    textAlign: 'left',
+                    color: textColor,
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    padding: '4px 8px',
+                    backgroundColor: bgColor,
+                    borderRadius: '4px',
+                    flexShrink: 0,
+                  }}
+                >
+                  {col.typeName}
+                </div>
+                <div style={{ fontSize: '13px', color: '#1E293B', fontWeight: 500 }}>{valueStr}</div>
+              </div>
+            ),
             children: [],
             isLeaf: depth === componentColumns.length - 1,
           };
@@ -167,7 +194,13 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
       }
     });
 
-    return rootNodes.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+    return rootNodes.sort((a, b) => {
+      const aText = String(a.title);
+      const bText = String(b.title);
+      const aValue = aText.match(/\>([^<]+)<\/div>\s*<div/)?.[1] || '';
+      const bValue = bText.match(/\>([^<]+)<\/div>\s*<div/)?.[1] || '';
+      return String(aValue).localeCompare(String(bValue));
+    });
   }, [catalog, componentColumns, filteredRows]);
 
   const handleExpandAll = () => {
@@ -258,12 +291,31 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
               />
             </>
           ) : (
-            <Tree
-              treeData={treeData}
-              expandedKeys={expandedKeys}
-              onExpand={setExpandedKeys}
-              style={{ padding: '8px 0' }}
-            />
+            <div style={{ paddingTop: '16px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '24px',
+                  marginBottom: '16px',
+                  paddingBottom: '12px',
+                  borderBottom: '2px solid #E2E8F0',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: '#475569',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                }}
+              >
+                <div style={{ minWidth: '130px', maxWidth: '130px' }}>Component Type</div>
+                <div>Value</div>
+              </div>
+              <Tree
+                treeData={treeData}
+                expandedKeys={expandedKeys}
+                onExpand={setExpandedKeys}
+                style={{ padding: '8px 0' }}
+              />
+            </div>
           )}
         </>
       ) : null}
