@@ -4,6 +4,8 @@ export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, Fact
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
 
+export { api };
+
 const scopedRequestConfig = (neighborhoodName?: string) => {
   const trimmed = String(neighborhoodName || '').trim();
   if (!trimmed) return undefined;
@@ -197,6 +199,9 @@ export const getModelCatalog = (name: string): Promise<ModelCatalog> =>
 
 export const getCustomFactories = (neighborhoodName?: string): Promise<CustomFactory[]> =>
   api.get('/custom-factories', { params: neighborhoodName ? { neighborhoodName } : undefined }).then((r) => r.data);
+
+export const getComponentHierarchies = (neighborhoodName?: string, componentName: string = 'Application'): Promise<import('./types').HierarchiesResponse> =>
+  api.get('/custom-factories/hierarchies/tree', { params: { neighborhoodName, componentName } }).then((r) => r.data);
 
 export const getCustomFactory = (id: string): Promise<CustomFactory> =>
   api.get(`/custom-factories/${encodeURIComponent(id)}`).then((r) => r.data);

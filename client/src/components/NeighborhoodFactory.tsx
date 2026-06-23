@@ -1,6 +1,6 @@
 import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { App as AntApp, Button, Card, Form, Input, List, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Tooltip, Upload } from 'antd';
-import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, FolderAddOutlined, InboxOutlined, PlusOutlined } from '@ant-design/icons';
+import { App as AntApp, Button, Card, Form, Input, List, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Tooltip, Upload, Dropdown, Checkbox } from 'antd';
+import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, FolderAddOutlined, InboxOutlined, PlusOutlined, ColumnHeightOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
 import { parseFactorySearch } from '../utils/factorySearch';
@@ -77,6 +77,10 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   const [rowStatusFilter, setRowStatusFilter] = useState<string | undefined>(undefined);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [factoryRowViewState, setFactoryRowViewState] = useState<Record<string, FactoryRowViewState>>({});
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, Set<string>>>({});
+  const [columnOrder, setColumnOrder] = useState<Record<string, string[]>>({});
+  const [draggedFactoryId, setDraggedFactoryId] = useState<string | null>(null);
+  const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
   const [uploadForm] = Form.useForm();
   const [rowForm] = Form.useForm();
   const deferredRowSearchText = useDeferredValue(rowSearchText);
@@ -99,6 +103,127 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       },
     }));
   }, [ALL_COLUMNS_OPTION]);
+
+  const getVisibleColumns = useCallback((factoryId: string, allColumns: string[]) => {
+    if (!visibleColumns[factoryId] || visibleColumns[factoryId].size === 0) {
+      return new Set(allColumns);
+    }
+    return visibleColumns[factoryId];
+  }, [visibleColumns]);
+
+  const toggleColumnVisibility = useCallback((factoryId: string, column: string) => {
+    setVisibleColumns((current) => {
+      const factoryVisible = current[factoryId] ? new Set(current[factoryId]) : new Set();
+      if (factoryVisible.has(column)) {
+        factoryVisible.delete(column);
+      } else {
+        factoryVisible.add(column);
+      }
+      return { ...current, [factoryId]: factoryVisible };
+    });
+  }, []);
+
+  const handleFactoryDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, factoryId: string) => {
+    setDraggedFactoryId(factoryId);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('factoryId', factoryId);
+    }
+  }, []);
+
+  const handleFactoryDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+      e.preventDefault();
+    }
+  }, []);
+
+  const handleFactoryDrop = useCallback((e: React.DragEvent<HTMLDivElement>, targetFactoryId: string) => {
+    e.preventDefault();
+    const sourceFactoryId = e.dataTransfer?.getData('factoryId');
+    
+    if (!sourceFactoryId || sourceFactoryId === targetFactoryId) {
+      setDraggedFactoryId(null);
+      return;
+    }
+
+    const sourceIndex = factories.findIndex((f) => f._id === sourceFactoryId);
+    const targetIndex = factories.findIndex((f) => f._id === targetFactoryId);
+
+    if (sourceIndex !== -1 && targetIndex !== -1) {
+      const reordered = [...factories];
+      const [removed] = reordered.splice(sourceIndex, 1);
+      reordered.splice(targetIndex, 0, removed);
+      setFactories(reordered);
+    }
+
+    setDraggedFactoryId(null);
+  }, [factories]);
+
+  const handleFactoryDragEnd = useCallback(() => {
+    setDraggedFactoryId(null);
+  }, []);
+
+  const getOrderedColumns = useCallback((factoryId: string, allColumns: string[]) => {
+    const order = columnOrder[factoryId];
+    if (!order || order.length === 0) {
+      return allColumns;
+    }
+    // Return columns in stored order, then any new columns not in order
+    const ordered = order.filter((col) => allColumns.includes(col));
+    const newCols = allColumns.filter((col) => !order.includes(col));
+    return [...ordered, ...newCols];
+  }, [columnOrder]);
+
+  const handleColumnDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, columnKey: string, factoryId: string) => {
+    setDraggedColumnKey(columnKey);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('columnKey', columnKey);
+      e.dataTransfer.setData('factoryId', factoryId);
+    }
+  }, []);
+
+  const handleColumnDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+      e.preventDefault();
+    }
+  }, []);
+
+  const handleColumnDrop = useCallback((e: React.DragEvent<HTMLDivElement>, targetColumnKey: string, factoryId: string) => {
+    e.preventDefault();
+    const sourceColumnKey = e.dataTransfer?.getData('columnKey');
+    const sourceFactoryId = e.dataTransfer?.getData('factoryId');
+    
+    if (!sourceColumnKey || sourceFactoryId !== factoryId || sourceColumnKey === targetColumnKey) {
+      setDraggedColumnKey(null);
+      return;
+    }
+
+    const factory = factories.find((f) => f._id === factoryId);
+    if (!factory) {
+      setDraggedColumnKey(null);
+      return;
+    }
+
+    const currentOrder = getOrderedColumns(factoryId, factory.columns);
+    const sourceIndex = currentOrder.findIndex((col) => col === sourceColumnKey);
+    const targetIndex = currentOrder.findIndex((col) => col === targetColumnKey);
+
+    if (sourceIndex !== -1 && targetIndex !== -1) {
+      const reordered = [...currentOrder];
+      const [removed] = reordered.splice(sourceIndex, 1);
+      reordered.splice(targetIndex, 0, removed);
+      setColumnOrder((current) => ({ ...current, [factoryId]: reordered }));
+    }
+
+    setDraggedColumnKey(null);
+  }, [factories, getOrderedColumns]);
+
+  const handleColumnDragEnd = useCallback(() => {
+    setDraggedColumnKey(null);
+  }, []);
 
   const loadNeighborhoods = useCallback(async () => {
     setLoadingNeighborhoods(true);
@@ -386,7 +511,13 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
 
   const rowColumns: ColumnsType<CustomFactoryRow> = useMemo(() => {
     const isApplicationComponent = String(selectedFactory?.name || '').trim().toLowerCase() === 'application';
-    const dynamicColumns = (selectedFactory?.columns || []).map((column) => ({
+    const factoryId = selectedFactory?._id || '';
+    const allColumns = selectedFactory?.columns || [];
+    const currentVisibleColumns = getVisibleColumns(factoryId, allColumns);
+    
+    const dynamicColumns = allColumns
+      .filter((column) => currentVisibleColumns.has(column))
+      .map((column) => ({
       title: column,
       key: column,
       dataIndex: ['values', column],
@@ -487,7 +618,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         ) : null,
       },
     ];
-  }, [canManageFactories, onApplicationLinkClick, selectedFactory]);
+  }, [canManageFactories, onApplicationLinkClick, selectedFactory, getVisibleColumns]);
 
   const filteredRows = useMemo(() => {
     if (!selectedFactory) return [];
@@ -685,6 +816,11 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
             locale={{ emptyText: selectedNeighborhood ? 'No components in this model yet' : 'No models available' }}
             renderItem={(factory) => (
               <List.Item
+                draggable
+                onDragStart={(e) => handleFactoryDragStart(e, factory._id)}
+                onDragOver={handleFactoryDragOver}
+                onDrop={(e) => handleFactoryDrop(e, factory._id)}
+                onDragEnd={handleFactoryDragEnd}
                 actions={canManageFactories ? [
                   <Popconfirm
                     key="delete"
@@ -704,12 +840,22 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                   </Popconfirm>,
                 ] : undefined}
                 style={{
-                  cursor: 'pointer',
+                  cursor: draggedFactoryId === factory._id ? 'grabbing' : 'grab',
                   borderRadius: 8,
                   paddingInline: 12,
-                  background: selectedFactoryId === factory._id ? '#eff6ff' : undefined,
-                  border: selectedFactoryId === factory._id ? '1px solid #bfdbfe' : '1px solid transparent',
+                  background: draggedFactoryId === factory._id
+                    ? '#dbeafe'
+                    : selectedFactoryId === factory._id
+                      ? '#eff6ff'
+                      : undefined,
+                  border: draggedFactoryId === factory._id
+                    ? '2px solid #3b82f6'
+                    : selectedFactoryId === factory._id
+                      ? '1px solid #bfdbfe'
+                      : '1px solid transparent',
                   marginBottom: 8,
+                  opacity: draggedFactoryId === factory._id ? 0.6 : 1,
+                  transition: 'all 0.2s ease-in-out',
                 }}
                 onClick={() => setSelectedFactoryId(factory._id)}
               >
@@ -802,6 +948,26 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                   { label: 'published', value: 'published' },
                 ]}
               />
+              {selectedFactory?._id && selectedFactory?.columns && selectedFactory.columns.length > 0 ? (
+                <Dropdown
+                  menu={{
+                    items: selectedFactory.columns.map((column) => ({
+                      key: column,
+                      label: (
+                        <Checkbox
+                          checked={getVisibleColumns(selectedFactory._id, selectedFactory.columns).has(column)}
+                          onChange={() => toggleColumnVisibility(selectedFactory._id, column)}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {column}
+                        </Checkbox>
+                      ),
+                    })),
+                  }}
+                >
+                  <Button size="small" icon={<ColumnHeightOutlined />}>Columns</Button>
+                </Dropdown>
+              ) : null}
               <Button onClick={() => {
                 setRowSearchColumn(ALL_COLUMNS_OPTION);
                 setRowSearchText('');

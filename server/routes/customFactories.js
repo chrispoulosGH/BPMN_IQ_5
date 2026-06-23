@@ -1322,16 +1322,6 @@ router.get('/neighborhoods/:name/catalog', async (req, res) => {
   }
 });
 
-router.get('/:id', async (req, res) => {
-  try {
-    const factory = await Component.findById(req.params.id).lean();
-    if (!factory) return res.status(404).json({ error: 'Component not found' });
-    res.json(serializeFactory(factory));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (req, res) => {
   const name = String(req.body?.name || req.body?.neighborhoodName || '').trim();
   if (!name) return res.status(400).json({ error: 'Model name is required' });
@@ -2200,6 +2190,70 @@ router.post('/validation-errors-report', requireAdminWrite, async (req, res) => 
     res.send(buffer);
   } catch (err) {
     res.status(err?.status || 500).json({ error: getValidationMessage(err) });
+  }
+});
+
+// GET /api/custom-factories/hierarchies/tree — Get component hierarchies from ComponentSearchIndex
+router.get('/hierarchies/tree', async (req, res) => {
+  try {
+    const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
+    const componentName = String(req.query?.componentName || 'Application').trim();
+    
+    console.log(`[HIERARCHIES] Fetching ${componentName} hierarchies from ${neighborhoodName}`);
+    
+    // Get all index entries for this component type
+    const entries = await ComponentSearchIndex.find({
+      neighborhoodName,
+      componentName,
+    })
+    .sort({ rowName: 1 })
+    .lean();
+    
+    console.log(`[HIERARCHIES] Found ${entries.length} entries`);
+    
+    // Extract unique hierarchies (each entry may have multiple paths)
+    const hierarchyMap = new Map();
+    const allPaths = [];
+    
+    entries.forEach((entry) => {
+      const hierarchies = entry.cachedHierarchies || [];
+      
+      hierarchies.forEach((hierarchy) => {
+        const pathKey = hierarchy.map(node => node.rowName).join('|');
+        
+        if (!hierarchyMap.has(pathKey)) {
+          hierarchyMap.set(pathKey, hierarchy);
+          allPaths.push({
+            pathKey,
+            nodes: hierarchy,
+            pathStr: hierarchy.map(node => node.rowName).join(' > '),
+            fieldValues: entry.fieldByValue || {},
+            rowId: entry.rowId,
+            componentId: entry.componentId,
+          });
+        }
+      });
+    });
+    
+    res.json({
+      totalPaths: allPaths.length,
+      uniqueCount: hierarchyMap.size,
+      paths: allPaths,
+    });
+  } catch (error) {
+    console.error('[HIERARCHIES] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Generic component fetch by ID - must be last to not shadow specific routes
+router.get('/:id', async (req, res) => {
+  try {
+    const factory = await Component.findById(req.params.id).lean();
+    if (!factory) return res.status(404).json({ error: 'Component not found' });
+    res.json(serializeFactory(factory));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

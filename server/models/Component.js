@@ -45,6 +45,7 @@ const componentSchema = new mongoose.Schema(
     neighborhoodName: { type: String, required: true, index: true, trim: true },
     name: { type: String, required: true, trim: true },
     sourceColumnName: { type: String, default: '', trim: true },
+    shortDescription: { type: String, default: '', trim: true },
     parentFactoryName: { type: String, default: '', trim: true },
     columns: [{ type: String, required: true, trim: true }],
     qualifierColumns: { type: [componentQualifierSchema], default: [] },

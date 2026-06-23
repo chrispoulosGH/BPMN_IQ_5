@@ -343,6 +343,7 @@ export interface CustomFactory {
   neighborhoodName: string;
   name: string;
   sourceColumnName?: string;
+  shortDescription?: string;
   parentFactoryName?: string;
   columns: string[];
   qualifierColumns?: CustomFactoryQualifierColumn[];
@@ -373,6 +374,30 @@ export interface DatabaseItem {
   version?: string | null;
   vendor?: string | null;
   ownedBy?: string | null;
+}
+
+// Component Search Index hierarchy types
+export interface ComponentHierarchy {
+  componentName: string;
+  rowName: string;
+  rowId?: string;
+  componentId?: string;
+}
+
+export interface HierarchyPath {
+  pathKey: string;
+  nodes: ComponentHierarchy[];
+  pathStr: string;
+  fieldValues: Record<string, unknown>;
+  rowId?: string;
+  componentId?: string;
+}
+
+export interface HierarchiesResponse {
+  totalPaths: number;
+  uniqueCount: number;
+  paths: HierarchyPath[];
+}
   location?: string | null;
   lifecycleStageStatus?: string | null;
   normalizedVendor?: string | null;
