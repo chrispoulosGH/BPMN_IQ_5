@@ -204,6 +204,24 @@ mongoose
     console.log(`Connected to MongoDB at ${MONGO_URI}`);
     await migrateLegacyModelCollection();
     await migrateLegacyComponentCollection();
+    // Backfill modelName from existing neighborhoodName where missing
+    try {
+      await Component.updateMany(
+        { $or: [{ modelName: { $exists: false } }, { modelName: null }, { modelName: '' }] },
+        [{ $set: { modelName: '$neighborhoodName' } }]
+      );
+    } catch (err) {
+      // If the server's MongoDB version doesn't support update pipeline, fallback to simple update per-document
+      try {
+        const docs = await Component.find({ $or: [{ modelName: { $exists: false } }, { modelName: null }, { modelName: '' }] }, { _id: 1, neighborhoodName: 1 }).lean();
+        if (docs.length) {
+          const bulkOps = docs.map((d) => ({ updateOne: { filter: { _id: d._id }, update: { $set: { modelName: d.neighborhoodName || '' } } } }));
+          if (bulkOps.length) await Component.bulkWrite(bulkOps, { ordered: false });
+        }
+      } catch (e) {
+        console.warn('Failed to backfill modelName on components:', e?.message || e);
+      }
+    }
     await backfillNeighborhoods();
     await syncNeighborhoodIndexes();
     app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

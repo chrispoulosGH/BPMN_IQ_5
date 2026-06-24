@@ -1,6 +1,6 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, DiagramValidationRequest, DiagramValidationReport, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog } from './types';
-export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog };
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, DiagramValidationRequest, DiagramValidationReport, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog, ModelCatalogRow } from './types';
+export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog, ModelCatalogRow };
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
 
@@ -10,6 +10,12 @@ const scopedRequestConfig = (neighborhoodName?: string) => {
   const trimmed = String(neighborhoodName || '').trim();
   if (!trimmed) return undefined;
   return { headers: { 'x-neighborhood-name': trimmed } };
+};
+
+const scopedModelRequestConfig = (modelName?: string) => {
+  const trimmed = String(modelName || '').trim();
+  if (!trimmed) return undefined;
+  return { headers: { 'x-model-name': trimmed } };
 };
 
 export const setApiNeighborhoodScope = (neighborhoodName?: string | null) => {
@@ -141,9 +147,6 @@ export const createRefItem = (collection: string, name: string, owner?: string, 
 export const createApplication = (data: Partial<import('./types').ApplicationItem> & { name: string }): Promise<import('./types').ApplicationItem> =>
   api.post(`/tasks/reference/applications`, data).then((r) => r.data);
 
-export const getApplicationByCorrelationId = (correlationId: string): Promise<import('./types').ApplicationItem> =>
-  api.get(`/tasks/reference/applications/by-correlation/${encodeURIComponent(correlationId)}`).then((r) => r.data);
-
 export const updateRefItem = (collection: string, id: string, name: string, owner?: string): Promise<RefItem> =>
   api.put(`/tasks/reference/${collection}/${id}`, { name, owner }).then((r) => r.data);
 
@@ -197,14 +200,32 @@ export const deleteFactoryNeighborhood = (name: string): Promise<{ success: bool
 export const getModelCatalog = (name: string): Promise<ModelCatalog> =>
   api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog`).then((r) => r.data);
 
-export const getCustomFactories = (neighborhoodName?: string): Promise<CustomFactory[]> =>
-  api.get('/custom-factories', { params: neighborhoodName ? { neighborhoodName } : undefined }).then((r) => r.data);
+export const getCustomFactories = (neighborhoodName?: string, modelName?: string): Promise<CustomFactory[]> => {
+  const params = neighborhoodName ? { neighborhoodName } : undefined;
+  const modelConfig = scopedModelRequestConfig(modelName);
+  const config = { params, ...(modelConfig || {}) } as any;
+  return api.get('/custom-factories', config).then((r) => r.data);
+};
 
-export const getComponentHierarchies = (neighborhoodName?: string, componentName: string = 'Application'): Promise<import('./types').HierarchiesResponse> =>
-  api.get('/custom-factories/hierarchies/tree', { params: { neighborhoodName, componentName } }).then((r) => r.data);
+export const getComponentHierarchies = (neighborhoodName?: string, componentName: string = 'Application', modelName?: string): Promise<import('./types').HierarchiesResponse> => {
+  const params = { neighborhoodName, componentName } as any;
+  const modelConfig = scopedModelRequestConfig(modelName) || {};
+  return api.get('/custom-factories/hierarchies/tree', { params, ...(modelConfig || {}) }).then((r) => r.data);
+};
 
 export const getCustomFactory = (id: string): Promise<CustomFactory> =>
   api.get(`/custom-factories/${encodeURIComponent(id)}`).then((r) => r.data);
+
+export const getCustomFactoryForModel = (id: string, modelName?: string): Promise<CustomFactory> => {
+  const modelConfig = scopedModelRequestConfig(modelName) || {};
+  return api.get(`/custom-factories/${encodeURIComponent(id)}`, modelConfig as any).then((r) => r.data);
+};
+
+export const getApplicationByCorrelationId = (correlationId: string, neighborhoodName?: string): Promise<any> =>
+  api.get(`/reference/applications/by-correlation/${encodeURIComponent(correlationId)}`, scopedRequestConfig(neighborhoodName)).then((r) => r.data);
+
+export const getApplicationByName = (name: string, neighborhoodName?: string): Promise<any> =>
+  api.get(`/reference/applications/by-name/${encodeURIComponent(name)}`, scopedRequestConfig(neighborhoodName)).then((r) => r.data);
 
 export const uploadCustomFactory = (params: { neighborhoodName: string; file: File }): Promise<{ factories: CustomFactory[] }> => {
   const body = new FormData();
@@ -213,14 +234,14 @@ export const uploadCustomFactory = (params: { neighborhoodName: string; file: Fi
   return api.post('/custom-factories/upload', body).then((r) => r.data);
 };
 
-export const updateCustomFactoryRow = (factoryId: string, rowId: string, payload: { values: Record<string, unknown>; owner?: string; state?: string }): Promise<CustomFactory> =>
-  api.put(`/custom-factories/${encodeURIComponent(factoryId)}/rows/${encodeURIComponent(rowId)}`, payload).then((r) => r.data);
+export const updateCustomFactoryRow = (factoryId: string, rowId: string, payload: { values: Record<string, unknown>; owner?: string; state?: string }, modelName?: string): Promise<CustomFactory> =>
+  api.put(`/custom-factories/${encodeURIComponent(factoryId)}/rows/${encodeURIComponent(rowId)}`, payload, scopedModelRequestConfig(modelName) as any).then((r) => r.data);
 
-export const deleteCustomFactoryRow = (factoryId: string, rowId: string): Promise<CustomFactory> =>
-  api.delete(`/custom-factories/${encodeURIComponent(factoryId)}/rows/${encodeURIComponent(rowId)}`).then((r) => r.data);
+export const deleteCustomFactoryRow = (factoryId: string, rowId: string, modelName?: string): Promise<CustomFactory> =>
+  api.delete(`/custom-factories/${encodeURIComponent(factoryId)}/rows/${encodeURIComponent(rowId)}`, scopedModelRequestConfig(modelName) as any).then((r) => r.data);
 
-export const deleteCustomFactory = (factoryId: string): Promise<{ success: boolean; factoryId: string; neighborhoodName: string; name: string }> =>
-  api.delete(`/custom-factories/${encodeURIComponent(factoryId)}`).then((r) => r.data);
+export const deleteCustomFactory = (factoryId: string, modelName?: string): Promise<{ success: boolean; factoryId: string; neighborhoodName: string; name: string }> =>
+  api.delete(`/custom-factories/${encodeURIComponent(factoryId)}`, scopedModelRequestConfig(modelName) as any).then((r) => r.data);
 
 // ── Capabilities CRUD (for CapabilitiesFactory) ─────────────
 export const getCapabilities = (): Promise<CapabilityItem[]> =>

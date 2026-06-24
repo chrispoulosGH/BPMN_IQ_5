@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App as AntApp, Card, Space, Spin, Tree, Button, Segmented, Tabs, Empty, Input, Drawer, Divider, Descriptions, Badge, Tag, Collapse } from 'antd';
+import { App as AntApp, Card, Space, Spin, Tree, Button, Segmented, Tabs, Empty, Input, Drawer, Divider, Descriptions, Badge, Tag, Collapse, Select } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { FolderOutlined, TableOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
 
-import { getCustomFactories, getComponentHierarchies, getCustomFactory } from '../api';
+import { getCustomFactories, getComponentHierarchies, getCustomFactory, getCustomFactoryForModel, getApplicationByCorrelationId, getApplicationByName, getFactoryNeighborhoods } from '../api';
 import type { CustomFactory, CustomFactoryRow, HierarchyPath } from '../types';
 
 interface ComponentsViewerProps {
@@ -21,6 +21,8 @@ export default function ComponentsViewer({
 }: ComponentsViewerProps) {
   const { message } = AntApp.useApp();
   const [hierarchies, setHierarchies] = useState<HierarchyPath[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [activeModelName, setActiveModelName] = useState<string>(neighborhoodName || '');
   const [components, setComponents] = useState<CustomFactory[]>([]);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'tree' | 'table'>('tree');
@@ -39,7 +41,7 @@ export default function ComponentsViewer({
     const loadHierarchies = async () => {
       setLoading(true);
       try {
-        const result = await getComponentHierarchies(neighborhoodName, 'Application');
+        const result = await getComponentHierarchies(neighborhoodName, 'Application', activeModelName);
         if (!cancelled) {
           setHierarchies(result.paths);
           console.log(`Loaded ${result.paths.length} hierarchy paths`);
@@ -58,7 +60,27 @@ export default function ComponentsViewer({
 
     loadHierarchies();
     return () => { cancelled = true; };
-  }, [message, neighborhoodName]);
+  }, [message, neighborhoodName, activeModelName]);
+
+  // Load available models (neighborhoods)
+  useEffect(() => {
+    let cancelled = false;
+    const loadModels = async () => {
+      try {
+        const list = await getFactoryNeighborhoods();
+        if (!cancelled) {
+          const names = (list || []).map((n: any) => n.name || n);
+          setModels(names);
+          // Set default active model if not set
+          if (!activeModelName && names.length) setActiveModelName(names[0]);
+        }
+      } catch (err) {
+        console.warn('Failed to load models', err);
+      }
+    };
+    loadModels();
+    return () => { cancelled = true; };
+  }, []);
 
   // Also load custom factories for table view
   useEffect(() => {
@@ -66,8 +88,28 @@ export default function ComponentsViewer({
 
     const loadComponents = async () => {
       try {
-        const allComponents = await getCustomFactories(neighborhoodName);
+        const allComponents = await getCustomFactories(neighborhoodName, activeModelName);
         if (!cancelled) {
+          // Restore persisted tab order for this model (if available)
+          try {
+            const key = localStorageKeyForModel(activeModelName);
+            const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+            if (raw) {
+              const ids: string[] = JSON.parse(raw);
+              const byId = new Map(allComponents.map((c) => [c._id, c]));
+              const ordered: CustomFactory[] = [];
+              ids.forEach((id) => {
+                const found = byId.get(id);
+                if (found) ordered.push(found);
+              });
+              // Append any new components not in persisted order
+              allComponents.forEach((c) => { if (!ids.includes(c._id)) ordered.push(c); });
+              setComponents(ordered);
+              return;
+            }
+          } catch (err) {
+            console.warn('Failed to restore tab order', err);
+          }
           setComponents(allComponents);
         }
       } catch (error: any) {
@@ -79,13 +121,27 @@ export default function ComponentsViewer({
 
     loadComponents();
     return () => { cancelled = true; };
-  }, [neighborhoodName]);
+  }, [neighborhoodName, activeModelName]);
 
   const handleTabDragStart = (e: React.DragEvent<HTMLDivElement>, tabId: string) => {
     setDraggedTabId(tabId);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('tabId', tabId);
+    }
+  };
+
+  const localStorageKeyForModel = (modelName?: string) => `componentTabOrder:${String(modelName || '')}`;
+
+  const saveTabOrder = (modelName: string | undefined, orderedComponents: CustomFactory[]) => {
+    try {
+      if (!modelName) return;
+      if (typeof localStorage === 'undefined') return;
+      const key = localStorageKeyForModel(modelName);
+      const ids = orderedComponents.map((c) => c._id);
+      localStorage.setItem(key, JSON.stringify(ids));
+    } catch (err) {
+      console.warn('Failed to save tab order', err);
     }
   };
 
@@ -113,6 +169,7 @@ export default function ComponentsViewer({
       const [removed] = reordered.splice(sourceIndex, 1);
       reordered.splice(targetIndex, 0, removed);
       setComponents(reordered);
+      saveTabOrder(activeModelName, reordered);
     }
 
     setDraggedTabId(null);
@@ -120,6 +177,37 @@ export default function ComponentsViewer({
 
   const handleTabDragEnd = () => {
     setDraggedTabId(null);
+  };
+
+  // Generate a description from available component data
+  const getComponentDescription = (component: CustomFactory | null): string => {
+    if (!component) return '';
+    
+    // Prefer explicit shortDescription
+    if (component.shortDescription) {
+      return component.shortDescription;
+    }
+
+    // Build description from available fields
+    const parts: string[] = [];
+    
+    if (component.sourceColumnName) {
+      parts.push(`Source: ${component.sourceColumnName}`);
+    }
+    
+    if (component.parentFactoryName) {
+      parts.push(`Parent: ${component.parentFactoryName}`);
+    }
+    
+    if (component.rowCount) {
+      parts.push(`Records: ${component.rowCount}`);
+    }
+    
+    if (component.columns && component.columns.length > 0) {
+      parts.push(`Columns: ${component.columns.join(', ')}`);
+    }
+
+    return parts.length > 0 ? parts.join(' | ') : 'No description available';
   };
 
   // Handle tree node selection to show metadata
@@ -132,50 +220,72 @@ export default function ComponentsViewer({
       return;
     }
 
-    // Find the matching node across all hierarchy paths
-    const keyStr = String(nodeKey);
-    let componentId: string | undefined;
-    let selectedNodeInfo: any = null;
-
-    // Search through all hierarchies to find the selected node
-    for (const hierarchy of hierarchies) {
-      const { nodes } = hierarchy;
-      for (const node of nodes) {
-        // Build a unique key for this node using pathKey pattern
-        const nodePathKey = `${node.rowId || node.rowName}-${node.componentName}`;
-        if (nodePathKey === keyStr || keyStr.includes(node.rowName)) {
-          componentId = node.componentId ? String(node.componentId) : undefined;
-          selectedNodeInfo = node;
-          break;
+    // Find the matching node directly from the treeData using the pathKey
+    const findNodeByKey = (nodes: DataNode[], key: React.Key): any => {
+      for (const n of nodes) {
+        if (n.key === key) return (n as any).data;
+        if (n.children) {
+          const found = findNodeByKey(n.children, key);
+          if (found) return found;
         }
       }
-      if (componentId) break;
-    }
+      return null;
+    };
+
+    const selectedNodeInfo = findNodeByKey(treeData, nodeKey);
+    const componentId = selectedNodeInfo?.componentId ? String(selectedNodeInfo.componentId) : undefined;
 
     console.log('Selected node:', { selectedNodeInfo, componentId });
 
     if (componentId) {
       setLoadingMetadata(true);
       try {
-        let component = await getCustomFactory(componentId);
+        let component = await getCustomFactoryForModel(componentId, activeModelName);
         console.log('Fetched component:', component);
+        console.log('selectedNodeInfo:', selectedNodeInfo);
 
-        // If component has foreign keys, follow the link to get metadata from the linked component
+        // If this component has FK columns, follow the FK to get enriched metadata
         if (component.foreignKeyColumns && component.foreignKeyColumns.length > 0) {
-          const firstFK = component.foreignKeyColumns[0];
-          console.log('FK found:', firstFK);
-          
-          // Try to use targetReference as the linked component ID
-          if (firstFK.targetReference) {
+          const fk = component.foreignKeyColumns[0];
+          console.log('FK found:', fk);
+          // FK targetScope holds the linked component name (e.g. "Application" → applications collection)
+          const targetScope = fk.targetScope?.toLowerCase();
+          if (targetScope === 'application' && selectedNodeInfo?.rowName) {
             try {
-              console.log('Fetching linked component with ID:', firstFK.targetReference);
-              const linkedComponent = await getCustomFactory(firstFK.targetReference);
-              console.log('Linked component fetched:', linkedComponent);
-              component = linkedComponent;
-            } catch (error) {
-              // If targetReference isn't a valid componentId, keep original component
-              console.log('Could not fetch linked component, using original');
+              console.log('Following FK to applications collection for:', selectedNodeInfo.rowName);
+              const appData = await getApplicationByName(selectedNodeInfo.rowName, 'ATT Journey Model');
+              console.log('Fetched from applications collection:', appData);
+              component = {
+                ...component,
+                name: appData.name,
+                shortDescription: appData.shortDescription,
+                applicationType: appData.applicationType,
+                businessCriticality: appData.businessCriticality,
+                owner: appData.owner,
+                createdBy: appData.createdBy,
+                ...({ acronym: appData.acronym, lifecycle: appData.lifecycle, lifecycleStatus: appData.lifecycleStatus, applPurpose: appData.applPurpose, businessPurpose: appData.businessPurpose } as any),
+              };
+            } catch (error: any) {
+              console.log('FK follow failed:', error?.response?.status, error?.message);
             }
+          }
+        } else if (selectedNodeInfo?.componentName === 'application') {
+          // No FK column but it's an application node — try direct lookup by name
+          try {
+            console.log('No FK but application node, fetching by name:', selectedNodeInfo.rowName);
+            const appData = await getApplicationByName(selectedNodeInfo.rowName, 'ATT Journey Model');
+            console.log('Fetched from applications collection:', appData);
+            component = {
+              ...component,
+              name: appData.name,
+              shortDescription: appData.shortDescription,
+              applicationType: appData.applicationType,
+              businessCriticality: appData.businessCriticality,
+              owner: appData.owner,
+              ...({ acronym: appData.acronym, lifecycle: appData.lifecycle, lifecycleStatus: appData.lifecycleStatus, applPurpose: appData.applPurpose, businessPurpose: appData.businessPurpose } as any),
+            };
+          } catch (error: any) {
+            console.log('Direct application lookup failed:', error?.response?.status, error?.message);
           }
         }
 
@@ -203,6 +313,15 @@ export default function ComponentsViewer({
       } as any);
       setShowMetadataDrawer(true);
     }
+  };
+
+  // Deterministic color selection for model badges
+  const modelColors = ['#FFB6C1', '#BFEFFF', '#E6E6FA', '#FFF5BA', '#D1F2EB', '#FDE2C9', '#E0F7FA'];
+  const getColorForModel = (name: string | undefined) => {
+    if (!name) return modelColors[0];
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return modelColors[h % modelColors.length];
   };
   const filteredComponents = useMemo(() => {
     if (!searchText.trim()) return components;
@@ -232,18 +351,20 @@ export default function ComponentsViewer({
 
       nodes.forEach((node, depth) => {
         currentPath.push(node.rowName);
-        const pathKey = currentPath.join('|');
+        // Include model name in path key to avoid collisions across models
+        const pathKey = `${activeModelName || ''}|${currentPath.join('|')}`;
 
         if (!pathToNode.has(pathKey)) {
           const bgColor = bgColors[depth % bgColors.length];
           const textColor = textColors[depth % textColors.length];
 
+          const badgeColor = getColorForModel(activeModelName);
           const nodeTitle = (
-            <div style={{ display: 'flex', gap: '24px', alignItems: 'center', width: '100%', padding: '4px 8px' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', width: '100%', padding: '4px 8px' }}>
               <div
                 style={{
-                  minWidth: '130px',
-                  maxWidth: '130px',
+                  minWidth: '120px',
+                  maxWidth: '120px',
                   textAlign: 'left',
                   color: textColor,
                   fontSize: '12px',
@@ -258,8 +379,8 @@ export default function ComponentsViewer({
               >
                 {node.componentName}
               </div>
-              <div style={{ fontSize: '13px', color: '#1E293B', fontWeight: 500 }}>
-                {node.rowName}
+                <div style={{ fontSize: '13px', color: '#1E293B', fontWeight: 500, flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.rowName}</div>
               </div>
             </div>
           );
@@ -269,12 +390,20 @@ export default function ComponentsViewer({
             title: nodeTitle,
             children: [],
             isLeaf: depth === nodes.length - 1,
-          };
+            // Store node metadata for quick lookup on selection
+            data: {
+              componentName: node.componentName,
+              rowName: node.rowName,
+              rowId: node.rowId,
+              componentId: node.componentId,
+              modelName: activeModelName,
+            },
+          } as DataNode & { data: any };
 
           if (depth === 0) {
             rootNodes.push(newNode);
           } else {
-            const parentPath = currentPath.slice(0, depth).join('|');
+            const parentPath = `${activeModelName || ''}|${currentPath.slice(0, depth).join('|')}`;
             const parentNode = pathToNode.get(parentPath);
             if (parentNode && parentNode.children) {
               parentNode.children.push(newNode);
@@ -454,28 +583,38 @@ export default function ComponentsViewer({
     <Card
       title="Application Hierarchy Tree"
       extra={
-        <Segmented
-          value={viewMode}
-          onChange={(value) => setViewMode(value as 'tree' | 'table')}
-          options={[
-            {
-              label: (
-                <>
-                  <FolderOutlined /> Tree
-                </>
-              ),
-              value: 'tree',
-            },
-            {
-              label: (
-                <>
-                  <TableOutlined /> Table
-                </>
-              ),
-              value: 'table',
-            },
-          ]}
-        />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Select
+            value={activeModelName}
+            onChange={(v) => setActiveModelName(String(v || ''))}
+            options={models.map((m) => ({ label: m, value: m }))}
+            placeholder="Select model"
+            style={{ minWidth: 220 }}
+            allowClear
+          />
+          <Segmented
+            value={viewMode}
+            onChange={(value) => setViewMode(value as 'tree' | 'table')}
+            options={[
+              {
+                label: (
+                  <>
+                    <FolderOutlined /> Tree
+                  </>
+                ),
+                value: 'tree',
+              },
+              {
+                label: (
+                  <>
+                    <TableOutlined /> Table
+                  </>
+                ),
+                value: 'table',
+              },
+            ]}
+          />
+        </div>
       }
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
       bodyStyle={{ flex: 1, overflow: 'auto', padding: '16px' }}
@@ -496,17 +635,13 @@ export default function ComponentsViewer({
         <Spin spinning={loadingMetadata}>
           {selectedComponent ? (
             <div>
-              {selectedComponent.shortDescription && (
-                <>
-                  <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f0f5ff', borderLeft: '3px solid #1890ff', borderRadius: '4px' }}>
-                    <strong>Description:</strong>
-                    <div style={{ marginTop: '8px', fontSize: '13px', color: '#595959' }}>
-                      {selectedComponent.shortDescription}
-                    </div>
-                  </div>
-                  <Divider style={{ margin: '12px 0' }} />
-                </>
-              )}
+              <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f0f5ff', borderLeft: '3px solid #1890ff', borderRadius: '4px' }}>
+                <strong>Description:</strong>
+                <div style={{ marginTop: '8px', fontSize: '13px', color: '#595959' }}>
+                  {getComponentDescription(selectedComponent)}
+                </div>
+              </div>
+              <Divider style={{ margin: '12px 0' }} />
 
               <Descriptions bordered size="small" column={1} style={{ marginBottom: '16px' }}>
                 <Descriptions.Item label="Name" labelStyle={{ fontWeight: 600 }}>
@@ -515,20 +650,48 @@ export default function ComponentsViewer({
                 <Descriptions.Item label="Neighborhood">
                   {selectedComponent.neighborhoodName || 'N/A'}
                 </Descriptions.Item>
+                {selectedComponent.applicationType && (
+                  <Descriptions.Item label="Type">
+                    <Tag color="blue">{selectedComponent.applicationType}</Tag>
+                  </Descriptions.Item>
+                )}
+                {selectedComponent.businessCriticality && (
+                  <Descriptions.Item label="Criticality">
+                    <Tag color={selectedComponent.businessCriticality === 'high' ? 'red' : selectedComponent.businessCriticality === 'medium' ? 'orange' : 'default'}>
+                      {selectedComponent.businessCriticality}
+                    </Tag>
+                  </Descriptions.Item>
+                )}
+                {(selectedComponent as any).lifecycle && (
+                  <Descriptions.Item label="Lifecycle">
+                    {(selectedComponent as any).lifecycle}
+                  </Descriptions.Item>
+                )}
+                {(selectedComponent as any).lifecycleStatus && (
+                  <Descriptions.Item label="Lifecycle Status">
+                    {(selectedComponent as any).lifecycleStatus}
+                  </Descriptions.Item>
+                )}
+                {(selectedComponent as any).acronym && (
+                  <Descriptions.Item label="Acronym">
+                    <Tag>{(selectedComponent as any).acronym}</Tag>
+                  </Descriptions.Item>
+                )}
+                {(selectedComponent as any).applPurpose && (
+                  <Descriptions.Item label="Purpose">
+                    {(selectedComponent as any).applPurpose}
+                  </Descriptions.Item>
+                )}
+                {(selectedComponent as any).businessPurpose && (
+                  <Descriptions.Item label="Business Purpose">
+                    {(selectedComponent as any).businessPurpose}
+                  </Descriptions.Item>
+                )}
                 <Descriptions.Item label="Source Column">
-                  {selectedComponent.sourceColumnName || 'N/A'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Parent Component">
-                  {selectedComponent.parentFactoryName || '—'}
+                  {selectedComponent.sourceColumnName || '—'}
                 </Descriptions.Item>
                 <Descriptions.Item label="Owner">
                   {selectedComponent.owner || '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Created By">
-                  {selectedComponent.createdBy || '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Source File">
-                  {selectedComponent.sourceFileName || '—'}
                 </Descriptions.Item>
                 <Descriptions.Item label="Created At">
                   {selectedComponent.createdAt

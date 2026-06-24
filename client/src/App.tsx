@@ -1739,13 +1739,13 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                             <div className="flex flex-col items-center gap-1.5">
                               {group.actions.map((action) => (
                                 <Tooltip key={action.key} title={action.tooltip} placement="right">
-                                  <Button
-                                    type={action.type ?? 'text'}
-                                    icon={action.icon}
-                                    onClick={action.onClick}
-                                    disabled={action.disabled}
-                                    className="bpmn-ribbon-btn flex h-9 w-9 items-center justify-center rounded-lg border-0"
-                                  />
+                                      <Button
+                                        type={(action as any).type ?? 'text'}
+                                        icon={action.icon}
+                                        onClick={action.onClick}
+                                        disabled={(action as any).disabled}
+                                        className="bpmn-ribbon-btn flex h-9 w-9 items-center justify-center rounded-lg border-0"
+                                      />
                                 </Tooltip>
                               ))}
                             </div>

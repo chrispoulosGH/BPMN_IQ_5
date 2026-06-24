@@ -113,7 +113,9 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
 
   const toggleColumnVisibility = useCallback((factoryId: string, column: string) => {
     setVisibleColumns((current) => {
-      const factoryVisible = current[factoryId] ? new Set(current[factoryId]) : new Set();
+      const factoryVisible: Set<string> = current[factoryId]
+        ? new Set<string>(Array.from(current[factoryId] as Set<string>))
+        : new Set<string>();
       if (factoryVisible.has(column)) {
         factoryVisible.delete(column);
       } else {
@@ -509,6 +511,34 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     });
   }, [DEFAULT_NEIGHBORHOOD_NAME, fixedNeighborhoodName, message, onNeighborhoodDeleted, onNeighborhoodsChanged]);
 
+  const handleDeleteAllComponents = useCallback(async (name: string) => {
+    if (!name) return;
+    try {
+      setLoadingFactories(true);
+      const all = await getCustomFactories(name);
+      let deletedCount = 0;
+      for (const f of all) {
+        try {
+          await deleteCustomFactory(f._id);
+          deletedCount++;
+        } catch (err) {
+          // continue deleting others but log error
+          console.warn('Failed to delete component', f._id, err);
+        }
+      }
+      message.success(`Deleted ${deletedCount} components from ${name}`);
+      // Refresh lists
+      await loadNeighborhoods();
+      if (!fixedNeighborhoodName) setSelectedNeighborhood(DEFAULT_NEIGHBORHOOD_NAME);
+      await onNeighborhoodsChanged?.();
+      if (selectedNeighborhood) await loadFactories(selectedNeighborhood);
+    } catch (error: any) {
+      message.error(error.response?.data?.error || error.message || 'Failed to delete components');
+    } finally {
+      setLoadingFactories(false);
+    }
+  }, [DEFAULT_NEIGHBORHOOD_NAME, fixedNeighborhoodName, loadFactories, loadNeighborhoods, message, onNeighborhoodsChanged, selectedNeighborhood]);
+
   const rowColumns: ColumnsType<CustomFactoryRow> = useMemo(() => {
     const isApplicationComponent = String(selectedFactory?.name || '').trim().toLowerCase() === 'application';
     const factoryId = selectedFactory?._id || '';
@@ -780,16 +810,27 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       {!hideFactoryList ? <Card
         title={fixedNeighborhoodName ? `${fixedNeighborhoodName} Components` : 'Models'}
         size="small"
-        style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column' }}
+        style={{ width: 380, minWidth: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'visible' }}
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, height: '100%' }}
         extra={canManageFactories ? (
-          <Space>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <Button size="small" icon={<FolderAddOutlined />} onClick={openNeighborhoodModal}>Model</Button>
-            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => {
-              uploadForm.setFieldsValue({ neighborhoodName: selectedNeighborhood || undefined });
-              setShowUploadModal(true);
-            }}>Components</Button>
-          </Space>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => {
+                uploadForm.setFieldsValue({ neighborhoodName: selectedNeighborhood || undefined });
+                setShowUploadModal(true);
+              }}>Add Component</Button>
+              <Popconfirm
+                title={`Delete all components in ${selectedNeighborhood || 'selected model'}?`}
+                description="This will permanently remove every component in the selected model. This does NOT delete the model itself."
+                okText="Delete All"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => handleDeleteAllComponents(selectedNeighborhood || '')}
+              >
+                <Button size="small" danger disabled={!selectedNeighborhood}>Delete All Components</Button>
+              </Popconfirm>
+            </div>
+          </div>
         ) : null}
       >
         {!fixedNeighborhoodName ? (

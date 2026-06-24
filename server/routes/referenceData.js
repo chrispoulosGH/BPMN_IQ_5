@@ -14,6 +14,42 @@ const models = {
   businessCapabilities: BusinessCapability,
 };
 
+// GET /api/reference/applications/by-correlation/:correlationId — get application by correlationId (specific route first)
+router.get('/applications/by-correlation/:correlationId', async (req, res) => {
+  try {
+    const app = await Application.findOne({
+      neighborhoodName: getNeighborhoodName(req),
+      correlationId: req.params.correlationId,
+    }).lean();
+    
+    if (!app) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    res.json(app);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/reference/applications/by-name/:name — get application by name
+router.get('/applications/by-name/:name', async (req, res) => {
+  try {
+    const app = await Application.findOne({
+      neighborhoodName: getNeighborhoodName(req),
+      name: req.params.name,
+    }).lean();
+    
+    if (!app) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+    
+    res.json(app);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/reference/:collection — list all items
 router.get('/:collection', async (req, res) => {
   const Model = models[req.params.collection];

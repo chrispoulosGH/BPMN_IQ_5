@@ -184,6 +184,7 @@ export interface RefItem {
   owner?: string;
   createdAt?: string;
   updatedAt?: string;
+  state?: string;
 }
 
 export interface ApplicationItem extends RefItem {
@@ -344,9 +345,19 @@ export interface CustomFactory {
   name: string;
   sourceColumnName?: string;
   shortDescription?: string;
+  applicationType?: string;
+  businessCriticality?: string;
   parentFactoryName?: string;
   columns: string[];
   qualifierColumns?: CustomFactoryQualifierColumn[];
+  foreignKeyColumns?: Array<{
+    name: string;
+    sourceColumnName: string;
+    fieldName: string;
+    targetReference?: string;
+    targetGroup?: string;
+    targetScope?: string;
+  }>;
   owner?: string;
   createdBy?: string;
   sourceFileName?: string;
@@ -374,6 +385,13 @@ export interface DatabaseItem {
   version?: string | null;
   vendor?: string | null;
   ownedBy?: string | null;
+  location?: string | null;
+  lifecycleStageStatus?: string | null;
+  normalizedVendor?: string | null;
+  linkedApplications?: DatabaseLinkedApplication[];
+  healthNotes?: DatabaseHealthNote[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // Component Search Index hierarchy types
@@ -398,14 +416,6 @@ export interface HierarchiesResponse {
   uniqueCount: number;
   paths: HierarchyPath[];
 }
-  location?: string | null;
-  lifecycleStageStatus?: string | null;
-  normalizedVendor?: string | null;
-  linkedApplications?: DatabaseLinkedApplication[];
-  healthNotes?: DatabaseHealthNote[];
-  createdAt?: string;
-  updatedAt?: string;
-}
 
 // ─── Capabilities Factory ────────────────────────────────────
 export interface CapabilityItem {
@@ -419,6 +429,7 @@ export interface CapabilityItem {
   owner?: string;
   createdAt?: string;
   updatedAt?: string;
+  state?: string;
 }
 
 export interface ActorItem {
@@ -429,4 +440,5 @@ export interface ActorItem {
   owner?: string;
   createdAt?: string;
   updatedAt?: string;
+  state?: string;
 }

@@ -274,7 +274,7 @@ export default function LobDrilldownTree() {
 
   useEffect(() => {
     const isApplicationRecord = selectedFactoryRecord?.title === 'Application';
-    const applicationRecord = isApplicationRecord ? selectedFactoryRecord?.record as ApplicationItem : null;
+    const applicationRecord = isApplicationRecord ? (selectedFactoryRecord?.record as unknown as ApplicationItem) : null;
     setSelectedApplication(applicationRecord || null);
 
     if (!applicationRecord?.correlationId) {
@@ -845,7 +845,7 @@ export default function LobDrilldownTree() {
                   <Descriptions.Item label="Application Purpose">{selectedApplication.applPurpose || '—'}</Descriptions.Item>
                   <Descriptions.Item label="User Interface">{selectedApplication.userInterface || '—'}</Descriptions.Item>
                   <Descriptions.Item label="Owner">{selectedApplication.owner || '—'}</Descriptions.Item>
-                  <Descriptions.Item label="Status">{(selectedApplication as Record<string, unknown>).state ? String((selectedApplication as Record<string, unknown>).state) : '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Status">{(selectedApplication as unknown as Record<string, unknown>).state ? String((selectedApplication as unknown as Record<string, unknown>).state) : '—'}</Descriptions.Item>
                   <Descriptions.Item label="Servers">
                     {loadingSelectedApplicationInfrastructure ? (
                       <Spin size="small" />

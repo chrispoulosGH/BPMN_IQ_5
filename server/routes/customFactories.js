@@ -59,56 +59,51 @@ function getValidationMessage(err) {
 }
 
 function collectValidationErrors({ modelCatalogRows = [], matchedModelColumns = [], uploadRows = [] }) {
-  const normalizedModelRows = (modelCatalogRows || []).map((row) => {
-    const values = getModelCatalogRowValues(row);
-    const canonicalValues = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(values, column.sourceColumnName));
-      return acc;
-    }, {});
-    const originalValues = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getNormalizedText(getRowValueByColumnName(values, column.sourceColumnName));
-      return acc;
-    }, {});
+  // Exact tuple membership validation for component columns only.
+  // Build ordered list of model column keys from matchedModelColumns
+  // matchedModelColumns may include a matchedModelHeader (the actual model CSV header that matched the component)
+  const modelKeys = (matchedModelColumns || []).map((col) => String(col.matchedModelHeader || col.sourceColumnName || '').trim()).filter(Boolean);
+  try {
+    console.log('[VALIDATION TRACE] collectValidationErrors: modelKeys=', modelKeys);
+    console.log('[VALIDATION TRACE] collectValidationErrors: modelCatalogRows=', (modelCatalogRows || []).length, 'uploadRows=', (uploadRows || []).length);
+  } catch (e) {
+    console.log('[VALIDATION TRACE] collectValidationErrors: trace init failed', e && e.message);
+  }
 
-    return { canonicalValues, originalValues };
+  // Build set of normalized tuples from model catalog rows
+  const tupleSet = new Set();
+  (modelCatalogRows || []).forEach((modelRow) => {
+    const values = getModelCatalogRowValues(modelRow);
+    const tuple = modelKeys.map((k) => getComparableValue(getRowValueByColumnName(values, k))).join('\u001F');
+    tupleSet.add(tuple);
   });
+  try {
+    console.log('[VALIDATION TRACE] collectValidationErrors: tupleSetSize=', tupleSet.size, 'sampleTuples=', Array.from(tupleSet).slice(0, 10));
+  } catch (e) {
+    console.log('[VALIDATION TRACE] collectValidationErrors: tuple sample failed', e && e.message);
+  }
 
   const errorRows = [];
   (uploadRows || []).forEach((uploadRow, index) => {
-    const comparableRow = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(uploadRow, column.sourceColumnName));
-      return acc;
-    }, {});
-
-    const hasMatch = normalizedModelRows.some((modelRow) => matchedModelColumns
-      .every((column) => modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName]));
-
-    if (!hasMatch) {
-      let bestCandidate = null;
-      let bestScore = -1;
-      normalizedModelRows.forEach((modelRow) => {
-        const score = matchedModelColumns.reduce((sum, column) => {
-          return sum + (modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName] ? 1 : 0);
-        }, 0);
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestCandidate = modelRow.originalValues;
-        }
+    const tuple = modelKeys.map((k) => getComparableValue(getRowValueByColumnName(uploadRow, k))).join('\u001F');
+    if (!tupleSet.has(tuple)) {
+      const uploadedValues = {};
+      modelKeys.forEach((k) => {
+        uploadedValues[k] = String(getRowValueByColumnName(uploadRow, k) ?? '').trim();
       });
 
-      const errorRecord = {
+      try {
+        console.log('[VALIDATION TRACE] collectValidationErrors: failingRow=', { rowNumber: index + 2, tuple, uploadedValues });
+      } catch (e) {
+        console.log('[VALIDATION TRACE] collectValidationErrors: failingRow trace failed', e && e.message);
+      }
+
+      errorRows.push({
         rowNumber: index + 2,
-        uploadedValues: {},
-        closestModelMatch: bestCandidate || {},
-        matchScore: bestScore,
-      };
-
-      matchedModelColumns.forEach((column) => {
-        errorRecord.uploadedValues[column.sourceColumnName] = String(getRowValueByColumnName(uploadRow, column.sourceColumnName) ?? '').trim();
+        uploadedValues,
+        closestModelMatch: {},
+        matchScore: 0,
       });
-
-      errorRows.push(errorRecord);
     }
   });
 
@@ -117,8 +112,13 @@ function collectValidationErrors({ modelCatalogRows = [], matchedModelColumns = 
 
 function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelColumns = [], uploadRows = [] }) {
   const errorRows = collectValidationErrors({ modelCatalogRows, matchedModelColumns, uploadRows });
-
   if (errorRows.length) {
+    try {
+      console.log('[VALIDATION TRACE] validateUploadRowsAgainstModel: errorRowsCount=', errorRows.length);
+      console.log('[VALIDATION TRACE] validateUploadRowsAgainstModel: firstFailures=', errorRows.slice(0, 8));
+    } catch (e) {
+      console.log('[VALIDATION TRACE] validateUploadRowsAgainstModel: trace failed', e && e.message);
+    }
     const preview = errorRows.slice(0, 12)
       .map((err) => {
         const values = matchedModelColumns.map((col) => `${col.sourceColumnName}=${err.uploadedValues[col.sourceColumnName]}`).join(', ');
@@ -653,22 +653,50 @@ function getModelCatalogRowValues(row) {
 }
 
 function classifyComponentColumnsAgainstModel({ modelCatalogColumns = [], componentColumns = [] }) {
-  const catalogColumnNames = new Set(
-    (modelCatalogColumns || [])
-      .map((col) => getComparableValue(typeof col === 'string' ? col : col?.sourceColumnName))
-      .filter(Boolean)
-  );
+  // Build normalized list of model catalog column names (strings)
+  const catalogColumns = (modelCatalogColumns || []).map((col) => {
+    const raw = typeof col === 'string' ? col : col?.sourceColumnName || '';
+    return {
+      raw,
+      norm: getComparableValue(raw),
+    };
+  }).filter(c => c.norm);
 
   const matchedModelColumns = [];
   const unmatchedComponentColumns = [];
 
   for (const componentColumn of componentColumns || []) {
-    const comparableName = getComparableValue(componentColumn.sourceColumnName);
-    if (catalogColumnNames.has(comparableName)) {
-      matchedModelColumns.push(componentColumn);
+    const compNorm = getComparableValue(componentColumn.sourceColumnName || '');
+    if (!compNorm) {
+      unmatchedComponentColumns.push(componentColumn);
+      continue;
+    }
+
+    // Exact match first
+    let found = catalogColumns.find(c => c.norm === compNorm);
+
+    // Fallback: model header contains the component base as prefix or separate word (e.g. "l0 component  business unit alignment")
+    if (!found) {
+      const pattern = new RegExp(`(^|\\W)${escapeRegExp(compNorm)}(\\W|$)`, 'i');
+      found = catalogColumns.find(c => pattern.test(c.norm));
+    }
+
+    if (found) {
+      matchedModelColumns.push({
+        ...componentColumn,
+        // preserve the model header used for matching so downstream tuple building can reference it
+        matchedModelHeader: found.raw,
+      });
     } else {
       unmatchedComponentColumns.push(componentColumn);
     }
+  }
+  try {
+    console.log('[VALIDATION TRACE] classifyComponentColumnsAgainstModel: modelCatalogColumnsCount=', (modelCatalogColumns || []).length);
+    console.log('[VALIDATION TRACE] classifyComponentColumnsAgainstModel: matched=', matchedModelColumns.map(m => ({ name: m.name, sourceColumnName: m.sourceColumnName, matchedModelHeader: m.matchedModelHeader })));
+    if (unmatchedComponentColumns.length) console.log('[VALIDATION TRACE] classifyComponentColumnsAgainstModel: unmatched=', unmatchedComponentColumns.map(u => ({ name: u.name, sourceColumnName: u.sourceColumnName })));
+  } catch (e) {
+    console.log('[VALIDATION TRACE] classifyComponentColumnsAgainstModel: trace failed', e && e.message);
   }
 
   return {
@@ -710,60 +738,13 @@ function splitUploadColumns(columns) {
 }
 
 function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelColumns = [], uploadRows = [] }) {
-  const normalizedModelRows = (modelCatalogRows || []).map((row) => {
-    const values = getModelCatalogRowValues(row);
-    const canonicalValues = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(values, column.sourceColumnName));
-      return acc;
-    }, {});
-    const originalValues = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getNormalizedText(getRowValueByColumnName(values, column.sourceColumnName));
-      return acc;
-    }, {});
-
-    return { canonicalValues, originalValues };
-  });
-
-  const unmatchedRows = [];
-  uploadRows.forEach((uploadRow, index) => {
-    const comparableRow = matchedModelColumns.reduce((acc, column) => {
-      acc[column.sourceColumnName] = getCanonicalModelMatchValue(getRowValueByColumnName(uploadRow, column.sourceColumnName));
-      return acc;
-    }, {});
-
-    const hasMatch = normalizedModelRows.some((modelRow) => matchedModelColumns
-      .every((column) => modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName]));
-
-    if (!hasMatch) {
-      const mismatchPreview = matchedModelColumns
-        .map((column) => `${column.sourceColumnName}=${String(getRowValueByColumnName(uploadRow, column.sourceColumnName) ?? '').trim()}`)
-        .join(', ');
-
-      let bestCandidate = null;
-      let bestScore = -1;
-      normalizedModelRows.forEach((modelRow) => {
-        const score = matchedModelColumns.reduce((sum, column) => {
-          return sum + (modelRow.canonicalValues[column.sourceColumnName] === comparableRow[column.sourceColumnName] ? 1 : 0);
-        }, 0);
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestCandidate = modelRow.originalValues;
-        }
-      });
-
-      const bestCandidatePreview = bestCandidate
-        ? matchedModelColumns
-          .map((column) => `${column.sourceColumnName}=${bestCandidate[column.sourceColumnName] || ''}`)
-          .join(', ')
-        : 'none';
-
-      unmatchedRows.push(`row ${index + 2} (${mismatchPreview}) -> closest model: ${bestCandidatePreview}`);
-    }
-  });
-
-  if (unmatchedRows.length) {
-    throw createValidationError(`Component upload is incompatible with model data. ${unmatchedRows.length} row(s) did not match model hierarchy. Examples: ${unmatchedRows.slice(0, 12).join('; ')}${unmatchedRows.length > 12 ? '; ...' : ''}`);
+  const errorRows = collectValidationErrors({ modelCatalogRows, matchedModelColumns, uploadRows });
+  if (errorRows.length) {
+    const preview = errorRows.slice(0, 12).map((err) => {
+      const values = matchedModelColumns.map((col) => `${col.sourceColumnName}=${err.uploadedValues?.[col.sourceColumnName] || ''}`).join(', ');
+      return `row ${err.rowNumber} (${values})`;
+    }).join('; ');
+    throw createValidationError(`Component upload is incompatible with model data. ${errorRows.length} row(s) did not match model hierarchy. Examples: ${preview}${errorRows.length > 12 ? '; ...' : ''}`);
   }
 }
 
@@ -864,6 +845,16 @@ async function doesDataComponentExist({ type, value, neighborhoodName, correlati
       acronym: acronymRegex,
       neighborhoodName: neighborhoodScope,
     }, { _id: 1 }).lean();
+    if (!app) {
+      console.log('[VALIDATION TRACE] Missing application reference', {
+        type: 'application',
+        value: trimmedValue,
+        neighborhoodName,
+        correlationId: trimmedCorrelationId,
+        acronym: trimmedAcronym,
+        query: { acronymRegex: acronymRegex.toString() },
+      });
+    }
     return Boolean(app);
   }
 
@@ -879,11 +870,15 @@ async function doesDataComponentExist({ type, value, neighborhoodName, correlati
         'rows.values.name': exactMatchRegex,
       }, { _id: 1 }).lean(),
     ]);
+    if (!product && !productComponent) {
+      console.log('[VALIDATION TRACE] Missing product reference', { type: 'product', value: trimmedValue, neighborhoodName, query: { exactMatchRegex: exactMatchRegex.toString() } });
+    }
     return Boolean(product || productComponent);
   }
 
   if (type === 'server') {
     const server = await Server.findOne({ name: exactMatchRegex }, { _id: 1 }).lean();
+    if (!server) console.log('[VALIDATION TRACE] Missing server reference', { type: 'server', value: trimmedValue, neighborhoodName, query: { exactMatchRegex: exactMatchRegex.toString() } });
     return Boolean(server);
   }
 
@@ -892,6 +887,7 @@ async function doesDataComponentExist({ type, value, neighborhoodName, correlati
       { $or: [{ name: exactMatchRegex }, { instanceName: exactMatchRegex }] },
       { _id: 1 }
     ).lean();
+    if (!instance) console.log('[VALIDATION TRACE] Missing databaseInstance reference', { type: 'databaseInstance', value: trimmedValue, neighborhoodName, query: { exactMatchRegex: exactMatchRegex.toString() } });
     return Boolean(instance);
   }
 
@@ -907,6 +903,9 @@ async function doesDataComponentExist({ type, value, neighborhoodName, correlati
         'rows.values.name': exactMatchRegex,
       }, { _id: 1 }).lean(),
     ]);
+    if (!actor && !actorComponent) {
+      console.log('[VALIDATION TRACE] Missing actor reference', { type: 'actor', value: trimmedValue, neighborhoodName, query: { exactMatchRegex: exactMatchRegex.toString() } });
+    }
     return Boolean(actor || actorComponent);
   }
 
@@ -934,27 +933,10 @@ async function buildComponentUploadFactories({ neighborhoodName, rows, component
       const rowMap = factoryRowMaps.get(column.name);
       const primaryKey = getNormalizedPrimaryKeyValue(componentValue);
       const existingRow = rowMap.get(primaryKey);
-      const dataComponentType = getDataComponentType(column.name);
-      const applicationAcronym = dataComponentType === 'application'
-        ? getApplicationAcronymFromUploadRow(row, componentValue)
-        : '';
-      const cacheKey = `${dataComponentType || 'component'}::${getComparableValue(componentValue)}::${dataComponentType === 'application' ? getComparableValue(applicationCorrelationId) : ''}::${dataComponentType === 'application' ? getComparableValue(applicationAcronym) : ''}`;
-      let existsInDataCatalog = true;
-      if (dataComponentType) {
-        if (dataExistenceCache.has(cacheKey)) {
-          existsInDataCatalog = dataExistenceCache.get(cacheKey);
-        } else {
-          existsInDataCatalog = await doesDataComponentExist({
-            type: dataComponentType,
-            value: componentValue,
-            neighborhoodName,
-            correlationId: dataComponentType === 'application' ? applicationCorrelationId : '',
-            acronym: dataComponentType === 'application' ? applicationAcronym : '',
-          });
-          dataExistenceCache.set(cacheKey, existsInDataCatalog);
-        }
-      }
-      const rowState = existsInDataCatalog ? 'staged' : 'invalid';
+      // Per upload policy: skip foreign-key existence checks here.
+      // Validation is performed separately by exact tuple membership against the model.
+      // Always mark staged for persistence; tuple validation will abort before writes if mismatches are found.
+      const rowState = 'staged';
       const qualifierValues = (column.qualifierColumns || []).reduce((acc, qualifier) => {
         acc[qualifier.fieldName] = getNormalizedText(getRowValueByColumnName(row, qualifier.sourceColumnName));
         return acc;
@@ -1297,8 +1279,9 @@ router.get('/neighborhoods', async (_req, res) => {
 router.get('/', async (req, res) => {
   try {
     const neighborhoodName = String(req.query.neighborhoodName || '').trim();
-    const query = neighborhoodName ? { neighborhoodName } : {};
-    const factories = await Component.find(query, { neighborhoodName: 1, name: 1, owner: 1, createdBy: 1, sourceFileName: 1, columns: 1, createdAt: 1, updatedAt: 1, rows: 1 })
+    const headerModelName = String(req.headers['x-model-name'] || req.headers['X-Model-Name'] || '').trim();
+    const query = headerModelName ? { modelName: headerModelName } : (neighborhoodName ? { neighborhoodName } : {});
+    const factories = await Component.find(query, { neighborhoodName: 1, modelName: 1, name: 1, owner: 1, createdBy: 1, sourceFileName: 1, columns: 1, createdAt: 1, updatedAt: 1, rows: 1 })
       .sort({ neighborhoodName: 1, name: 1 })
       .lean();
     res.json(factories.map((factory) => serializeFactory(factory)));
@@ -1486,8 +1469,42 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
       createdBy,
     });
 
+    // If any uploaded rows were marked 'invalid' (referenced data missing), abort before writing
+    const invalidRowDetails = [];
+    (uploadedFactories || []).forEach((factory) => {
+      (factory.rows || []).forEach((row, rowIndex) => {
+        if (String(row.state || '').toLowerCase() === 'invalid') {
+          invalidRowDetails.push({ factory: factory.name, rowNumber: rowIndex + 1, values: row.values });
+        }
+      });
+    });
+
+    if (invalidRowDetails.length) {
+      // Save a brief failure report for user inspection
+      try {
+        const errRows = invalidRowDetails.map((d) => ({
+          rowNumber: d.rowNumber,
+          uploadedValues: d.values,
+        }));
+        saveValidationErrorReport({
+          neighborhoodName,
+          errorRows: errRows,
+          matchedModelColumns: componentColumns || [],
+          sourceFileName: req.file.originalname,
+        });
+      } catch (e) {
+        // noop - best effort
+      }
+
+      return res.status(409).json({
+        error: `Component upload failed: ${invalidRowDetails.length} uploaded row(s) reference missing data components (applications/products/servers/etc).`,
+        invalidCount: invalidRowDetails.length,
+        invalidRows: invalidRowDetails.slice(0, 50),
+      });
+    }
+
     const factoryNames = uploadedFactories.map((factory) => factory.name);
-    const existingFactories = await Component.find({ neighborhoodName, name: { $in: factoryNames } });
+    const existingFactories = await Component.find({ neighborhoodName, modelName: neighborhoodName, name: { $in: factoryNames } });
     const existingFactoryMap = new Map(existingFactories.map((factory) => [factory.name, factory]));
 
     const alreadyStagedFactory = existingFactories.find((factory) =>
@@ -1535,6 +1552,8 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
           continue;
         }
 
+        // Ensure uploaded factories persist the modelName for namespace isolation
+        uploadedFactory.modelName = neighborhoodName;
         const createdFactory = await Component.create(uploadedFactory);
         createdFactoryIds.push(String(createdFactory._id));
         savedFactories.push(serializeFactory(createdFactory.toObject()));

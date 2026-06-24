@@ -43,6 +43,7 @@ const componentRowSchema = new mongoose.Schema(
 const componentSchema = new mongoose.Schema(
   {
     neighborhoodName: { type: String, required: true, index: true, trim: true },
+    modelName: { type: String, default: '', index: true, trim: true },
     name: { type: String, required: true, trim: true },
     sourceColumnName: { type: String, default: '', trim: true },
     shortDescription: { type: String, default: '', trim: true },
@@ -58,6 +59,7 @@ const componentSchema = new mongoose.Schema(
   { timestamps: true, collection: 'components' }
 );
 
-componentSchema.index({ neighborhoodName: 1, name: 1 }, { unique: true });
+// Ensure uniqueness across neighborhood + model + name to support model namespaces
+componentSchema.index({ neighborhoodName: 1, modelName: 1, name: 1 }, { unique: true });
 
 module.exports = mongoose.models.Component || mongoose.model('Component', componentSchema);

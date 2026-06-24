@@ -77,7 +77,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [collapsedTreeNodes, setCollapsedTreeNodes] = useState<Set<string>>(new Set());
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Fetch type-ahead suggestions
   const handleTypeahead = useCallback(
@@ -468,7 +468,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
               onSelect={(value) => setSearchTerm(value)}
               onChange={(value) => setSearchTerm(value)}
               options={suggestions}
-              loading={loadingSuggestions}
+              {...({ loading: loadingSuggestions } as any)}
               onKeyDown={handleKeyDown}
               style={{ flex: 1, minWidth: '300px' }}
               popupMatchSelectWidth={false}

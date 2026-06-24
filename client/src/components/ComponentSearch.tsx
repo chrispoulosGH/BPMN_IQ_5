@@ -508,7 +508,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
               onSelect={(value) => setSearchTerm(value)}
               onChange={(value) => setSearchTerm(value)}
               options={suggestions}
-              loading={loadingSuggestions}
+              {...({ loading: loadingSuggestions } as any)}
               onKeyDown={handleKeyDown}
               style={{ flex: 1, minWidth: '300px' }}
               popupMatchSelectWidth={false}

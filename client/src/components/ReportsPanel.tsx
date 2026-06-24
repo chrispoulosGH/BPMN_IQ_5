@@ -230,7 +230,7 @@ const ReportsPanel: React.FC = () => {
                     />
                   ))}
                 </Pie>
-                <RechartsTooltip formatter={(value: number) => formatMillions(Number(value))} />
+                <RechartsTooltip formatter={(value: any) => formatMillions(Number(value || 0)) as any} />
               </PieChart>
             </ResponsiveContainer>
           </div>
