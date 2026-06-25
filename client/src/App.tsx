@@ -1900,6 +1900,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                       />
                     </div>
                     <Tabs
+                      className="neighborhood-tabs"
                       activeKey={activeNeighborhoodTab}
                       onChange={setActiveNeighborhoodTab}
                       items={neighborhoodTabs
@@ -1912,11 +1913,10 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         })
                         .map((neighborhood) => ({
                         key: neighborhood.name,
-                        label: neighborhoodTabLabel(neighborhood.name, `${neighborhood.name} (${getDisplayedFactoryCount(neighborhood)})`),
+                        label: neighborhoodTabLabel(neighborhood.name, neighborhood.name),
                         children: (
                           <div className="flex h-full min-h-0 flex-col">
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
-                              <Tag color="blue" style={{ marginInlineEnd: 0 }}>Model Scope</Tag>
                               <span style={{ fontWeight: 700, color: '#0f172a' }}>{neighborhood.name}</span>
                               <span style={{ fontSize: 12, color: '#64748b' }}>All component data in this view is filtered to the selected model.</span>
                               <div style={{ marginLeft: 'auto' }}>
@@ -1925,6 +1925,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                     size="small"
                                     icon={<UploadOutlined />}
                                     onClick={() => handleImportModelBpmn(neighborhood.name)}
+                                    className="btn-bulk-import"
                                   >
                                     Bulk Import BPMN 2.0 XML
                                   </Button>
@@ -2007,7 +2008,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                     onComponentTabSelect={(componentId, componentName) => {
                                       setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
                                     }}
-                                    renderComponentContent={(componentId, componentName) => {
+                                    renderComponentContent={(componentId, componentName, highlightedRowName) => {
                                       const factoryComponent = (neighborhoodFactories[neighborhood.name] || []).find((f) => f._id === componentId);
                                       if (!factoryComponent) return <div>Component not found</div>;
                                       
@@ -2016,19 +2017,20 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                           canManageFactories={canEditFactories}
                                           fixedNeighborhoodName={neighborhood.name}
                                           fixedFactoryId={componentId}
-                                          defaultRowSearch={factorySearch[componentId]}
+                                          defaultRowSearch={highlightedRowName || factorySearch[componentId]}
                                           defaultRowSearchColumn="name"
                                           hideFactoryList
                                           onNeighborhoodsChanged={loadNeighborhoodTabs}
                                           onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
-                                          onApplicationLinkClick={(applicationName, correlationId) => {
+                                          onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
                                             if (!correlationId) return;
-                                            setActiveOuterTab('data');
-                                            setActiveDataTab('applications');
+                                            const applicationSearch = rowSearchText ? encodeExactFactorySearch(rowSearchText) : encodeExactFactorySearch(applicationName);
                                             setFactorySearch((current) => ({
                                               ...current,
-                                              applications: encodeExactFactorySearch(applicationName),
+                                              applications: applicationSearch,
                                             }));
+                                            setActiveOuterTab('data');
+                                            setActiveDataTab('applications');
                                             setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
                                           }}
                                         />

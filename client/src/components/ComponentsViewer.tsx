@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { App as AntApp, Card, Space, Spin, Tree, Button, Segmented, Tabs, Empty, Input, Drawer, Divider, Descriptions, Badge, Tag, Collapse, Select } from 'antd';
+import { App as AntApp, Card, Space, Spin, Tree, Button, Segmented, Tabs, Empty, AutoComplete, Input, Drawer, Divider, Descriptions, Badge, Tag, Collapse, Select } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { FolderOutlined, TableOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
 
-import { getCustomFactories, getComponentHierarchies, getCustomFactory, getCustomFactoryForModel, getApplicationByCorrelationId, getApplicationByName, getFactoryNeighborhoods } from '../api';
+import { getCustomFactories, getComponentHierarchies, getCustomFactory, getCustomFactoryForModel, getApplicationByCorrelationId, getApplicationByName, getFactoryNeighborhoods, getLeafComponent } from '../api';
 import type { CustomFactory, CustomFactoryRow, HierarchyPath } from '../types';
 
 interface ComponentsViewerProps {
   neighborhoodName: string;
   onComponentTabSelect?: (componentId: string, componentName: string) => void;
   availableComponentIds?: string[];
-  renderComponentContent?: (componentId: string, componentName: string) => React.ReactNode;
+  renderComponentContent?: (componentId: string, componentName: string, highlightedRowName?: string | null) => React.ReactNode;
 }
 
 export default function ComponentsViewer({
@@ -33,6 +33,10 @@ export default function ComponentsViewer({
   const [selectedComponent, setSelectedComponent] = useState<CustomFactory | null>(null);
   const [showMetadataDrawer, setShowMetadataDrawer] = useState(false);
   const [loadingMetadata, setLoadingMetadata] = useState(false);
+  const [activeTabKey, setActiveTabKey] = useState<string | undefined>(undefined);
+  const [highlightedComponentId, setHighlightedComponentId] = useState<string | null>(null);
+  const [highlightedRowName, setHighlightedRowName] = useState<string | null>(null);
+  const [ancestryPaths, setAncestryPaths] = useState<Array<Array<{ componentName: string; rowName: string; componentId: string }>> | null>(null);
 
   // Load hierarchies from ComponentSearchIndex
   useEffect(() => {
@@ -41,14 +45,23 @@ export default function ComponentsViewer({
     const loadHierarchies = async () => {
       setLoading(true);
       try {
-        const result = await getComponentHierarchies(neighborhoodName, 'Application', activeModelName);
+        console.log(`[ComponentsViewer] Loading hierarchies for ${neighborhoodName}/${activeModelName}`);
+        
+        // First, get the leaf component name for this neighborhood
+        const leafData = await getLeafComponent(neighborhoodName, activeModelName);
+        const leafComponent = leafData.leafComponent || 'Application';
+        console.log(`[ComponentsViewer] Using leaf component: ${leafComponent}`);
+        
+        // Then load hierarchies with the correct component name
+        const result = await getComponentHierarchies(neighborhoodName, leafComponent, activeModelName);
         if (!cancelled) {
           setHierarchies(result.paths);
-          console.log(`Loaded ${result.paths.length} hierarchy paths`);
+          console.log(`[ComponentsViewer] Loaded ${result.paths.length} hierarchy paths`);
         }
       } catch (error: any) {
         if (!cancelled) {
           setHierarchies([]);
+          console.error(`[ComponentsViewer] Error loading hierarchies:`, error);
           message.error(error.response?.data?.error || error.message);
         }
       } finally {
@@ -235,26 +248,19 @@ export default function ComponentsViewer({
     const selectedNodeInfo = findNodeByKey(treeData, nodeKey);
     const componentId = selectedNodeInfo?.componentId ? String(selectedNodeInfo.componentId) : undefined;
 
-    console.log('Selected node:', { selectedNodeInfo, componentId });
-
     if (componentId) {
       setLoadingMetadata(true);
       try {
         let component = await getCustomFactoryForModel(componentId, activeModelName);
-        console.log('Fetched component:', component);
-        console.log('selectedNodeInfo:', selectedNodeInfo);
 
         // If this component has FK columns, follow the FK to get enriched metadata
         if (component.foreignKeyColumns && component.foreignKeyColumns.length > 0) {
           const fk = component.foreignKeyColumns[0];
-          console.log('FK found:', fk);
           // FK targetScope holds the linked component name (e.g. "Application" → applications collection)
           const targetScope = fk.targetScope?.toLowerCase();
           if (targetScope === 'application' && selectedNodeInfo?.rowName) {
             try {
-              console.log('Following FK to applications collection for:', selectedNodeInfo.rowName);
               const appData = await getApplicationByName(selectedNodeInfo.rowName, 'ATT Journey Model');
-              console.log('Fetched from applications collection:', appData);
               component = {
                 ...component,
                 name: appData.name,
@@ -266,15 +272,13 @@ export default function ComponentsViewer({
                 ...({ acronym: appData.acronym, lifecycle: appData.lifecycle, lifecycleStatus: appData.lifecycleStatus, applPurpose: appData.applPurpose, businessPurpose: appData.businessPurpose } as any),
               };
             } catch (error: any) {
-              console.log('FK follow failed:', error?.response?.status, error?.message);
+              // Silent fail - component exists but may not have enriched metadata
             }
           }
         } else if (selectedNodeInfo?.componentName === 'application') {
           // No FK column but it's an application node — try direct lookup by name
           try {
-            console.log('No FK but application node, fetching by name:', selectedNodeInfo.rowName);
             const appData = await getApplicationByName(selectedNodeInfo.rowName, 'ATT Journey Model');
-            console.log('Fetched from applications collection:', appData);
             component = {
               ...component,
               name: appData.name,
@@ -285,7 +289,7 @@ export default function ComponentsViewer({
               ...({ acronym: appData.acronym, lifecycle: appData.lifecycle, lifecycleStatus: appData.lifecycleStatus, applPurpose: appData.applPurpose, businessPurpose: appData.businessPurpose } as any),
             };
           } catch (error: any) {
-            console.log('Direct application lookup failed:', error?.response?.status, error?.message);
+            // Silent fail - component exists but may not have enriched metadata
           }
         }
 
@@ -300,7 +304,6 @@ export default function ComponentsViewer({
           neighborhoodName: neighborhoodName,
         } as any);
         setShowMetadataDrawer(true);
-        console.log('Node info displayed (component metadata not found in database)');
       } finally {
         setLoadingMetadata(false);
       }
@@ -333,19 +336,48 @@ export default function ComponentsViewer({
     );
   }, [components, searchText]);
 
+  // Controlled active tab: ensure active tab follows components list
+  useEffect(() => {
+    if (!activeTabKey && components && components.length > 0) {
+      setActiveTabKey(components[0]._id);
+    } else if (activeTabKey && !components.find((c) => c._id === activeTabKey)) {
+      // If active tab was removed, reset to first
+      setActiveTabKey(components[0]?._id);
+    }
+  }, [components, activeTabKey]);
+
+  // Helper to extract all keys from tree data recursively
+  const getAllTreeKeys = (nodes: DataNode[]): string[] => {
+    const keys: string[] = [];
+    const collect = (nodeList: DataNode[]) => {
+      nodeList.forEach((node) => {
+        if (node.key) keys.push(String(node.key));
+        if (node.children) collect(node.children);
+      });
+    };
+    collect(nodes);
+    return keys;
+  };
+
   // Build hierarchical tree from component hierarchies with ModelCatalog styling
   const treeData = useMemo<DataNode[]>(() => {
-    if (hierarchies.length === 0) return [];
+    if (hierarchies.length === 0) {
+      console.log(`[TreeBuilder] No hierarchies to render for ${activeModelName}`);
+      return [];
+    }
+
+    console.log(`[TreeBuilder] Building tree from ${hierarchies.length} hierarchy paths for ${activeModelName}`);
 
     const pathToNode = new Map<string, DataNode>();
     const rootNodes: DataNode[] = [];
     let nodeId = 0;
+    let nodeCount = 0;
 
     // Color arrays (matching ModelCatalog)
     const bgColors = ['#EFF6FF', '#F0FDF4', '#FEF3C7', '#FCE7F3', '#F3E8FF', '#ECFDF5'];
     const textColors = ['#0C63E4', '#15803D', '#B45309', '#BE185D', '#6D28D9', '#0891B2'];
 
-    hierarchies.forEach((hierarchy) => {
+    hierarchies.forEach((hierarchy, hierarchyIdx) => {
       const { nodes, pathStr } = hierarchy;
       let currentPath: string[] = [];
 
@@ -355,6 +387,7 @@ export default function ComponentsViewer({
         const pathKey = `${activeModelName || ''}|${currentPath.join('|')}`;
 
         if (!pathToNode.has(pathKey)) {
+          nodeCount++;
           const bgColor = bgColors[depth % bgColors.length];
           const textColor = textColors[depth % textColors.length];
 
@@ -415,6 +448,8 @@ export default function ComponentsViewer({
       });
     });
 
+    console.log(`[TreeBuilder] Created ${nodeCount} unique nodes, ${rootNodes.length} root nodes for ${activeModelName}`);
+
     // Sort root nodes alphabetically
     return rootNodes.sort((a, b) => {
       const aText = String(a.title);
@@ -424,6 +459,172 @@ export default function ComponentsViewer({
       return String(aValue).localeCompare(String(bValue));
     });
   }, [hierarchies]);
+
+  // Flatten tree nodes to suggestions for typeahead
+  const flatTreeNodes = useMemo(() => {
+    const out: { key: string; label: string; data: any }[] = [];
+    const seen = new Set<string>();
+    const collect = (nodes?: DataNode[]) => {
+      if (!nodes) return;
+      nodes.forEach((n) => {
+        const data = (n as any).data;
+        const label = data ? `${data.componentName}: ${data.rowName}` : String(n.title);
+        // dedupe by label to avoid repeated suggestions
+        if (!seen.has(label)) {
+          out.push({ key: String(n.key), label, data });
+          seen.add(label);
+        }
+        if (n.children) collect(n.children);
+      });
+    };
+    collect(treeData);
+    return out;
+  }, [treeData]);
+
+  // Build typeahead options from components and tree nodes
+  const searchOptions = useMemo(() => {
+    const opts: { value: string; label: React.ReactNode }[] = [];
+    // Components (table tabs)
+    // Deduplicate component suggestions by name (show distinct names)
+    const seenNames = new Set<string>();
+    components.forEach((c) => {
+      const keyName = String(c.name || '').toLowerCase();
+      if (seenNames.has(keyName)) return;
+      seenNames.add(keyName);
+      opts.push({
+        value: `comp:${c._id}`,
+        label: (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ fontWeight: 600 }}>{c.name}</div>
+            <div style={{ color: '#888' }}>{c.rowCount}</div>
+          </div>
+        ),
+      });
+    });
+
+    // Tree nodes
+    flatTreeNodes.forEach((n) => {
+      opts.push({ value: `node:${n.key}`, label: n.label });
+    });
+
+    return opts;
+  }, [components, flatTreeNodes]);
+
+  const computeParentKeysForPath = (pathKey: string) => {
+    // pathKey format: `${modelName}|A|B|C`
+    const parts = String(pathKey).split('|');
+    const out: string[] = [];
+    for (let i = 1; i <= parts.length - 1; i++) {
+      out.push(parts.slice(0, i + 1).join('|'));
+    }
+    return out;
+  };
+
+  // Handle clicking on an ancestry path cell to navigate to that component with row filtered
+  const handleAncestryPathCellClick = (componentId: string, rowName: string) => {
+    setActiveTabKey(componentId);
+    setHighlightedComponentId(componentId);
+    setHighlightedRowName(rowName);
+  };
+
+  const handleSuggestionSelect = (value: string) => {
+    if (!value) return;
+    if (value.startsWith('comp:')) {
+      const id = value.slice('comp:'.length);
+      setViewMode('table');
+      setActiveTabKey(id);
+      setHighlightedComponentId(id);
+      setAncestryPaths(null);
+      // also focus search text
+      const target = components.find((c) => c._id === id);
+      if (target) setSearchText(target.name);
+    } else if (value.startsWith('node:')) {
+      const key = value.slice('node:'.length);
+      // If node selected, prefer showing the component tab and the specific row
+      const node = flatTreeNodes.find((n) => n.key === key);
+      if (node) {
+        setSearchText(node.label as string);
+        const compId = node.data?.componentId ? String(node.data.componentId) : null;
+        if (compId) {
+          setViewMode('table');
+          setActiveTabKey(compId);
+          setHighlightedComponentId(compId);
+          setHighlightedRowName(node.data?.rowName ? String(node.data.rowName) : null);
+          // Find ALL hierarchy paths that include this node (for multiple lineages)
+          const matchingHierarchies = hierarchies.filter((h) =>
+            h.nodes.some(
+              (n) =>
+                n.rowName === node.data?.rowName &&
+                n.componentName === node.data?.componentName
+            )
+          );
+          if (matchingHierarchies.length > 0) {
+            const paths = matchingHierarchies.map((h) =>
+              h.nodes.map((n) => ({
+                componentName: n.componentName,
+                rowName: n.rowName,
+                componentId: String(n.componentId),
+              }))
+            );
+            // Deduplicate paths by serializing and comparing
+            const uniquePaths = Array.from(
+              new Map(
+                paths.map((p) => [JSON.stringify(p), p])
+              ).values()
+            );
+            setAncestryPaths(uniquePaths);
+          } else {
+            setAncestryPaths(null);
+          }
+        } else {
+          // fallback to tree view if no component mapping
+          setViewMode('tree');
+          const parents = computeParentKeysForPath(key as string);
+          setExpandedKeys(parents);
+          setSelectedNodeKey(key);
+          setHighlightedComponentId(null);
+          setHighlightedRowName(null);
+          setAncestryPaths(null);
+        }
+      }
+    }
+  };
+
+  // Clear highlighted component when search is cleared
+  useEffect(() => {
+    if (!searchText || !searchText.trim()) {
+      setHighlightedComponentId(null);
+      setHighlightedRowName(null);
+      setAncestryPaths(null);
+    }
+  }, [searchText]);
+
+  // Shared search bar used by both tree and table views
+  const searchBar = (
+    <div style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#fff', paddingBottom: '12px', marginBottom: '8px', borderBottom: '2px solid #1890ff' }}>
+      <div style={{ marginBottom: '8px', fontSize: '12px', fontWeight: 600, color: '#0050b3', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        🔍 Model-Wide Component Search
+      </div>
+      <AutoComplete
+        style={{ width: '100%' }}
+        options={searchOptions}
+        onSelect={handleSuggestionSelect}
+        onSearch={(val) => setSearchText(val)}
+        value={searchText}
+        filterOption={(inputValue, option) => {
+          if (!inputValue) return true;
+          const normalized = inputValue.toLowerCase();
+          return String(option?.value || '').toLowerCase().includes(normalized) || String(option?.label || '').toLowerCase().includes(normalized);
+        }}
+        placeholder="Search across all components and data (e.g., 'EDGE', 'Application Name')"
+      >
+        <Input suffix={<SearchOutlined />} allowClear size="large" />
+      </AutoComplete>
+      <div style={{ marginTop: '6px', fontSize: '11px', color: '#666', fontStyle: 'italic' }}>
+        Find components by name, row data, or navigate hierarchies — results appear in both tree and table views
+      </div>
+    </div>
+  );
 
   // Auto-expand tree on load - expand root node
   useEffect(() => {
@@ -494,88 +695,166 @@ export default function ComponentsViewer({
 
   // Render table view with all components as tabs
   const tableViewContent = (
-    <Tabs
-      className="components-table-view"
-      defaultActiveKey={availableComponentIds[0] || (components[0]?._id || '')}
-      items={components.map((component) => ({
-        key: component._id,
-        label: (
-          <div
-            draggable
-            onDragStart={(e) => handleTabDragStart(e, component._id)}
-            onDragOver={handleTabDragOver}
-            onDrop={(e) => handleTabDrop(e, component._id)}
-            onDragEnd={handleTabDragEnd}
-            style={{
-              cursor: draggedTabId === component._id ? 'grabbing' : 'grab',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              background: draggedTabId === component._id ? '#dbeafe' : undefined,
-              border: draggedTabId === component._id ? '2px solid #3b82f6' : '1px solid transparent',
-              opacity: draggedTabId === component._id ? 0.6 : 1,
-              transition: 'all 0.2s ease-in-out',
-            }}
-          >
-            {component.name} ({component.rowCount})
-          </div>
-        ),
-        children: renderComponentContent
-          ? renderComponentContent(component._id, component.name)
-          : (
-              <div style={{ padding: '16px' }}>
-                <Empty description={`No data available for ${component.name}`} />
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      {searchBar}
+      {/* Ancestry paths as columnar table */}
+      {ancestryPaths && ancestryPaths.length > 0 && (
+        <div style={{ marginBottom: '16px', border: '1px solid #d9d9d9', borderRadius: '2px', overflow: 'hidden', flexShrink: 0 }}>
+          {/* Headers */}
+          <div style={{ display: 'flex', backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}>
+            {ancestryPaths[0]?.map((node, colIdx) => (
+              <div
+                key={`header-${colIdx}`}
+                style={{
+                  flex: 1,
+                  padding: '10px 12px',
+                  borderRight: colIdx < ancestryPaths[0].length - 1 ? '1px solid #d9d9d9' : 'none',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  color: '#1e293b',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  minWidth: '120px',
+                }}
+              >
+                {node.componentName}
               </div>
-            ),
-      }))}
-    />
+            ))}
+          </div>
+          {/* Rows */}
+          {ancestryPaths.map((path, rowIdx) => (
+            <div
+              key={`row-${rowIdx}`}
+              style={{
+                display: 'flex',
+                borderBottom: rowIdx < ancestryPaths.length - 1 ? '1px solid #d9d9d9' : 'none',
+                backgroundColor: rowIdx % 2 === 0 ? '#fff' : '#fafafa',
+              }}
+            >
+              {path.map((node, colIdx) => (
+                <div
+                  key={`cell-${rowIdx}-${colIdx}`}
+                  onClick={() => handleAncestryPathCellClick(node.componentId, node.rowName)}
+                  style={{
+                    flex: 1,
+                    padding: '10px 12px',
+                    borderRight: colIdx < path.length - 1 ? '1px solid #d9d9d9' : 'none',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    color: '#0050b3',
+                    fontWeight: 500,
+                    minWidth: '120px',
+                    transition: 'background-color 0.2s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#e6f7ff')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = rowIdx % 2 === 0 ? '#fff' : '#fafafa')}
+                >
+                  {node.rowName}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+      <Tabs
+        className="components-table-view"
+        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+        activeKey={activeTabKey}
+        onChange={(key) => setActiveTabKey(key)}
+        items={(highlightedComponentId ? components.filter((c) => c._id === highlightedComponentId) : components).map((component) => ({
+          key: component._id,
+          label: (
+            <div
+              draggable
+              onDragStart={(e) => handleTabDragStart(e, component._id)}
+              onDragOver={handleTabDragOver}
+              onDrop={(e) => handleTabDrop(e, component._id)}
+              onDragEnd={handleTabDragEnd}
+              style={{
+                cursor: draggedTabId === component._id ? 'grabbing' : 'grab',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                background: draggedTabId === component._id ? '#dbeafe' : undefined,
+                border: draggedTabId === component._id ? '2px solid #3b82f6' : '1px solid transparent',
+                opacity: draggedTabId === component._id ? 0.6 : 1,
+                transition: 'all 0.2s ease-in-out',
+              }}
+            >
+              {component.name} ({component.rowCount})
+            </div>
+          ),
+          children: renderComponentContent
+            ? renderComponentContent(component._id, component.name, highlightedComponentId === component._id ? highlightedRowName : null)
+            : (
+                <div style={{ padding: '16px' }}>
+                  {/* Default component view: show rows, and if highlightedRowName is set for this component, show only that row */}
+                  {component.rows && component.rows.length > 0 ? (
+                    <div>
+                      {(highlightedComponentId === component._id && highlightedRowName)
+                        ? component.rows.filter((r: any) => String(r.rowName).toLowerCase() === String(highlightedRowName).toLowerCase()).map((row: any, idx: number) => (
+                            <div key={idx} style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                              <strong>{row.rowName}</strong>
+                              <div style={{ marginTop: '4px', fontSize: '11px' }}>
+                                {Object.entries(row.values || {}).map(([key, value]) => (
+                                  <div key={key}><strong>{key}:</strong> {String(value || '—')}</div>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                        : component.rows.slice(0, 5).map((row: any, idx: number) => (
+                            <div key={idx} style={{ marginBottom: '8px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                              <strong>{row.rowName}</strong>
+                              <div style={{ marginTop: '4px', fontSize: '11px' }}>
+                                {Object.entries(row.values || {}).map(([key, value]) => (
+                                  <div key={key}><strong>{key}:</strong> {String(value || '—')}</div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                      {component.rows.length > 5 && !(highlightedComponentId === component._id && highlightedRowName) && (
+                        <div style={{ textAlign: 'center', color: '#999', fontSize: '12px', marginTop: '8px' }}>
+                          +{component.rows.length - 5} more rows
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <Empty description={`No data available for ${component.name}`} />
+                  )}
+                </div>
+              ),
+        }))}
+      />
+    </div>
   );
 
   // Render tree view
   const treeViewContent = (
-    <div>
-      <Input
-        placeholder="Search components..."
-        prefix={<SearchOutlined />}
-        value={searchText}
-        onChange={(e) => setSearchText(e.target.value)}
-        allowClear
-        style={{ marginBottom: '16px' }}
-      />
-      <div style={{ marginBottom: '12px', display: 'flex', gap: '8px' }}>
-        <Button
-          size="small"
-          onClick={() => {
-            const allKeys = filteredTreeData
-              .flatMap((node) => {
-                const keys: React.Key[] = [node.key];
-                const collect = (n: DataNode) => {
-                  if (n.children) {
-                    n.children.forEach((child) => {
-                      keys.push(child.key);
-                      collect(child);
-                    });
-                  }
-                };
-                collect(node);
-                return keys;
-              });
-            setExpandedKeys(allKeys);
-          }}
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      {searchBar}
+      <div style={{ display: 'flex', gap: 8, paddingBottom: 8 }}>
+        <Button 
+          size="small" 
+          onClick={() => setExpandedKeys(getAllTreeKeys(filteredTreeData))}
         >
           Expand All
         </Button>
-        <Button size="small" onClick={() => setExpandedKeys([])}>
+        <Button 
+          size="small" 
+          onClick={() => setExpandedKeys([])}
+        >
           Collapse All
         </Button>
       </div>
-      <Tree
-        treeData={filteredTreeData}
-        expandedKeys={expandedKeys}
-        onExpand={setExpandedKeys}
-        selectedKeys={selectedNodeKey ? [selectedNodeKey] : []}
-        onSelect={handleNodeSelect}
-        style={{ padding: '8px 0' }}
-      />
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingRight: '4px' }}>
+        <Tree
+          treeData={filteredTreeData}
+          expandedKeys={expandedKeys}
+          onExpand={setExpandedKeys}
+          selectedKeys={selectedNodeKey ? [selectedNodeKey] : []}
+          onSelect={handleNodeSelect}
+          style={{ padding: '8px 0' }}
+        />
+      </div>
     </div>
   );
 
@@ -592,35 +871,69 @@ export default function ComponentsViewer({
             style={{ minWidth: 220 }}
             allowClear
           />
-          <Segmented
-            value={viewMode}
-            onChange={(value) => setViewMode(value as 'tree' | 'table')}
-            options={[
-              {
-                label: (
-                  <>
-                    <FolderOutlined /> Tree
-                  </>
-                ),
-                value: 'tree',
-              },
-              {
-                label: (
-                  <>
-                    <TableOutlined /> Table
-                  </>
-                ),
-                value: 'table',
-              },
-            ]}
-          />
         </div>
       }
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
-      bodyStyle={{ flex: 1, overflow: 'auto', padding: '16px' }}
+      bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px' }}
     >
-      <Spin spinning={loading}>
-        {viewMode === 'tree' ? treeViewContent : tableViewContent}
+      <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <Segmented
+          value={viewMode}
+          onChange={(value) => setViewMode(value as 'tree' | 'table')}
+          size="small"
+          options={[
+            {
+              label: (
+                <>
+                  <FolderOutlined /> Tree
+                </>
+              ),
+              value: 'tree',
+            },
+            {
+              label: (
+                <>
+                  <TableOutlined /> Table
+                </>
+              ),
+              value: 'table',
+            },
+          ]}
+        />
+        {viewMode === 'tree' && (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Button
+              size="small"
+              onClick={() => {
+                const allKeys = filteredTreeData
+                  .flatMap((node) => {
+                    const keys: React.Key[] = [node.key];
+                    const collect = (n: DataNode) => {
+                      if (n.children) {
+                        n.children.forEach((child) => {
+                          keys.push(child.key);
+                          collect(child);
+                        });
+                      }
+                    };
+                    collect(node);
+                    return keys;
+                  });
+                setExpandedKeys(allKeys);
+              }}
+            >
+              Expand All
+            </Button>
+            <Button size="small" onClick={() => setExpandedKeys([])}>
+              Collapse All
+            </Button>
+          </div>
+        )}
+      </div>
+      <Spin spinning={loading} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {viewMode === 'tree' ? treeViewContent : tableViewContent}
+        </div>
       </Spin>
 
       {/* Metadata Drawer */}

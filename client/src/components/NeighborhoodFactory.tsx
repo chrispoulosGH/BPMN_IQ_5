@@ -35,7 +35,7 @@ interface NeighborhoodFactoryProps {
   mode?: 'panel' | 'action';
   defaultRowSearch?: string;
   defaultRowSearchColumn?: string;
-  onApplicationLinkClick?: (applicationName: string, correlationId?: string | null) => void;
+  onApplicationLinkClick?: (applicationName: string, correlationId?: string | null, rowSearchText?: string) => void;
 }
 
 interface FactoryRowViewState {
@@ -563,7 +563,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
             <Button
               type="link"
               size="small"
-              onClick={() => onApplicationLinkClick(display, correlationId)}
+              onClick={() => onApplicationLinkClick(display, correlationId, rowSearchText)}
               style={{ padding: 0, height: 'auto' }}
             >
               {display}
@@ -681,6 +681,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 size="small"
                 icon={<FolderAddOutlined />}
                 onClick={openNeighborhoodModal}
+                className="btn-create-model"
               >
                 Create Model
               </Button>
@@ -696,6 +697,31 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 }}
               >
                 Add Components
+              </Button>
+            ) : null}
+            {showAddFactory && (fixedNeighborhoodName || selectedNeighborhood) ? (
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => {
+                  Modal.confirm({
+                    title: `Delete all components in ${fixedNeighborhoodName || selectedNeighborhood}?`,
+                    icon: <ExclamationCircleOutlined />,
+                    okText: 'Delete All',
+                    okType: 'danger',
+                    centered: true,
+                    content: (
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div>This will permanently delete all components in this model.</div>
+                        <div style={{ color: '#b91c1c', fontWeight: 600 }}>This action cannot be undone.</div>
+                      </div>
+                    ),
+                    onOk: () => handleDeleteAllComponents(fixedNeighborhoodName || selectedNeighborhood),
+                  });
+                }}
+              >
+                Delete All Components
               </Button>
             ) : null}
             {showDeleteNeighborhood && fixedNeighborhoodName ? (
@@ -813,23 +839,41 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         style={{ width: 380, minWidth: 360, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'visible' }}
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, height: '100%' }}
         extra={canManageFactories ? (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <Button size="small" icon={<FolderAddOutlined />} onClick={openNeighborhoodModal}>Model</Button>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => {
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <Button 
+              size="large" 
+              icon={<FolderAddOutlined />} 
+              onClick={openNeighborhoodModal}
+              className="btn-create-model"
+            >
+              Create Model
+            </Button>
+            <Popconfirm
+              title={`Delete all components in ${selectedNeighborhood || 'selected model'}?`}
+              description="This will permanently remove every component in the selected model. This does NOT delete the model itself."
+              okText="Delete All"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => handleDeleteAllComponents(selectedNeighborhood || '')}
+            >
+              <Button 
+                size="large" 
+                danger 
+                disabled={!selectedNeighborhood}
+              >
+                Delete All
+              </Button>
+            </Popconfirm>
+            <Button 
+              size="large" 
+              icon={<PlusOutlined />} 
+              onClick={() => {
                 uploadForm.setFieldsValue({ neighborhoodName: selectedNeighborhood || undefined });
                 setShowUploadModal(true);
-              }}>Add Component</Button>
-              <Popconfirm
-                title={`Delete all components in ${selectedNeighborhood || 'selected model'}?`}
-                description="This will permanently remove every component in the selected model. This does NOT delete the model itself."
-                okText="Delete All"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => handleDeleteAllComponents(selectedNeighborhood || '')}
-              >
-                <Button size="small" danger disabled={!selectedNeighborhood}>Delete All Components</Button>
-              </Popconfirm>
-            </div>
+              }}
+              className="btn-bulk-import"
+            >
+              Bulk Import BPMN 2.0 XML
+            </Button>
           </div>
         ) : null}
       >

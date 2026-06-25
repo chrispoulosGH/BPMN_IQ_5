@@ -23,6 +23,6 @@ export function matchesFactorySearch(values: Array<string | null | undefined>, r
 
   return values.some((value) => {
     const normalizedValue = normalizeFactorySearchValue(String(value || ''));
-    return exact ? normalizedValue === normalizedTerm : normalizedValue.includes(normalizedTerm);
+    return exact ? normalizedValue === normalizedTerm : normalizedValue.startsWith(normalizedTerm);
   });
 }

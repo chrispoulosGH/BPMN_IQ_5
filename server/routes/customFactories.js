@@ -2212,13 +2212,43 @@ router.post('/validation-errors-report', requireAdminWrite, async (req, res) => 
   }
 });
 
+// GET /api/custom-factories/leaf-component — Get the leaf component name for a neighborhood
+router.get('/leaf-component', async (req, res) => {
+  try {
+    const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
+    
+    // Get all components for this neighborhood
+    const components = await Component.find({ neighborhoodName }).select('name parentFactoryName').lean();
+    
+    if (!components.length) {
+      return res.json({ leafComponent: 'Application' }); // fallback
+    }
+    
+    // Find the leaf component = the one that is NO ONE's parent
+    // (i.e., no other component has this as its parentFactoryName)
+    const componentNames = new Set(components.map(c => c.name));
+    const parentReferences = new Set(
+      components
+        .filter(c => c.parentFactoryName && componentNames.has(c.parentFactoryName))
+        .map(c => c.parentFactoryName)
+    );
+    
+    // Leaf components are those NOT referenced as parents by anyone
+    const leafComponents = components.filter(c => !parentReferences.has(c.name));
+    const leafComponent = leafComponents.length > 0 ? leafComponents[0].name : 'Application';
+    
+    res.json({ leafComponent });
+  } catch (error) {
+    console.error('[LEAF] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/custom-factories/hierarchies/tree — Get component hierarchies from ComponentSearchIndex
 router.get('/hierarchies/tree', async (req, res) => {
   try {
     const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
     const componentName = String(req.query?.componentName || 'Application').trim();
-    
-    console.log(`[HIERARCHIES] Fetching ${componentName} hierarchies from ${neighborhoodName}`);
     
     // Get all index entries for this component type
     const entries = await ComponentSearchIndex.find({
@@ -2227,8 +2257,6 @@ router.get('/hierarchies/tree', async (req, res) => {
     })
     .sort({ rowName: 1 })
     .lean();
-    
-    console.log(`[HIERARCHIES] Found ${entries.length} entries`);
     
     // Extract unique hierarchies (each entry may have multiple paths)
     const hierarchyMap = new Map();

@@ -199,6 +199,46 @@ html, body, #root {
   max-height: calc(100dvh - 590px) !important;
 }
 
+/* ─── Components Table View (for tree/table toggle) ──────────── */
+.components-table-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+}
+
+.components-table-view .ant-tabs-content {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+.components-table-view .ant-tabs-content-holder {
+  height: 100%;
+}
+
+.components-table-view .ant-tabs-tabpane {
+  height: 100%;
+}
+
+/* ─── Spin Component (flex-aware) ──────────────────────────── */
+/* Make Spin containers properly respect flex sizing for tree views */
+.ant-spin-nested-loading {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.ant-spin-nested-loading > .ant-spin-container {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow: inherit !important;
+}
+
 /* Give all scrollable list/table bodies extra room below the final row.
    This keeps the last item from sitting flush against the bottom edge of the scroller. */
 .ant-table-body,
@@ -215,6 +255,26 @@ html, body, #root {
 .ant-table-body {
   padding-bottom: 180px;
   box-sizing: border-box;
+}
+
+.model-factory-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.model-factory-tabs .ant-tabs-content {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+.model-factory-tabs .ant-tabs-content-holder {
+  height: 100%;
+}
+
+.model-factory-tabs .ant-tabs-tabpane {
+  height: 100%;
 }
 
 .model-factory-tabs .ant-tabs-tab {
@@ -238,7 +298,83 @@ html, body, #root {
   background: transparent !important;
 }
 
+/* ─── Neighborhood Tabs Styling ───────────────────────────── */
+.neighborhood-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.neighborhood-tabs .ant-tabs-content {
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+}
+
+.neighborhood-tabs .ant-tabs-content-holder {
+  height: 100%;
+}
+
+.neighborhood-tabs .ant-tabs-tabpane {
+  height: 100%;
+}
+
+.neighborhood-tabs .ant-tabs-nav {
+  gap: 0 !important;
+}
+
+.neighborhood-tabs .ant-tabs-tab {
+  margin: 0 !important;
+  margin-right: -1px !important;
+  border: 1px solid #c9e6f5 !important;
+  border-bottom: none !important;
+  background: #e8f4fb !important;
+  border-radius: 6px 6px 0 0 !important;
+  padding: 8px 16px !important;
+  position: relative !important;
+  transition: all 0.2s ease !important;
+  z-index: 1 !important;
+}
+
+.neighborhood-tabs .ant-tabs-tab:hover {
+  background: #f0f9fd !important;
+  z-index: 2 !important;
+}
+
+.neighborhood-tabs .ant-tabs-tab-active {
+  background: #f7fcfe !important;
+  border-color: #d0ecf8 !important;
+  z-index: 10 !important;
+  font-weight: 600 !important;
+}
+
 /* ── Tab groups: colored top stripe per group ───────────── */
+
+/* BASE: Factory tabs — AT&T light blue */
+.factory-tabs .ant-tabs-tab {
+  margin: 0 !important;
+  margin-right: -1px !important;
+  border: 1px solid #c9e6f5 !important;
+  border-bottom: none !important;
+  background: #e8f4fb !important;
+  border-radius: 6px 6px 0 0 !important;
+  padding: 8px 16px !important;
+  position: relative !important;
+  transition: all 0.2s ease !important;
+  z-index: 1 !important;
+}
+
+.factory-tabs .ant-tabs-tab:hover {
+  background: #f0f9fd !important;
+  z-index: 2 !important;
+}
+
+.factory-tabs .ant-tabs-tab-active {
+  background: #f7fcfe !important;
+  border-color: #d0ecf8 !important;
+  z-index: 10 !important;
+  font-weight: 600 !important;
+}
 
 /* GROUP: Canvas — cyan */
 .factory-tabs .ant-tabs-tab[data-node-key="bpmn"] {
@@ -450,5 +586,24 @@ html, body, #root {
 .ant-layout-content {
   min-height: 0;
   flex: 1;
+}
+
+/* ─── Model Panel Action Buttons ───────────────────────────── */
+.btn-create-model {
+  background: #1890ff !important;
+  color: white !important;
+  border: none !important;
+}
+.btn-create-model:hover {
+  background: #0050b3 !important;
+}
+
+.btn-bulk-import {
+  background: #10b981 !important;
+  color: white !important;
+  border: none !important;
+}
+.btn-bulk-import:hover {
+  background: #059669 !important;
 }
 

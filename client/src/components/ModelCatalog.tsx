@@ -228,7 +228,8 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
     <Card
       title="Model Catalog"
       size="small"
-      style={{ minHeight: '100%' }}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       extra={catalog ? <span style={{ color: '#64748b', fontSize: 12 }}>{catalog.rowCount} rows · {catalog.sourceFileName || 'No source file'}</span> : null}
     >
       {loading ? <Spin /> : null}
@@ -291,7 +292,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
               />
             </>
           ) : (
-            <div style={{ paddingTop: '16px' }}>
+            <div style={{ paddingTop: '16px', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <div
                 style={{
                   display: 'flex',
@@ -309,12 +310,14 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                 <div style={{ minWidth: '130px', maxWidth: '130px' }}>Component Type</div>
                 <div>Value</div>
               </div>
-              <Tree
-                treeData={treeData}
-                expandedKeys={expandedKeys}
-                onExpand={setExpandedKeys}
-                style={{ padding: '8px 0' }}
-              />
+              <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingRight: '4px' }}>
+                <Tree
+                  treeData={treeData}
+                  expandedKeys={expandedKeys}
+                  onExpand={setExpandedKeys}
+                  style={{ padding: '8px 0' }}
+                />
+              </div>
             </div>
           )}
         </>

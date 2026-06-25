@@ -213,6 +213,12 @@ export const getComponentHierarchies = (neighborhoodName?: string, componentName
   return api.get('/custom-factories/hierarchies/tree', { params, ...(modelConfig || {}) }).then((r) => r.data);
 };
 
+export const getLeafComponent = (neighborhoodName?: string, modelName?: string): Promise<{ leafComponent: string }> => {
+  const params = { neighborhoodName } as any;
+  const modelConfig = scopedModelRequestConfig(modelName) || {};
+  return api.get('/custom-factories/leaf-component', { params, ...(modelConfig || {}) }).then((r) => r.data);
+};
+
 export const getCustomFactory = (id: string): Promise<CustomFactory> =>
   api.get(`/custom-factories/${encodeURIComponent(id)}`).then((r) => r.data);
 

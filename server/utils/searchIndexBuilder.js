@@ -16,6 +16,8 @@ async function rebuildSearchIndex(neighborhoodName) {
       return;
     }
 
+    console.log(`[INDEX] Found ${components.length} components for ${neighborhoodName}:`, components.map(c => ({ name: c.name, rowCount: (c.rows || []).length, parentFactoryName: c.parentFactoryName })));
+
     // Create component map for hierarchy lookup
     const componentMap = new Map(components.map(c => [normalizeValue(c.name), c]));
 
@@ -149,6 +151,10 @@ async function rebuildSearchIndex(neighborhoodName) {
 
         // Build ALL lineage paths (one per parent if multiple parents)
         const hierarchies = await buildAllHierarchyPaths(component, row);
+
+        if (!hierarchies || hierarchies.length === 0) {
+          console.log(`[INDEX] WARNING: No hierarchies built for ${component.name}/${rowName}`);
+        }
 
         // Convert hierarchies to path strings for backward compatibility
         const pathStrings = hierarchies.map(h => h.map(node => node.rowName).join(' > '));
