@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useDeferredValue } from 'react';
+import { useEffect, useMemo, useState, useDeferredValue, useRef } from 'react';
 import { App as AntApp, Card, Space, Spin, Tree, Button, Segmented, Tabs, Empty, AutoComplete, Input, Drawer, Divider, Descriptions, Badge, Tag, Collapse, Select } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { FolderOutlined, TableOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
@@ -39,9 +39,13 @@ export default function ComponentsViewer({
   const [highlightedComponentId, setHighlightedComponentId] = useState<string | null>(null);
   const [highlightedRowName, setHighlightedRowName] = useState<string | null>(null);
   const [ancestryPaths, setAncestryPaths] = useState<Array<Array<{ componentName: string; rowName: string; componentId: string }>> | null>(null);
+  const [treeViewMode, setTreeViewMode] = useState<'vertical' | 'horizontal'>('vertical');
 
   // Defer search text updates to prevent blocking the UI on every keystroke
   const deferredSearchText = useDeferredValue(searchText);
+  const selectedNodeRef = useRef<HTMLDivElement>(null);
+  const horizontalTreeContainerRef = useRef<HTMLDivElement>(null);
+  const horizontalTreeNodeRefMap = useRef<Map<React.Key, HTMLButtonElement>>(new Map());
 
   // Load hierarchies from ComponentSearchIndex
   useEffect(() => {
@@ -756,6 +760,28 @@ export default function ComponentsViewer({
     }
   }, [components]);
 
+  // Auto-scroll horizontal tree to keep selected/expanded node centered
+  useEffect(() => {
+    if (treeViewMode !== 'horizontal') return;
+    
+    const buttonToCenter = selectedNodeKey ? horizontalTreeNodeRefMap.current.get(selectedNodeKey) : null;
+    if (buttonToCenter && horizontalTreeContainerRef.current) {
+      const rect = buttonToCenter.getBoundingClientRect();
+      const containerRect = horizontalTreeContainerRef.current.getBoundingClientRect();
+      const scrollLeft = horizontalTreeContainerRef.current.scrollLeft;
+      const scrollTop = horizontalTreeContainerRef.current.scrollTop;
+
+      const targetScrollLeft = scrollLeft + rect.left - containerRect.left - containerRect.width / 2 + rect.width / 2;
+      const targetScrollTop = scrollTop + rect.top - containerRect.top - containerRect.height / 2 + rect.height / 2;
+
+      horizontalTreeContainerRef.current.scrollTo({
+        left: Math.max(0, targetScrollLeft),
+        top: Math.max(0, targetScrollTop),
+        behavior: 'smooth',
+      });
+    }
+  }, [selectedNodeKey, expandedKeys, treeViewMode]);
+
   // Filter tree data based on search text
   const filteredTreeData = useMemo<DataNode[]>(() => {
     if (!searchText.trim()) return treeData;
@@ -949,27 +975,220 @@ export default function ComponentsViewer({
     </div>
   );
 
+  // Horizontal tree view - graph diagram with SVG connectors (LOB Drill down style)
+  const renderHorizontalTree = () => {
+    const NODE_WIDTH = 140;
+    const NODE_HEIGHT = 70;
+    const COLUMN_GAP = 280;
+    const ROW_GAP = 90;
+    const PADDING = 40;
+
+    // Color scheme matching vertical tree view
+    const bgColors = ['#EFF6FF', '#F0FDF4', '#FEF3C7', '#FCE7F3', '#F3E8FF', '#ECFDF5'];
+    const textColors = ['#0C63E4', '#15803D', '#B45309', '#BE185D', '#6D28D9', '#0891B2'];
+
+    interface PositionedNode {
+      node: DataNode;
+      depth: number;
+      y: number;
+      parentKey: React.Key | null;
+    }
+
+    // Build positioned nodes with layout
+    const positioned: PositionedNode[] = [];
+    const positionById = new Map<React.Key, { x: number; y: number }>();
+    let maxDepth = 0;
+    let maxY = 0;
+
+    const traverse = (nodes: DataNode[], depth: number, parentKey: React.Key | null, yOffset: number): number => {
+      let currentY = yOffset;
+      maxDepth = Math.max(maxDepth, depth);
+
+      for (const node of nodes) {
+        positioned.push({ node, depth, y: currentY, parentKey });
+        positionById.set(node.key, { x: depth * COLUMN_GAP + PADDING, y: currentY });
+        maxY = Math.max(maxY, currentY);
+
+        if (expandedKeys.includes(node.key) && node.children && node.children.length > 0) {
+          currentY = traverse(node.children, depth + 1, node.key, currentY);
+          currentY += ROW_GAP;
+        } else {
+          currentY += ROW_GAP;
+        }
+      }
+      return currentY;
+    };
+
+    traverse(filteredTreeData, 0, null, PADDING);
+
+    const width = (maxDepth + 1) * COLUMN_GAP + PADDING * 2;
+    const height = Math.max(600, maxY + PADDING);
+
+    return (
+      <div
+        ref={horizontalTreeContainerRef}
+        style={{
+          flex: 1,
+          overflowX: 'auto',
+          overflowY: 'auto',
+          position: 'relative',
+          backgroundColor: '#f8fafc',
+          borderRadius: '6px',
+        }}
+      >
+        <div style={{ position: 'relative', width, height }}>
+          <svg width={width} height={height} style={{ position: 'absolute', inset: 0 }}>
+            {positioned
+              .filter((p) => p.parentKey !== null)
+              .map((p) => {
+                const from = positionById.get(p.parentKey!);
+                const to = positionById.get(p.node.key);
+                if (!from || !to) return null;
+
+                const x1 = from.x + NODE_WIDTH;
+                const y1 = from.y + NODE_HEIGHT / 2;
+                const x2 = to.x;
+                const y2 = to.y + NODE_HEIGHT / 2;
+                const c1 = x1 + 60;
+                const c2 = x2 - 60;
+                const path = `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`;
+                
+                // Use child node color for connector line
+                const lineColor = textColors[p.depth % textColors.length];
+
+                return (
+                  <path
+                    key={`line-${p.parentKey}-${p.node.key}`}
+                    d={path}
+                    stroke={lineColor}
+                    strokeWidth="2"
+                    fill="none"
+                    opacity="0.5"
+                  />
+                );
+              })}
+          </svg>
+
+          {positioned.map((p) => {
+            const pos = positionById.get(p.node.key)!;
+            const isSelected = selectedNodeKey === p.node.key;
+            const isExpanded = expandedKeys.includes(p.node.key);
+            const hasChildren = p.node.children && p.node.children.length > 0;
+            const nodeData = (p.node as any).data;
+            const label = nodeData?.componentName || 'Label';
+            const value = nodeData?.rowName || (typeof p.node.title === 'function' ? p.node.title({ title: 'Node' } as any) : p.node.title);
+            
+            // Get colors based on depth
+            const bgColor = bgColors[p.depth % bgColors.length];
+            const textColor = textColors[p.depth % textColors.length];
+
+            return (
+              <button
+                key={p.node.key}
+                ref={(el) => {
+                  if (el) {
+                    horizontalTreeNodeRefMap.current.set(p.node.key, el);
+                  } else {
+                    horizontalTreeNodeRefMap.current.delete(p.node.key);
+                  }
+                }}
+                type="button"
+                onClick={() => {
+                  handleNodeSelect([p.node.key]);
+                }}
+                style={{
+                  position: 'absolute',
+                  left: pos.x,
+                  top: pos.y,
+                  minWidth: NODE_WIDTH,
+                  minHeight: NODE_HEIGHT,
+                  borderRadius: 8,
+                  border: isSelected ? '2px solid #0284c7' : `2px solid ${textColor}`,
+                  background: isSelected ? '#ecf0f5' : bgColor,
+                  boxShadow: '0 2px 8px rgba(15, 23, 42, 0.06)',
+                  padding: '8px',
+                  cursor: 'pointer',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto',
+                  gridTemplateRows: 'auto 1fr',
+                  gap: 4,
+                  fontFamily: 'inherit',
+                  transition: 'all 0.2s',
+                  alignItems: 'start',
+                  whiteSpace: 'normal',
+                }}
+              >
+                <div style={{ gridColumn: '1 / 2', gridRow: '1 / 3', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4px', gap: '3px' }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: textColor,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.3,
+                      textAlign: 'center',
+                      lineHeight: '1.1',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {label}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: textColor,
+                      whiteSpace: 'normal',
+                      wordBreak: 'break-word',
+                      textAlign: 'center',
+                      lineHeight: '1.3',
+                      width: '100%',
+                    }}
+                  >
+                    {value}
+                  </div>
+                </div>
+                {hasChildren && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedKeys(prev =>
+                        prev.includes(p.node.key)
+                          ? prev.filter(k => k !== p.node.key)
+                          : [...prev, p.node.key]
+                      );
+                    }}
+                    style={{
+                      gridColumn: '2 / 3',
+                      gridRow: '1 / 2',
+                      color: textColor,
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      padding: '2px 2px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      userSelect: 'none',
+                    }}
+                  >
+                    {isExpanded ? '▾' : '▸'}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   // Render tree view
   const treeViewContent = (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       {searchBar}
       {hierarchies && hierarchies.length > 0 ? (
-        <>
-          <div style={{ display: 'flex', gap: 8, paddingBottom: 8 }}>
-            <Button 
-              size="small" 
-              onClick={() => setExpandedKeys(getAllTreeKeys(filteredTreeData))}
-            >
-              Expand All
-            </Button>
-            <Button 
-              size="small" 
-              onClick={() => setExpandedKeys([])}
-            >
-              Collapse All
-            </Button>
-          </div>
-          <div className="component-search-results" style={{ flex: 1, paddingRight: '4px' }}>
+        <div className="component-search-results" style={{ flex: 1, paddingRight: '4px' }}>
+          {treeViewMode === 'vertical' ? (
             <Tree
               treeData={filteredTreeData}
               expandedKeys={expandedKeys}
@@ -978,8 +1197,10 @@ export default function ComponentsViewer({
               onSelect={handleNodeSelect}
               style={{ padding: '8px 0' }}
             />
-          </div>
-        </>
+          ) : (
+            renderHorizontalTree()
+          )}
+        </div>
       ) : (
         <Empty description="No components available" style={{ marginTop: '40px' }} />
       )}
@@ -1018,32 +1239,44 @@ export default function ComponentsViewer({
           ]}
         />
         {viewMode === 'tree' && (
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <Button
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button
+                size="small"
+                onClick={() => {
+                  const allKeys = filteredTreeData
+                    .flatMap((node) => {
+                      const keys: React.Key[] = [node.key];
+                      const collect = (n: DataNode) => {
+                        if (n.children) {
+                          n.children.forEach((child) => {
+                            keys.push(child.key);
+                            collect(child);
+                          });
+                        }
+                      };
+                      collect(node);
+                      return keys;
+                    });
+                  setExpandedKeys(allKeys);
+                }}
+              >
+                Expand All
+              </Button>
+              <Button size="small" onClick={() => setExpandedKeys([])}>
+                Collapse All
+              </Button>
+            </div>
+            <Divider type="vertical" style={{ margin: 0 }} />
+            <Segmented
+              value={treeViewMode}
+              onChange={(value) => setTreeViewMode(value as 'vertical' | 'horizontal')}
+              options={[
+                { label: '↓ Vertical', value: 'vertical' },
+                { label: '→ Horizontal', value: 'horizontal' },
+              ]}
               size="small"
-              onClick={() => {
-                const allKeys = filteredTreeData
-                  .flatMap((node) => {
-                    const keys: React.Key[] = [node.key];
-                    const collect = (n: DataNode) => {
-                      if (n.children) {
-                        n.children.forEach((child) => {
-                          keys.push(child.key);
-                          collect(child);
-                        });
-                      }
-                    };
-                    collect(node);
-                    return keys;
-                  });
-                setExpandedKeys(allKeys);
-              }}
-            >
-              Expand All
-            </Button>
-            <Button size="small" onClick={() => setExpandedKeys([])}>
-              Collapse All
-            </Button>
+            />
           </div>
         )}
       </div>
