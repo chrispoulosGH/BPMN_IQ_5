@@ -575,6 +575,61 @@ html, body, #root {
   border-left: 3px solid #22c55e;
 }
 
+/* ─── Component Search AutoComplete ──────────────────────── */
+/* Only show green styling when search is active (has search text) */
+.component-search-active .ant-select-dropdown .ant-select-item:nth-child(odd) {
+  background-color: #f0fdf4 !important;
+}
+
+.component-search-active .ant-select-dropdown .ant-select-item:nth-child(even) {
+  background-color: #e7fcef !important;
+}
+
+.component-search-active .ant-select-dropdown .ant-select-item:hover {
+  background-color: #dcfce7 !important;
+}
+
+.component-search-active .ant-select-dropdown .ant-select-item-option {
+  padding: 8px 12px !important;
+}
+
+.component-search-active .ant-select-dropdown .ant-select-item-option-content {
+  border-radius: 4px;
+}
+
+/* AutoComplete uses similar structure but also these classes */
+.component-search-active .ant-select-item-option:nth-child(odd) {
+  background-color: #f0fdf4 !important;
+}
+
+.component-search-active .ant-select-item-option:nth-child(even) {
+  background-color: #e7fcef !important;
+}
+
+.component-search-active .ant-select-item-option:hover {
+  background-color: #dcfce7 !important;
+}
+
+/* Prevent header rows from being highlighted as selectable */
+.component-search-active [data-value='components-header'],
+.component-search-active [data-value='tree-header'] {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+.component-search-active [data-value='components-header']:hover,
+.component-search-active [data-value='tree-header']:hover {
+  background-color: transparent !important;
+}
+
+/* ─── View Mode Toggle (Tree/Table) ─────────────────────── */
+.view-mode-toggle .ant-segmented-item-selected {
+  background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%);
+  color: #1e40af !important;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(30, 64, 175, 0.15);
+}
+
 /* ─── Ant Design Layout overrides ─────────────────────────── */
 .ant-layout {
   height: 100%;
@@ -605,5 +660,55 @@ html, body, #root {
 }
 .btn-bulk-import:hover {
   background: #059669 !important;
+}
+
+/* ─── Scrollbar Styling ────────────────────────────────────── */
+/* Webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f5f5f5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 5px;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Firefox */
+* {
+  scrollbar-color: #cbd5e1 #f5f5f5;
+  scrollbar-width: thin;
+}
+
+/* ─── Search Results Container ─────────────────────────────── */
+.component-search-results {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.component-search-results::-webkit-scrollbar {
+  width: 10px;
+}
+
+.component-search-results::-webkit-scrollbar-track {
+  background: #f5f5f5;
+}
+
+.component-search-results::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 5px;
+}
+
+.component-search-results::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 

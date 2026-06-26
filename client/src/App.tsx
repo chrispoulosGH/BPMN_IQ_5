@@ -2008,6 +2008,17 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                     onComponentTabSelect={(componentId, componentName) => {
                                       setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
                                     }}
+                                    onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
+                                      if (!correlationId) return;
+                                      const applicationSearch = rowSearchText ? encodeExactFactorySearch(rowSearchText) : encodeExactFactorySearch(applicationName);
+                                      setFactorySearch((current) => ({
+                                        ...current,
+                                        applications: applicationSearch,
+                                      }));
+                                      setActiveOuterTab('data');
+                                      setActiveDataTab('applications');
+                                      setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
+                                    }}
                                     renderComponentContent={(componentId, componentName, highlightedRowName) => {
                                       const factoryComponent = (neighborhoodFactories[neighborhood.name] || []).find((f) => f._id === componentId);
                                       if (!factoryComponent) return <div>Component not found</div>;

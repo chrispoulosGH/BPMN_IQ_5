@@ -72,9 +72,17 @@ function collectValidationErrors({ modelCatalogRows = [], matchedModelColumns = 
 
   // Build set of normalized tuples from model catalog rows
   const tupleSet = new Set();
-  (modelCatalogRows || []).forEach((modelRow) => {
+  (modelCatalogRows || []).forEach((modelRow, rowIdx) => {
     const values = getModelCatalogRowValues(modelRow);
-    const tuple = modelKeys.map((k) => getComparableValue(getRowValueByColumnName(values, k))).join('\u001F');
+    if (rowIdx === 0) {
+      console.log('[VALIDATION TRACE] first modelRow values object:', JSON.stringify(values, null, 2).substring(0, 300));
+    }
+    const tuple = modelKeys.map((k) => {
+      const val = getRowValueByColumnName(values, k);
+      const comparable = getComparableValue(val);
+      if (rowIdx === 0) console.log(`[VALIDATION TRACE] modelKey "${k}" -> value="${val}" -> comparable="${comparable}"`);
+      return comparable;
+    }).join('\u001F');
     tupleSet.add(tuple);
   });
   try {
@@ -85,7 +93,13 @@ function collectValidationErrors({ modelCatalogRows = [], matchedModelColumns = 
 
   const errorRows = [];
   (uploadRows || []).forEach((uploadRow, index) => {
-    const tuple = modelKeys.map((k) => getComparableValue(getRowValueByColumnName(uploadRow, k))).join('\u001F');
+    const tuple = modelKeys.map((k) => {
+      const val = getRowValueByColumnName(uploadRow, k);
+      const comparable = getComparableValue(val);
+      if (index === 0) console.log(`[VALIDATION TRACE] uploadKey "${k}" -> value="${val}" -> comparable="${comparable}"`);
+      return comparable;
+    }).join('\u001F');
+    if (index === 0) console.log(`[VALIDATION TRACE] uploadRow tuple: "${tuple}"`);
     if (!tupleSet.has(tuple)) {
       const uploadedValues = {};
       modelKeys.forEach((k) => {
@@ -645,10 +659,25 @@ function getCanonicalModelMatchValue(value) {
 
 function getModelCatalogRowValues(row) {
   if (!row) return {};
-  if (row.values instanceof Map) return Object.fromEntries(row.values.entries());
-  if (row.values && typeof row.values.toObject === 'function') return row.values.toObject();
-  if (row.values && typeof row.values === 'object') return { ...row.values };
-  if (typeof row.toObject === 'function') return row.toObject();
+  // When using .lean() with Maps, Mongoose converts them to plain objects
+  // but sometimes they may still be wrapped, so we handle multiple cases
+  if (row.values instanceof Map) {
+    console.log('[VALIDATION] Converting Map to object');
+    return Object.fromEntries(row.values.entries());
+  }
+  if (row.values && typeof row.values.toObject === 'function') {
+    console.log('[VALIDATION] Converting toObject()');
+    return row.values.toObject();
+  }
+  if (row.values && typeof row.values === 'object') {
+    console.log('[VALIDATION] Using row.values as object');
+    return { ...row.values };
+  }
+  if (typeof row.toObject === 'function') {
+    console.log('[VALIDATION] Using row.toObject()');
+    return row.toObject();
+  }
+  console.log('[VALIDATION] Using row as object, type:', typeof row, 'keys:', Object.keys(row).slice(0, 5));
   return { ...row };
 }
 
@@ -1318,6 +1347,10 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
     const owner = getCurrentUserLabel(req);
     const createdBy = getCurrentUserId(req);
     const { columns, rows } = parseModelCatalogWorkbook(req.file.buffer, req.file.originalname);
+    console.log('[MODEL CREATE] Parsed workbook:', { columnsCount: columns.length, rowsCount: rows.length });
+    if (rows.length > 0) {
+      console.log('[MODEL CREATE] First row sample:', Object.entries(rows[0]).slice(0, 5));
+    }
     const schemaFactories = deriveNeighborhoodSchema(columns);
 
     neighborhood = await Model.create({
@@ -1348,6 +1381,12 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
         level: factory.level,
       })),
     });
+
+    console.log('[MODEL CREATE] Model created:', { _id: neighborhood._id, name: neighborhood.name, catalogRowsCount: (neighborhood.modelCatalogRows || []).length, catalogColumnsCount: (neighborhood.modelCatalogColumns || []).length });
+    if ((neighborhood.modelCatalogRows || []).length > 0) {
+      const firstRow = neighborhood.modelCatalogRows[0];
+      console.log('[MODEL CREATE] First row stored:', { hasValues: !!firstRow.values, valuesType: typeof firstRow.values, valuesSample: firstRow.values ? Object.keys(firstRow.values).slice(0, 5) : null });
+    }
 
     res.status(201).json({
       name: neighborhood.name,
@@ -1421,6 +1460,24 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
       return res.status(409).json({ error: 'Model catalog is missing. Delete and reload the model before loading components.' });
     }
 
+    // Ensure modelCatalogRows have properly structured values
+    // When using .lean() with Map fields, Mongoose may not convert them properly
+    const normalizedModelRows = (neighborhood.modelCatalogRows || []).map((row) => {
+      if (!row.values) {
+        console.log('[UPLOAD DEBUG] Row has no values field, attempting to extract from row itself');
+        return { values: row };
+      }
+      // Ensure values is a plain object
+      if (row.values instanceof Map) {
+        return { values: Object.fromEntries(row.values.entries()) };
+      }
+      if (typeof row.values === 'object' && row.values !== null) {
+        return { values: { ...row.values } };
+      }
+      return row;
+    });
+    neighborhood.modelCatalogRows = normalizedModelRows;
+
     const { columns: uploadColumns, rows: uploadRows } = parseModelCatalogWorkbook(req.file.buffer, req.file.originalname);
     const { componentColumns } = splitUploadColumns(uploadColumns);
     const { matchedModelColumns, unmatchedComponentColumns } = classifyComponentColumnsAgainstModel({
@@ -1429,6 +1486,27 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
     });
 
     // Check for validation errors but collect them instead of throwing
+    console.log('[UPLOAD DEBUG] modelCatalogRows count:', (neighborhood.modelCatalogRows || []).length);
+    if ((neighborhood.modelCatalogRows || []).length > 0) {
+      const firstRow = neighborhood.modelCatalogRows[0];
+      console.log('[UPLOAD DEBUG] first modelCatalogRow structure:', {
+        isMap: firstRow.values instanceof Map,
+        hasValues: !!firstRow.values,
+        type: typeof firstRow.values,
+        keys: firstRow.values ? Object.keys(firstRow.values).slice(0, 10) : null,
+      });
+      console.log('[UPLOAD DEBUG] first modelCatalogRow values:', JSON.stringify(firstRow, null, 2).substring(0, 500));
+    }
+    console.log('[UPLOAD DEBUG] matchedModelColumns:', matchedModelColumns.map(c => ({ name: c.name, sourceColumnName: c.sourceColumnName, matchedModelHeader: c.matchedModelHeader })));
+    console.log('[UPLOAD DEBUG] uploadRows count:', uploadRows.length);
+    if (uploadRows.length > 0) {
+      const firstRow = uploadRows[0];
+      console.log('[UPLOAD DEBUG] first uploadRow structure:', {
+        keys: Object.keys(firstRow),
+        sample: Object.fromEntries(Object.entries(firstRow).slice(0, 5)),
+      });
+    }
+    
     const errorRows = collectValidationErrors({
       modelCatalogRows: neighborhood.modelCatalogRows,
       matchedModelColumns,
@@ -1673,8 +1751,9 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
       throw writeError;
     }
 
-    // Rebuild search index after component upload
-    await rebuildSearchIndex(neighborhoodName).catch((err) => {
+    // Rebuild search index after component upload (async, non-blocking)
+    // Fire-and-forget: don't await, don't block response
+    rebuildSearchIndex(neighborhoodName).catch((err) => {
       console.error(`[INDEX] Failed to rebuild search index after upload: ${err.message}`);
       // Don't fail the upload if index rebuild fails - it can be rebuilt manually
     });

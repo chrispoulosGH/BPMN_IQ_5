@@ -189,10 +189,10 @@ em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,
 em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Return Executed Contract,8,ASF,29572,29572
 em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Pricing Management ,5,Opportunity Create,1,,Pricing and Contracting,5,ASF,29572,29572
 em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Pricing Management ,5,Opportunity Create,1,,Pre-Qualify,6,ASF,29572,29572
-em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Proposal Management ,6,Opportunity Create,1,,Qualify and Validate,7,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Quotation & Proposal / RFP Management ,6,Opportunity Create,1,,Qualify and Validate,7,ASF,29572,29572
 em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Sales Order Management ,3,Order Complete,5,,Create suborder,1,ASF,29572,29572
-em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Proposal Management ,6,Proposal Create,3,,Select proposal type,1,ASF,29572,29572
-em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Proposal Management ,6,Proposal Create,3,,Email proposal,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Quotation & Proposal / RFP Management,6,Proposal Create,3,,Select proposal type,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Quotation & Proposal / RFP Management,6,Proposal Create,3,,Email proposal,2,ASF,29572,29572
 em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Pull Sales Order Data ,1,EFMS,13537,13537
 em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Pull Sales Order Data ,1,GRETA,2027,2027
 em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Pull Sales Order Data ,1,ICORE,18276,18276

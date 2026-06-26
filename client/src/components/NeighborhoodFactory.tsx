@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useState, useRef } from 'react';
 import { App as AntApp, Button, Card, Form, Input, List, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Tooltip, Upload, Dropdown, Checkbox } from 'antd';
 import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, FolderAddOutlined, InboxOutlined, PlusOutlined, ColumnHeightOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -78,6 +78,10 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [factoryRowViewState, setFactoryRowViewState] = useState<Record<string, FactoryRowViewState>>({});
   const [visibleColumns, setVisibleColumns] = useState<Record<string, Set<string>>>({});
+  
+  // File input refs for fallback file selection
+  const neighborhoodFileInputRef = useRef<HTMLInputElement>(null);
+  const uploadFileInputRef = useRef<HTMLInputElement>(null);
   const [columnOrder, setColumnOrder] = useState<Record<string, string[]>>({});
   const [draggedFactoryId, setDraggedFactoryId] = useState<string | null>(null);
   const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
@@ -775,21 +779,45 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
               Component names are taken from spreadsheet column headings ending in <strong>Component</strong> or <strong>Components</strong>. Legacy <strong>Part</strong> headers are still accepted. Each derived component must include a unique <strong>{PRIMARY_KEY_COLUMN}</strong> value.
             </div>
             <Form.Item label="CSV File" required>
-              <Upload.Dragger
-                accept=".csv"
-                maxCount={1}
-                beforeUpload={(file) => {
-                  setUploadFile(file);
-                  return false;
-                }}
-                onRemove={() => {
-                  setUploadFile(null);
-                }}
-                fileList={uploadFile ? [uploadFile as any] : []}
-              >
-                <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                <p className="ant-upload-text">Upload a CSV file to create or update model components from component columns</p>
-              </Upload.Dragger>
+              <div style={{ marginBottom: 12 }}>
+                <Upload.Dragger
+                  accept=".csv"
+                  maxCount={1}
+                  beforeUpload={(file) => {
+                    setUploadFile(file);
+                    return false;
+                  }}
+                  onRemove={() => {
+                    setUploadFile(null);
+                  }}
+                  fileList={uploadFile ? [uploadFile as any] : []}
+                >
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">Upload a CSV file to create or update model components from component columns</p>
+                </Upload.Dragger>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  ref={uploadFileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setUploadFile(file);
+                  }}
+                  style={{ display: 'none' }}
+                />
+                <Button
+                  onClick={() => {
+                    uploadFileInputRef.current?.click();
+                  }}
+                >
+                  Browse Files
+                </Button>
+                <span style={{ color: '#64748b', fontSize: 12 }}>
+                  {uploadFile ? `✓ ${uploadFile.name}` : 'No file selected'}
+                </span>
+              </div>
             </Form.Item>
           </Form>
         </Modal>
@@ -810,21 +838,45 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
               Upload the model catalog reference data for this model. The first row is treated as headers and the remaining rows are stored as the model catalog.
             </div>
             <div style={{ marginBottom: 8, fontWeight: 500 }}>Model CSV</div>
-            <Upload.Dragger
-              accept=".csv"
-              maxCount={1}
-              beforeUpload={(file) => {
-                setNeighborhoodUploadFile(file);
-                return false;
-              }}
-              onRemove={() => {
-                setNeighborhoodUploadFile(null);
-              }}
-              fileList={neighborhoodUploadFile ? [neighborhoodUploadFile as any] : []}
-            >
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Upload a model CSV to store model catalog reference data</p>
-            </Upload.Dragger>
+            <div style={{ marginBottom: 12 }}>
+              <Upload.Dragger
+                accept=".csv"
+                maxCount={1}
+                beforeUpload={(file) => {
+                  setNeighborhoodUploadFile(file);
+                  return false;
+                }}
+                onRemove={() => {
+                  setNeighborhoodUploadFile(null);
+                }}
+                fileList={neighborhoodUploadFile ? [neighborhoodUploadFile as any] : []}
+              >
+                <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                <p className="ant-upload-text">Upload a model CSV to store model catalog reference data</p>
+              </Upload.Dragger>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                ref={neighborhoodFileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setNeighborhoodUploadFile(file);
+                }}
+                style={{ display: 'none' }}
+              />
+              <Button
+                onClick={() => {
+                  neighborhoodFileInputRef.current?.click();
+                }}
+              >
+                Browse Files
+              </Button>
+              <span style={{ color: '#64748b', fontSize: 12 }}>
+                {neighborhoodUploadFile ? `✓ ${neighborhoodUploadFile.name}` : 'No file selected'}
+              </span>
+            </div>
           </div>
         </Modal>
       </>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useDeferredValue } from 'react';
 import { App as AntApp, Card, Space, Spin, Tree, Button, Segmented, Tabs, Empty, AutoComplete, Input, Drawer, Divider, Descriptions, Badge, Tag, Collapse, Select } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { FolderOutlined, TableOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
@@ -11,6 +11,7 @@ interface ComponentsViewerProps {
   onComponentTabSelect?: (componentId: string, componentName: string) => void;
   availableComponentIds?: string[];
   renderComponentContent?: (componentId: string, componentName: string, highlightedRowName?: string | null) => React.ReactNode;
+  onApplicationLinkClick?: (applicationName: string, correlationId?: string | null, rowSearchText?: string) => void;
 }
 
 export default function ComponentsViewer({
@@ -18,6 +19,7 @@ export default function ComponentsViewer({
   onComponentTabSelect,
   availableComponentIds = [],
   renderComponentContent,
+  onApplicationLinkClick,
 }: ComponentsViewerProps) {
   const { message } = AntApp.useApp();
   const [hierarchies, setHierarchies] = useState<HierarchyPath[]>([]);
@@ -37,6 +39,9 @@ export default function ComponentsViewer({
   const [highlightedComponentId, setHighlightedComponentId] = useState<string | null>(null);
   const [highlightedRowName, setHighlightedRowName] = useState<string | null>(null);
   const [ancestryPaths, setAncestryPaths] = useState<Array<Array<{ componentName: string; rowName: string; componentId: string }>> | null>(null);
+
+  // Defer search text updates to prevent blocking the UI on every keystroke
+  const deferredSearchText = useDeferredValue(searchText);
 
   // Load hierarchies from ComponentSearchIndex
   useEffect(() => {
@@ -134,7 +139,7 @@ export default function ComponentsViewer({
 
     loadComponents();
     return () => { cancelled = true; };
-  }, [neighborhoodName, activeModelName]);
+  }, [neighborhoodName, activeModelName, availableComponentIds]);
 
   const handleTabDragStart = (e: React.DragEvent<HTMLDivElement>, tabId: string) => {
     setDraggedTabId(tabId);
@@ -462,6 +467,10 @@ export default function ComponentsViewer({
 
   // Flatten tree nodes to suggestions for typeahead
   const flatTreeNodes = useMemo(() => {
+    // Only flatten tree nodes if search is active and looking for tree results
+    // This avoids expensive tree traversal when not needed
+    if (!deferredSearchText.trim()) return [];
+    
     const out: { key: string; label: string; data: any }[] = [];
     const seen = new Set<string>();
     const collect = (nodes?: DataNode[]) => {
@@ -479,36 +488,91 @@ export default function ComponentsViewer({
     };
     collect(treeData);
     return out;
-  }, [treeData]);
+  }, [treeData, deferredSearchText]);
 
   // Build typeahead options from components and tree nodes
   const searchOptions = useMemo(() => {
     const opts: { value: string; label: React.ReactNode }[] = [];
-    // Components (table tabs)
-    // Deduplicate component suggestions by name (show distinct names)
-    const seenNames = new Set<string>();
-    components.forEach((c) => {
+    
+    // Only search if text is provided
+    if (!deferredSearchText.trim()) return opts;
+    
+    const searchNorm = deferredSearchText.toLowerCase();
+
+    // Helper to highlight matching text
+    const highlightMatch = (text: string, query: string) => {
+      const idx = text.toLowerCase().indexOf(query);
+      if (idx === -1) return text;
+      return (
+        <>
+          {text.substring(0, idx)}
+          <span style={{ backgroundColor: '#ffd700', fontWeight: 700 }}>{text.substring(idx, idx + query.length)}</span>
+          {text.substring(idx + query.length)}
+        </>
+      );
+    };
+
+    // Add component header
+    const componentMatches = components.filter((c) => {
       const keyName = String(c.name || '').toLowerCase();
-      if (seenNames.has(keyName)) return;
-      seenNames.add(keyName);
+      return keyName.includes(searchNorm) || String(c.rowCount || '').includes(searchNorm);
+    });
+
+    if (componentMatches.length > 0) {
       opts.push({
-        value: `comp:${c._id}`,
+        value: 'components-header',
         label: (
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ fontWeight: 600 }}>{c.name}</div>
-            <div style={{ color: '#888' }}>{c.rowCount}</div>
+          <div style={{ padding: '6px 12px', backgroundColor: '#e0f2fe', fontWeight: 700, color: '#0369a1', fontSize: '12px', textTransform: 'uppercase', pointerEvents: 'none' }}>
+            📦 Components
           </div>
         ),
       });
-    });
 
-    // Tree nodes
-    flatTreeNodes.forEach((n) => {
-      opts.push({ value: `node:${n.key}`, label: n.label });
-    });
+      const seenNames = new Set<string>();
+      componentMatches.forEach((c) => {
+        const keyName = String(c.name || '').toLowerCase();
+        if (seenNames.has(keyName)) return;
+        seenNames.add(keyName);
+
+        opts.push({
+          value: `comp:${c._id}`,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginLeft: '12px' }}>
+              <div style={{ fontWeight: 600 }}>{highlightMatch(c.name, deferredSearchText)}</div>
+              <div style={{ color: '#888' }}>{c.rowCount}</div>
+            </div>
+          ),
+        });
+      });
+    }
+
+    // Tree nodes - limit to 20 results to avoid overwhelming dropdown
+    const treeMatches = flatTreeNodes.filter((n) => n.label.toLowerCase().includes(searchNorm)).slice(0, 20);
+
+    if (treeMatches.length > 0) {
+      opts.push({
+        value: 'tree-header',
+        label: (
+          <div style={{ padding: '6px 12px', backgroundColor: '#f0fdf4', fontWeight: 700, color: '#15803d', fontSize: '12px', textTransform: 'uppercase', pointerEvents: 'none', marginTop: '4px' }}>
+            🌳 Hierarchy Nodes
+          </div>
+        ),
+      });
+
+      treeMatches.forEach((n) => {
+        opts.push({
+          value: `node:${n.key}`,
+          label: (
+            <div style={{ marginLeft: '12px' }}>
+              {highlightMatch(n.label, deferredSearchText)}
+            </div>
+          ),
+        });
+      });
+    }
 
     return opts;
-  }, [components, flatTreeNodes]);
+  }, [components, flatTreeNodes, deferredSearchText]);
 
   const computeParentKeysForPath = (pathKey: string) => {
     // pathKey format: `${modelName}|A|B|C`
@@ -529,6 +593,9 @@ export default function ComponentsViewer({
 
   const handleSuggestionSelect = (value: string) => {
     if (!value) return;
+    // Ignore header clicks
+    if (value.endsWith('-header')) return;
+    
     if (value.startsWith('comp:')) {
       const id = value.slice('comp:'.length);
       setViewMode('table');
@@ -599,13 +666,33 @@ export default function ComponentsViewer({
     }
   }, [searchText]);
 
+  // Helper to extract correlation ID from component rows
+  const getCorrelationIdFromComponent = (component: CustomFactory): string | null => {
+    if (!component.rows || component.rows.length === 0) return null;
+    const firstRow = component.rows[0];
+    // Look for correlationId field in the row values
+    const values = firstRow.values || {};
+    const correlationId = values['correlationId'] || values['applicationCorrelationId'] || values['correlation_id'];
+    return correlationId ? String(correlationId) : null;
+  };
+
+  // Handle clicking on component name to navigate to Data section
+  const handleComponentNameClick = (component: CustomFactory, e: React.MouseEvent) => {
+    if (!onApplicationLinkClick) return;
+    e.preventDefault();
+    // Don't stopPropagation - allow tab onClick to still work
+    const correlationId = getCorrelationIdFromComponent(component);
+    onApplicationLinkClick(component.name, correlationId, undefined);
+  };
+
   // Shared search bar used by both tree and table views
   const searchBar = (
     <div style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#fff', paddingBottom: '12px', marginBottom: '8px', borderBottom: '2px solid #1890ff' }}>
       <div style={{ marginBottom: '8px', fontSize: '12px', fontWeight: 600, color: '#0050b3', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-        🔍 Model-Wide Component Search
+        🔍 Component Search
       </div>
       <AutoComplete
+        className={searchText.trim() ? 'component-search-active' : ''}
         style={{ width: '100%' }}
         options={searchOptions}
         onSelect={handleSuggestionSelect}
@@ -662,6 +749,13 @@ export default function ComponentsViewer({
     }
   }, [treeData, searchText]);
 
+  // Keep hierarchies in sync with components - if components are deleted, clear hierarchies
+  useEffect(() => {
+    if (!components || components.length === 0) {
+      setHierarchies([]);
+    }
+  }, [components]);
+
   // Filter tree data based on search text
   const filteredTreeData = useMemo<DataNode[]>(() => {
     if (!searchText.trim()) return treeData;
@@ -699,7 +793,7 @@ export default function ComponentsViewer({
       {searchBar}
       {/* Ancestry paths as columnar table */}
       {ancestryPaths && ancestryPaths.length > 0 && (
-        <div style={{ marginBottom: '16px', border: '1px solid #d9d9d9', borderRadius: '2px', overflow: 'hidden', flexShrink: 0 }}>
+        <div className="component-search-results" style={{ marginBottom: '16px', border: '1px solid #d9d9d9', borderRadius: '2px', maxHeight: '30vh', flexShrink: 0 }}>
           {/* Headers */}
           <div style={{ display: 'flex', backgroundColor: '#fafafa', borderBottom: '1px solid #d9d9d9' }}>
             {ancestryPaths[0]?.map((node, colIdx) => (
@@ -756,12 +850,18 @@ export default function ComponentsViewer({
           ))}
         </div>
       )}
-      <Tabs
-        className="components-table-view"
-        style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-        activeKey={activeTabKey}
-        onChange={(key) => setActiveTabKey(key)}
-        items={(highlightedComponentId ? components.filter((c) => c._id === highlightedComponentId) : components).map((component) => ({
+      {components && components.length > 0 ? (
+        <Tabs
+          className="components-table-view"
+          style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+          activeKey={activeTabKey}
+          onChange={(key) => {
+            setActiveTabKey(key);
+            // Clear highlight when switching tabs to show all tabs again
+            setHighlightedComponentId(null);
+            setHighlightedRowName(null);
+          }}
+          items={components.map((component) => ({
           key: component._id,
           label: (
             <div
@@ -778,9 +878,28 @@ export default function ComponentsViewer({
                 border: draggedTabId === component._id ? '2px solid #3b82f6' : '1px solid transparent',
                 opacity: draggedTabId === component._id ? 0.6 : 1,
                 transition: 'all 0.2s ease-in-out',
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'center',
               }}
             >
-              {component.name} ({component.rowCount})
+              <span
+                onClick={(e) => handleComponentNameClick(component, e)}
+                style={{
+                  cursor: 'pointer',
+                  color: '#0050b3',
+                  textDecoration: 'underline',
+                  fontWeight: 500,
+                  transition: 'color 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#0a3a82')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#0050b3')}
+              >
+                {component.name}
+              </span>
+              <span style={{ color: '#666', fontWeight: 'normal' }}>
+                ({component.rowCount})
+              </span>
             </div>
           ),
           children: renderComponentContent
@@ -823,7 +942,10 @@ export default function ComponentsViewer({
                 </div>
               ),
         }))}
-      />
+        />
+      ) : (
+        <Empty description="No components available" style={{ marginTop: '40px' }} />
+      )}
     </div>
   );
 
@@ -831,48 +953,42 @@ export default function ComponentsViewer({
   const treeViewContent = (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       {searchBar}
-      <div style={{ display: 'flex', gap: 8, paddingBottom: 8 }}>
-        <Button 
-          size="small" 
-          onClick={() => setExpandedKeys(getAllTreeKeys(filteredTreeData))}
-        >
-          Expand All
-        </Button>
-        <Button 
-          size="small" 
-          onClick={() => setExpandedKeys([])}
-        >
-          Collapse All
-        </Button>
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingRight: '4px' }}>
-        <Tree
-          treeData={filteredTreeData}
-          expandedKeys={expandedKeys}
-          onExpand={setExpandedKeys}
-          selectedKeys={selectedNodeKey ? [selectedNodeKey] : []}
-          onSelect={handleNodeSelect}
-          style={{ padding: '8px 0' }}
-        />
-      </div>
+      {hierarchies && hierarchies.length > 0 ? (
+        <>
+          <div style={{ display: 'flex', gap: 8, paddingBottom: 8 }}>
+            <Button 
+              size="small" 
+              onClick={() => setExpandedKeys(getAllTreeKeys(filteredTreeData))}
+            >
+              Expand All
+            </Button>
+            <Button 
+              size="small" 
+              onClick={() => setExpandedKeys([])}
+            >
+              Collapse All
+            </Button>
+          </div>
+          <div className="component-search-results" style={{ flex: 1, paddingRight: '4px' }}>
+            <Tree
+              treeData={filteredTreeData}
+              expandedKeys={expandedKeys}
+              onExpand={setExpandedKeys}
+              selectedKeys={selectedNodeKey ? [selectedNodeKey] : []}
+              onSelect={handleNodeSelect}
+              style={{ padding: '8px 0' }}
+            />
+          </div>
+        </>
+      ) : (
+        <Empty description="No components available" style={{ marginTop: '40px' }} />
+      )}
     </div>
   );
 
   return (
     <Card
       title="Application Hierarchy Tree"
-      extra={
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Select
-            value={activeModelName}
-            onChange={(v) => setActiveModelName(String(v || ''))}
-            options={models.map((m) => ({ label: m, value: m }))}
-            placeholder="Select model"
-            style={{ minWidth: 220 }}
-            allowClear
-          />
-        </div>
-      }
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
       bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px' }}
     >
@@ -881,6 +997,7 @@ export default function ComponentsViewer({
           value={viewMode}
           onChange={(value) => setViewMode(value as 'tree' | 'table')}
           size="small"
+          className="view-mode-toggle"
           options={[
             {
               label: (
