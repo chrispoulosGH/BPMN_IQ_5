@@ -2,7 +2,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const { rebuildSearchIndex } = require('./utils/searchIndexBuilder');
 
-const neighborhoodName = 'ATT Journey Model';
+const neighborhoodName = 'AT&T Journey';
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/bpmn_iq')
   .then(async () => {

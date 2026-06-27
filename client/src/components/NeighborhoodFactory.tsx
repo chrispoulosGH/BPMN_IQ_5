@@ -699,6 +699,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                   uploadForm.setFieldsValue({ neighborhoodName: fixedNeighborhoodName || selectedNeighborhood || undefined });
                   setShowUploadModal(true);
                 }}
+                style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
               >
                 Add Components
               </Button>
@@ -724,6 +725,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                     onOk: () => handleDeleteAllComponents(fixedNeighborhoodName || selectedNeighborhood),
                   });
                 }}
+                style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
               >
                 Delete All Components
               </Button>
@@ -734,6 +736,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 danger
                 icon={<DeleteOutlined />}
                 onClick={() => handleDeleteNeighborhood(fixedNeighborhoodName)}
+                style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
               >
                 Delete Model
               </Button>

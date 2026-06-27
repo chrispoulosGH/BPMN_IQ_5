@@ -35,11 +35,17 @@ async function rebuildSearchIndex(neighborhoodName) {
       return { ...row };
     }
 
-    // Helper to build ALL hierarchy paths for a row (one per parent if multiple parents exist)
+    // Helper to build ALL hierarchy paths for a row (recursively handling multiple parents)
     // Returns array of hierarchies, where each hierarchy is an array of {componentName, rowName, componentId, rowId}
-    const buildAllHierarchyPaths = async (component, row) => {
+    const buildAllHierarchyPaths = async (component, row, visitedRowKeys = new Set()) => {
       const rowValues = getRowValues(row);
       const rowName = String(rowValues.name || row.name || 'unnamed').trim();
+      const currentRowKey = `${component.name}:${rowName}`;
+      
+      // Prevent infinite loops
+      if (visitedRowKeys.has(currentRowKey)) {
+        return [[{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }]];
+      }
 
       const parentNames = row.parentName
         ? row.parentName.split('|').map(p => p.trim()).filter(p => p)
@@ -50,7 +56,7 @@ async function rebuildSearchIndex(neighborhoodName) {
         return [[{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }]];
       }
 
-      // For each parent, build a complete hierarchy path
+      // For each parent, build a complete hierarchy path (recursively)
       const hierarchies = [];
 
       for (const parentName of parentNames) {
@@ -76,57 +82,23 @@ async function rebuildSearchIndex(neighborhoodName) {
           continue;
         }
 
-        // Build hierarchy by walking up from this parent
-        const hierarchyPath = [];
-        let currentComponent = parentComponent;
-        let currentRow = parentRow;
-        const visitedKeys = new Set();
-
-        while (currentComponent && currentRow) {
-          const currentRowValues = getRowValues(currentRow);
-          const currentRowName = String(currentRowValues.name || currentRow.name || 'unnamed').trim();
-
-          const key = `${currentComponent.name}:${currentRowName}`;
-          if (visitedKeys.has(key)) break; // Prevent infinite loops
-          visitedKeys.add(key);
-
-          hierarchyPath.unshift({
-            componentName: currentComponent.name,
-            componentId: String(currentComponent._id),
-            rowName: currentRowName,
-            rowId: String(currentRow._id)
-          });
-
-          // Get first parent only (simple walk-up, not combinatorial)
-          const currentParentNames = currentRow.parentName
-            ? currentRow.parentName.split('|').map(p => p.trim()).filter(p => p)
-            : [];
-
-          if (currentParentNames.length === 0) break; // No more parents
-
-          const nextParentComponent = componentMap.get(normalizeValue(currentComponent.parentFactoryName || ''));
-          if (!nextParentComponent) break;
-
-          const nextParentRow = nextParentComponent.rows?.find(r => {
-            const pRowValues = getRowValues(r);
-            const pName = String(pRowValues.name || r.name || 'unnamed').trim();
-            return normalizeValue(pName) === normalizeValue(currentParentNames[0]);
-          });
-
-          if (!nextParentRow) break;
-
-          currentComponent = nextParentComponent;
-          currentRow = nextParentRow;
-        }
-
-        // Add the row itself at the end
-        hierarchyPath.push({
-          componentName: component.name,
-          componentId: String(component._id),
-          rowName,
-          rowId: String(row._id)
+        // Create a NEW visited set for this parent path (don't share across parents!)
+        const pathVisitedSet = new Set(visitedRowKeys);
+        pathVisitedSet.add(currentRowKey);
+        
+        // Recursively get all hierarchies from this parent
+        const parentHierarchies = await buildAllHierarchyPaths(parentComponent, parentRow, pathVisitedSet);
+        
+        // Append current row to each parent hierarchy
+        parentHierarchies.forEach(parentPath => {
+          const fullPath = [...parentPath, {
+            componentName: component.name,
+            componentId: String(component._id),
+            rowName,
+            rowId: String(row._id)
+          }];
+          hierarchies.push(fullPath);
         });
-        hierarchies.push(hierarchyPath);
       }
 
       return hierarchies.length > 0 ? hierarchies : [[{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }]];

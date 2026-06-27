@@ -13,6 +13,8 @@ const { Application, Actor, Product } = require('../models/ReferenceData');
 const Server = require('../models/Server');
 const DatabaseInstance = require('../models/DatabaseInstance');
 const { rebuildSearchIndex } = require('../utils/searchIndexBuilder');
+const fkRegistry = require('../services/ForeignKeyRegistry');
+const fkResolver = require('../services/ForeignKeyResolver');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1626,6 +1628,16 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
           });
 
           await existingFactory.save();
+          
+          // Register FK columns in the registry
+          (existingFactory.foreignKeyColumns || []).forEach((fk) => {
+            fkRegistry.registerForeignKey(fk, {
+              neighborhoodName: existingFactory.neighborhoodName,
+              modelName: existingFactory.modelName,
+              componentName: existingFactory.name,
+            });
+          });
+          
           savedFactories.push(serializeFactory(existingFactory.toObject()));
           continue;
         }
@@ -1633,6 +1645,16 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
         // Ensure uploaded factories persist the modelName for namespace isolation
         uploadedFactory.modelName = neighborhoodName;
         const createdFactory = await Component.create(uploadedFactory);
+        
+        // Register FK columns in the registry
+        (createdFactory.foreignKeyColumns || []).forEach((fk) => {
+          fkRegistry.registerForeignKey(fk, {
+            neighborhoodName: createdFactory.neighborhoodName,
+            modelName: createdFactory.modelName,
+            componentName: createdFactory.name,
+          });
+        });
+        
         createdFactoryIds.push(String(createdFactory._id));
         savedFactories.push(serializeFactory(createdFactory.toObject()));
       }
@@ -2329,15 +2351,33 @@ router.get('/hierarchies/tree', async (req, res) => {
     const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
     const componentName = String(req.query?.componentName || 'Application').trim();
     
-    // Get all index entries for this component type
-    const entries = await ComponentSearchIndex.find({
-      neighborhoodName,
-      componentName,
-    })
-    .sort({ rowName: 1 })
-    .lean();
+    // Try to find leaf component entries - try common names first
+    const possibleLeafComponents = ['Application', 'application', 'app', 'App', 'Task', 'task'];
+    let entries = [];
+    let leafComponentName = 'Application';
     
-    // Extract unique hierarchies (each entry may have multiple paths)
+    for (const leafName of possibleLeafComponents) {
+      entries = await ComponentSearchIndex.find({
+        neighborhoodName,
+        componentName: leafName,
+      })
+      .limit(1)
+      .lean();
+      
+      if (entries.length > 0) {
+        leafComponentName = leafName;
+        // Now get all entries for this leaf component
+        entries = await ComponentSearchIndex.find({
+          neighborhoodName,
+          componentName: leafComponentName,
+        })
+        .sort({ rowName: 1 })
+        .lean();
+        break;
+      }
+    }
+    
+    // Extract unique hierarchies that contain the requested component
     const hierarchyMap = new Map();
     const allPaths = [];
     
@@ -2345,6 +2385,11 @@ router.get('/hierarchies/tree', async (req, res) => {
       const hierarchies = entry.cachedHierarchies || [];
       
       hierarchies.forEach((hierarchy) => {
+        // Check if this hierarchy contains the requested component
+        const containsComponent = hierarchy.some(node => node.componentName === componentName);
+        
+        if (!containsComponent) return;
+        
         const pathKey = hierarchy.map(node => node.rowName).join('|');
         
         if (!hierarchyMap.has(pathKey)) {
@@ -2369,6 +2414,213 @@ router.get('/hierarchies/tree', async (req, res) => {
   } catch (error) {
     console.error('[HIERARCHIES] Error:', error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// Foreign Key Resolution Endpoints
+// ============================================================================
+
+// GET /fk-registry: View all registered FK mappings (admin/debug)
+router.get('/fk-registry/status', async (_req, res) => {
+  try {
+    const stats = fkRegistry.getStats();
+    res.json({
+      success: true,
+      registry: stats,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /fk-resolve: Resolve a single FK value to its target record
+// Body: { targetGroup, targetScope, targetIdField, fkValue }
+router.post('/fk-resolve', async (req, res) => {
+  try {
+    const { targetGroup, targetScope, targetIdField, fkValue } = req.body || {};
+
+    if (!targetGroup || !targetScope || !targetIdField || !fkValue) {
+      return res.status(400).json({
+        error: 'Required fields: targetGroup, targetScope, targetIdField, fkValue',
+      });
+    }
+
+    const fkMetadata = {
+      targetGroup,
+      targetScope,
+      targetIdField,
+    };
+
+    const resolved = await fkResolver.resolveForeignKey(fkMetadata, fkValue);
+
+    if (!resolved) {
+      return res.status(404).json({
+        error: `FK value "${fkValue}" not found in ${targetGroup}/${targetScope}`,
+        fkValue,
+        target: { targetGroup, targetScope, targetIdField },
+      });
+    }
+
+    res.json({
+      success: true,
+      fkValue,
+      target: { targetGroup, targetScope, targetIdField },
+      resolved,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /fk-validate: Validate that FK values exist (batch validation)
+// Body: { validations: [{ targetGroup, targetScope, targetIdField, fkValue }, ...] }
+router.post('/fk-validate', async (req, res) => {
+  try {
+    const { validations } = req.body || {};
+
+    if (!Array.isArray(validations) || !validations.length) {
+      return res.status(400).json({
+        error: 'Required: validations array with FK metadata objects',
+      });
+    }
+
+    const results = await Promise.all(
+      validations.map(async (validation) => {
+        const { targetGroup, targetScope, targetIdField, fkValue } = validation;
+        
+        const fkMetadata = {
+          targetGroup,
+          targetScope,
+          targetIdField,
+        };
+
+        const exists = await fkResolver.validateForeignKeyExists(fkMetadata, fkValue, {
+          throwOnMissing: false,
+        });
+
+        return {
+          fkValue,
+          target: { targetGroup, targetScope, targetIdField },
+          exists,
+        };
+      })
+    );
+
+    const allValid = results.every(r => r.exists);
+    const invalidResults = results.filter(r => !r.exists);
+
+    res.json({
+      success: allValid,
+      allValid,
+      validatedCount: results.length,
+      invalidCount: invalidResults.length,
+      results,
+      invalidResults,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /components/:componentId/fk-enriched: Get component with resolved FK data
+router.get('/components/:componentId/fk-enriched', async (req, res) => {
+  try {
+    const component = await Component.findById(req.params.componentId).lean();
+    if (!component) return res.status(404).json({ error: 'Component not found' });
+
+    const enriched = await fkResolver.enrichComponentWithResolvedForeignKeys(component);
+    res.json({
+      success: true,
+      component: serializeFactory(enriched),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /components/:componentId/fk-references: Get all components referenced by FK columns
+router.get('/components/:componentId/fk-references', async (req, res) => {
+  try {
+    const component = await Component.findById(req.params.componentId);
+    if (!component) return res.status(404).json({ error: 'Component not found' });
+
+    const referencedComponents = await fkResolver.getReferencedComponents(component);
+
+    res.json({
+      success: true,
+      componentName: component.name,
+      referencedComponentsCount: referencedComponents.length,
+      referencedComponents: referencedComponents.map((ref) => ({
+        fieldName: ref.fieldName,
+        targetGroup: ref.targetGroup,
+        targetScope: ref.targetScope,
+        targetComponentId: String(ref.targetComponent._id),
+        targetComponentName: ref.targetComponent.name,
+        targetComponentRowCount: (ref.targetComponent.rows || []).length,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /components/:componentId/fk-validate: Validate all FK values in a component
+router.post('/components/:componentId/fk-validate', async (req, res) => {
+  try {
+    const component = await Component.findById(req.params.componentId);
+    if (!component) return res.status(404).json({ error: 'Component not found' });
+
+    const validation = await fkResolver.validateComponentForeignKeys(component);
+
+    const statusCode = validation.valid ? 200 : 400;
+    res.status(statusCode).json({
+      success: validation.valid,
+      componentName: component.name,
+      valid: validation.valid,
+      errorCount: validation.errors.length,
+      errors: validation.errors,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /fk-registry/targets: List all registered FK targets
+router.get('/fk-registry/targets', async (_req, res) => {
+  try {
+    const targets = fkRegistry.getAllTargets();
+    res.json({
+      success: true,
+      targetCount: targets.length,
+      targets,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /fk-registry/targets/:targetGroup/:targetScope/sources: Get components that reference a target
+router.get('/fk-registry/targets/:targetGroup/:targetScope/sources', async (req, res) => {
+  try {
+    const { targetGroup, targetScope } = req.params;
+    const sources = fkRegistry.getSourceComponentsForTarget(targetGroup, targetScope);
+
+    if (!sources || sources.length === 0) {
+      return res.status(404).json({
+        error: `No components reference target ${targetGroup}/${targetScope}`,
+      });
+    }
+
+    res.json({
+      success: true,
+      targetGroup,
+      targetScope,
+      sourceComponentCount: sources.length,
+      sourceComponents: sources,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

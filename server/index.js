@@ -55,9 +55,22 @@ app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 // Auth routes (no session guard)
 app.use('/api/auth', authRouter);
 
+// Public API routes (no session guard needed)
+const publicApiPaths = [
+  '/custom-factories/search',
+  '/custom-factories/leaf-component',
+  '/custom-factories/hierarchies/tree',
+];
+
 // Session guard — protect all other /api routes
 app.use('/api', async (req, res, next) => {
   try {
+    // Skip session check for public endpoints
+    if (publicApiPaths.some(path => req.path.startsWith(path))) {
+      console.log(`[AUTH] Allowing public access to: ${req.path}`);
+      return next();
+    }
+    
     const token = req.cookies?.bpmn_iq_sid;
     if (!token) return res.status(401).json({ error: 'Session expired. Please log in again.' });
     const sess = await Session.findOne({ token, expiresAt: { $gt: new Date() } }).lean();

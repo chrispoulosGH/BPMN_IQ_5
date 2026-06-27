@@ -48,29 +48,55 @@ export default function ComponentsViewer({
   const horizontalTreeNodeRefMap = useRef<Map<React.Key, HTMLButtonElement>>(new Map());
 
   // Load hierarchies from ComponentSearchIndex
+  // Load hierarchies for all component types (not just leaf)
   useEffect(() => {
+    if (!components || components.length === 0) return; // Wait for components to load
+
     let cancelled = false;
 
     const loadHierarchies = async () => {
       setLoading(true);
       try {
-        console.log(`[ComponentsViewer] Loading hierarchies for ${neighborhoodName}/${activeModelName}`);
+        console.log(`[ComponentsViewer] API CALL: Loading hierarchies for ${neighborhoodName}/${activeModelName} (${components.length} component types)`);
         
-        // First, get the leaf component name for this neighborhood
-        const leafData = await getLeafComponent(neighborhoodName, activeModelName);
-        const leafComponent = leafData.leafComponent || 'Application';
-        console.log(`[ComponentsViewer] Using leaf component: ${leafComponent}`);
+        // Fetch hierarchies for each component type
+        const allPaths: any[] = [];
+        for (const component of components) {
+          try {
+            const result = await getComponentHierarchies(neighborhoodName, component.name, activeModelName);
+            const componentPaths = result.paths || [];
+            console.log(`[ComponentsViewer] TRACE: ${component.name} has ${componentPaths.length} paths`);
+            allPaths.push(...componentPaths);
+          } catch (err) {
+            console.warn(`[ComponentsViewer] Failed to load hierarchies for ${component.name}:`, err);
+          }
+        }
         
-        // Then load hierarchies with the correct component name
-        const result = await getComponentHierarchies(neighborhoodName, leafComponent, activeModelName);
+        // Deduplicate paths by pathKey
+        const uniquePaths = Array.from(new Map(allPaths.map(p => [p.pathKey, p])).values());
+        console.log(`[ComponentsViewer] API RESPONSE: Merged hierarchies loaded`, {
+          totalPathsFromComponents: allPaths.length,
+          uniquePathCount: uniquePaths.length,
+          paths: uniquePaths.slice(0, 5).map((p: any) => ({ 
+            componentName: p.nodes?.[p.nodes.length - 1]?.componentName,
+            pathStr: p.pathStr
+          }))
+        });
+        
+        // TRACE: Look for Care in the hierarchies
+        const carePaths = uniquePaths.filter((p: any) => 
+          p.nodes?.some((node: any) => node.componentName === 'channel' && node.rowName === 'Care')
+        ) || [];
+        console.log(`[ComponentsViewer] ✅ FOUND ${carePaths.length} paths containing Care channel`, carePaths.slice(0, 3).map((p: any) => p.pathStr));
+        
         if (!cancelled) {
-          setHierarchies(result.paths);
-          console.log(`[ComponentsViewer] Loaded ${result.paths.length} hierarchy paths`);
+          setHierarchies(uniquePaths);
+          console.log(`[ComponentsViewer] HIERARCHY TREE: Set ${uniquePaths.length} unique paths to state`);
         }
       } catch (error: any) {
         if (!cancelled) {
           setHierarchies([]);
-          console.error(`[ComponentsViewer] Error loading hierarchies:`, error);
+          console.error(`[ComponentsViewer] ERROR loading hierarchies:`, error);
           message.error(error.response?.data?.error || error.message);
         }
       } finally {
@@ -82,7 +108,7 @@ export default function ComponentsViewer({
 
     loadHierarchies();
     return () => { cancelled = true; };
-  }, [message, neighborhoodName, activeModelName]);
+  }, [message, neighborhoodName, activeModelName, components]);
 
   // Load available models (neighborhoods)
   useEffect(() => {
@@ -110,7 +136,32 @@ export default function ComponentsViewer({
 
     const loadComponents = async () => {
       try {
+        console.log(`[ComponentsViewer] API CALL: Loading components for ${neighborhoodName}/${activeModelName}`);
         const allComponents = await getCustomFactories(neighborhoodName, activeModelName);
+        
+        // TRACE: Log all component names
+        console.log(`[ComponentsViewer] API RESPONSE: Received ${allComponents.length} components:`, 
+          allComponents.map((c: any) => ({ name: c.name, rowCount: c.rows?.length || 0 }))
+        );
+        
+        // TRACE: Show Care channel specifically
+        const careChannel = allComponents.find((c: any) => c.name === 'channel');
+        if (careChannel) {
+          console.log(`[ComponentsViewer] TRACE: Channel component found:`, {
+            name: careChannel.name,
+            rowCount: careChannel.rows?.length || 0,
+            rows: careChannel.rows?.map((r: any) => r.values?.name) || []
+          });
+          const careRow = careChannel.rows?.find((r: any) => r.values?.name === 'Care');
+          if (careRow) {
+            console.log(`[ComponentsViewer] ✅ CARE FOUND in channel component:`, careRow);
+          } else {
+            console.warn(`[ComponentsViewer] ⚠️  CARE NOT FOUND in channel component`);
+          }
+        } else {
+          console.warn(`[ComponentsViewer] ⚠️  CHANNEL COMPONENT NOT FOUND in response`);
+        }
+        
         if (!cancelled) {
           // Restore persisted tab order for this model (if available)
           try {
@@ -392,6 +443,17 @@ export default function ComponentsViewer({
 
       nodes.forEach((node, depth) => {
         currentPath.push(node.rowName);
+        
+        // TRACE: Log Care nodes
+        if (node.rowName === 'Care' || node.componentName === 'channel') {
+          console.log(`[TreeBuilder] TRACE: Processing node:`, {
+            componentName: node.componentName,
+            rowName: node.rowName,
+            depth,
+            currentPath: currentPath.join(' > ')
+          });
+        }
+        
         // Include model name in path key to avoid collisions across models
         const pathKey = `${activeModelName || ''}|${currentPath.join('|')}`;
 
@@ -441,6 +503,11 @@ export default function ComponentsViewer({
               modelName: activeModelName,
             },
           } as DataNode & { data: any };
+          
+          // TRACE: Log Care node creation
+          if (node.rowName === 'Care') {
+            console.log(`[TreeBuilder] ✅ CREATED Care node:`, { pathKey, isLeaf: newNode.isLeaf });
+          }
 
           if (depth === 0) {
             rootNodes.push(newNode);
@@ -449,6 +516,9 @@ export default function ComponentsViewer({
             const parentNode = pathToNode.get(parentPath);
             if (parentNode && parentNode.children) {
               parentNode.children.push(newNode);
+              if (node.rowName === 'Care') {
+                console.log(`[TreeBuilder] ✅ ADDED Care as child of:`, parentPath);
+              }
             }
           }
 
@@ -457,7 +527,7 @@ export default function ComponentsViewer({
       });
     });
 
-    console.log(`[TreeBuilder] Created ${nodeCount} unique nodes, ${rootNodes.length} root nodes for ${activeModelName}`);
+    console.log(`[TreeBuilder] ✅ FINAL: Created ${nodeCount} unique nodes, ${rootNodes.length} root nodes for ${activeModelName}`);
 
     // Sort root nodes alphabetically
     return rootNodes.sort((a, b) => {

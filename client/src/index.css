@@ -278,15 +278,30 @@ html, body, #root {
 }
 
 .model-factory-tabs .ant-tabs-tab {
+  margin: 0 !important;
+  margin-right: -1px !important;
+  border: 1px solid #c9e6f5 !important;
+  border-bottom: none !important;
+  background: #e8f4fb !important;
+  border-radius: 6px 6px 0 0 !important;
+  padding: 8px 16px !important;
+  position: relative !important;
+  transition: all 0.2s ease !important;
+  z-index: 1 !important;
+  color: #000 !important;
   border-top: 3px solid #4f46e5 !important;
 }
 
 .model-factory-tabs .ant-tabs-tab-active {
-  background: rgba(79, 70, 229, 0.09) !important;
+  background: #a8d8f0 !important;
+  border-color: #7bc4e8 !important;
+  z-index: 10 !important;
+  font-weight: 700 !important;
+  color: #1e40af !important;
 }
 
 .model-factory-tabs .ant-tabs-tab:not(.ant-tabs-tab-active):hover {
-  background: rgba(79, 70, 229, 0.05) !important;
+  background: #d7ecf8 !important;
 }
 
 .model-factory-tabs .ant-tabs-tab[data-node-key^="sep-"] {
@@ -334,18 +349,24 @@ html, body, #root {
   position: relative !important;
   transition: all 0.2s ease !important;
   z-index: 1 !important;
+  color: #000 !important;
 }
 
 .neighborhood-tabs .ant-tabs-tab:hover {
-  background: #f0f9fd !important;
+  background: #d7ecf8 !important;
   z-index: 2 !important;
 }
 
 .neighborhood-tabs .ant-tabs-tab-active {
-  background: #f7fcfe !important;
-  border-color: #d0ecf8 !important;
+  background: #a8d8f0 !important;
+  border-color: #7bc4e8 !important;
   z-index: 10 !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
+  color: #1e40af !important;
+}
+
+.neighborhood-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #1e40af !important;
 }
 
 /* ── Tab groups: colored top stripe per group ───────────── */
@@ -362,18 +383,24 @@ html, body, #root {
   position: relative !important;
   transition: all 0.2s ease !important;
   z-index: 1 !important;
+  color: #000 !important;
 }
 
 .factory-tabs .ant-tabs-tab:hover {
-  background: #f0f9fd !important;
+  background: #d7ecf8 !important;
   z-index: 2 !important;
 }
 
 .factory-tabs .ant-tabs-tab-active {
-  background: #f7fcfe !important;
-  border-color: #d0ecf8 !important;
+  background: #a8d8f0 !important;
+  border-color: #7bc4e8 !important;
   z-index: 10 !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
+  color: #1e40af !important;
+}
+
+.factory-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #1e40af !important;
 }
 
 /* GROUP: Canvas — cyan */
@@ -381,10 +408,12 @@ html, body, #root {
   border-top: 3px solid #0891b2 !important;
 }
 .factory-tabs .ant-tabs-tab-active[data-node-key="bpmn"] {
-  background: rgba(8, 145, 178, 0.09) !important;
+  background: #a8d8f0 !important;
+  color: #1e40af !important;
+  font-weight: 700 !important;
 }
 .factory-tabs .ant-tabs-tab[data-node-key="bpmn"]:not(.ant-tabs-tab-active):hover {
-  background: rgba(8, 145, 178, 0.05) !important;
+  background: #d7ecf8 !important;
 }
 
 /* GROUP: Factories — indigo */
@@ -416,7 +445,9 @@ html, body, #root {
 .factory-tabs .ant-tabs-tab-active[data-node-key="channels"],
 .factory-tabs .ant-tabs-tab-active[data-node-key="domains"],
 .factory-tabs .ant-tabs-tab-active[data-node-key="subdomains"] {
-  background: rgba(79, 70, 229, 0.09) !important;
+  background: #a8d8f0 !important;
+  color: #1e40af !important;
+  font-weight: 700 !important;
 }
 .factory-tabs .ant-tabs-tab[data-node-key="diagramFactory"]:not(.ant-tabs-tab-active):hover,
 .factory-tabs .ant-tabs-tab[data-node-key="tasks"]:not(.ant-tabs-tab-active):hover,
@@ -431,7 +462,7 @@ html, body, #root {
 .factory-tabs .ant-tabs-tab[data-node-key="channels"]:not(.ant-tabs-tab-active):hover,
 .factory-tabs .ant-tabs-tab[data-node-key="domains"]:not(.ant-tabs-tab-active):hover,
 .factory-tabs .ant-tabs-tab[data-node-key="subdomains"]:not(.ant-tabs-tab-active):hover {
-  background: rgba(79, 70, 229, 0.05) !important;
+  background: #d7ecf8 !important;
 }
 
 /* GROUP: Analytics — amber */
@@ -441,11 +472,13 @@ html, body, #root {
 }
 .factory-tabs .ant-tabs-tab-active[data-node-key="dashboard"],
 .factory-tabs .ant-tabs-tab-active[data-node-key="reports"] {
-  background: rgba(217, 119, 6, 0.09) !important;
+  background: #a8d8f0 !important;
+  color: #1e40af !important;
+  font-weight: 700 !important;
 }
 .factory-tabs .ant-tabs-tab[data-node-key="dashboard"]:not(.ant-tabs-tab-active):hover,
 .factory-tabs .ant-tabs-tab[data-node-key="reports"]:not(.ant-tabs-tab-active):hover {
-  background: rgba(217, 119, 6, 0.05) !important;
+  background: #d7ecf8 !important;
 }
 
 /* Separator tabs: purely decorative, no interaction */
@@ -623,11 +656,61 @@ html, body, #root {
 }
 
 /* ─── View Mode Toggle (Tree/Table) ─────────────────────── */
+.view-mode-toggle .ant-segmented-group {
+  background: transparent !important;
+  border: 1px solid #c9e6f5 !important;
+  border-radius: 6px !important;
+  padding: 2px !important;
+}
+
+.view-mode-toggle .ant-segmented-item {
+  background: #e8f4fb !important;
+  color: #000 !important;
+  border: 1px solid #c9e6f5 !important;
+  border-radius: 4px !important;
+  margin: 0 2px !important;
+  transition: all 0.2s ease !important;
+}
+
+.view-mode-toggle .ant-segmented-item:hover:not(.ant-segmented-item-selected) {
+  background: #d7ecf8 !important;
+}
+
 .view-mode-toggle .ant-segmented-item-selected {
-  background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%);
+  background: #a8d8f0 !important;
   color: #1e40af !important;
-  font-weight: 600;
-  box-shadow: 0 2px 4px rgba(30, 64, 175, 0.15);
+  font-weight: 700 !important;
+  border-color: #7bc4e8 !important;
+  box-shadow: 0 2px 4px rgba(30, 64, 175, 0.15) !important;
+}
+
+/* ─── General Segmented Controls (Table/Tree, Layout toggles) ─── */
+.ant-segmented:not(.view-mode-toggle) .ant-segmented-group {
+  background: transparent !important;
+  border: 1px solid #c9e6f5 !important;
+  border-radius: 6px !important;
+  padding: 2px !important;
+}
+
+.ant-segmented:not(.view-mode-toggle) .ant-segmented-item {
+  background: #e8f4fb !important;
+  color: #000 !important;
+  border: 1px solid #c9e6f5 !important;
+  border-radius: 4px !important;
+  margin: 0 2px !important;
+  transition: all 0.2s ease !important;
+}
+
+.ant-segmented:not(.view-mode-toggle) .ant-segmented-item:hover:not(.ant-segmented-item-selected) {
+  background: #d7ecf8 !important;
+}
+
+.ant-segmented:not(.view-mode-toggle) .ant-segmented-item-selected {
+  background: #a8d8f0 !important;
+  color: #1e40af !important;
+  font-weight: 700 !important;
+  border-color: #7bc4e8 !important;
+  box-shadow: 0 2px 4px rgba(30, 64, 175, 0.15) !important;
 }
 
 /* ─── Ant Design Layout overrides ─────────────────────────── */
@@ -648,6 +731,10 @@ html, body, #root {
   background: #1890ff !important;
   color: white !important;
   border: none !important;
+  font-size: 10px !important;
+  padding: 2px 8px !important;
+  height: 20px !important;
+  line-height: 20px !important;
 }
 .btn-create-model:hover {
   background: #0050b3 !important;
@@ -657,9 +744,22 @@ html, body, #root {
   background: #10b981 !important;
   color: white !important;
   border: none !important;
+  font-size: 10px !important;
+  padding: 2px 8px !important;
+  height: 20px !important;
+  line-height: 20px !important;
 }
 .btn-bulk-import:hover {
   background: #059669 !important;
+}
+
+/* ─── Model Panel Small Button Sizing (30% reduction) ─────── */
+.model-action-buttons .ant-btn-sm,
+.neighborhood-header-actions .ant-btn {
+  font-size: 11.2px !important;
+  padding: 3.5px 11.2px !important;
+  height: 22.4px !important;
+  line-height: 22.4px !important;
 }
 
 /* ─── Scrollbar Styling ────────────────────────────────────── */
