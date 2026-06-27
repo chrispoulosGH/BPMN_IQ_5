@@ -282,7 +282,7 @@ html, body, #root {
   margin-right: -1px !important;
   border: 1px solid #c9e6f5 !important;
   border-bottom: none !important;
-  background: #e8f4fb !important;
+  background: #d1e9f4 !important;
   border-radius: 6px 6px 0 0 !important;
   padding: 8px 16px !important;
   position: relative !important;
@@ -290,6 +290,7 @@ html, body, #root {
   z-index: 1 !important;
   color: #000 !important;
   border-top: 3px solid #4f46e5 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1) !important;
 }
 
 .model-factory-tabs .ant-tabs-tab-active {
@@ -343,13 +344,14 @@ html, body, #root {
   margin-right: -1px !important;
   border: 1px solid #c9e6f5 !important;
   border-bottom: none !important;
-  background: #e8f4fb !important;
+  background: #d1e9f4 !important;
   border-radius: 6px 6px 0 0 !important;
   padding: 8px 16px !important;
   position: relative !important;
   transition: all 0.2s ease !important;
   z-index: 1 !important;
   color: #000 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1) !important;
 }
 
 .neighborhood-tabs .ant-tabs-tab:hover {
@@ -377,13 +379,14 @@ html, body, #root {
   margin-right: -1px !important;
   border: 1px solid #c9e6f5 !important;
   border-bottom: none !important;
-  background: #e8f4fb !important;
+  background: #d1e9f4 !important;
   border-radius: 6px 6px 0 0 !important;
   padding: 8px 16px !important;
   position: relative !important;
   transition: all 0.2s ease !important;
   z-index: 1 !important;
   color: #000 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1) !important;
 }
 
 .factory-tabs .ant-tabs-tab:hover {
@@ -760,6 +763,22 @@ html, body, #root {
   padding: 3.5px 11.2px !important;
   height: 22.4px !important;
   line-height: 22.4px !important;
+}
+
+/* ─── Table Header Styling ────────────────────────────────── */
+.ant-table-thead > tr > th {
+  background: #e0f2fe !important;
+  color: #0c4a6e !important;
+  font-weight: 600 !important;
+  border: 1px solid #7dd3fc !important;
+}
+
+.ant-table-thead > tr > th:hover {
+  background: #cce7fa !important;
+}
+
+.ant-table-tbody > tr > td {
+  border: 1px solid #e0f2fe !important;
 }
 
 /* ─── Scrollbar Styling ────────────────────────────────────── */
