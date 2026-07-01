@@ -197,14 +197,58 @@ export const createFactoryNeighborhood = (params: { name: string; file: File }):
 export const deleteFactoryNeighborhood = (name: string): Promise<{ success: boolean; name: string; deletedFactoryCount: number }> =>
   api.delete(`/custom-factories/neighborhoods/${encodeURIComponent(name)}`).then((r) => r.data);
 
-export const getModelCatalog = (name: string): Promise<ModelCatalog> =>
-  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog`).then((r) => r.data);
+export const getModelCatalog = (name: string, page = 1, limit = 50): Promise<ModelCatalog> =>
+  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog`, { params: { page, limit } }).then((r) => r.data);
 
 export const getCustomFactories = (neighborhoodName?: string, modelName?: string): Promise<CustomFactory[]> => {
-  const params = neighborhoodName ? { neighborhoodName } : undefined;
-  const modelConfig = scopedModelRequestConfig(modelName);
-  const config = { params, ...(modelConfig || {}) } as any;
-  return api.get('/custom-factories', config).then((r) => r.data);
+  // Prefer canonical-backed factories for display. Fallback to legacy endpoint if canonical fails.
+  if (neighborhoodName && neighborhoodName.trim()) {
+    return getCanonicalFactories(neighborhoodName, true, 100).catch(() => {
+      const params = { neighborhoodName };
+      const modelConfig = scopedModelRequestConfig(modelName);
+      const config = { params, ...(modelConfig || {}) } as any;
+      return api.get('/custom-factories', config).then((r) => r.data as CustomFactory[]);
+    });
+  }
+  // No neighborhood specified — fall back to legacy endpoint
+  return api.get('/custom-factories').then((r) => r.data as CustomFactory[]);
+};
+
+// --- Canonical API helpers (new) ---
+export const getCanonicalTypes = (neighborhoodName: string): Promise<string[]> =>
+  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/types`).then((r) => r.data.types || []);
+
+export const getCanonicalMeta = (neighborhoodName: string, componentType: string): Promise<any> =>
+  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/${encodeURIComponent(componentType)}/meta`).then((r) => r.data);
+
+export const getCanonicalRows = (neighborhoodName: string, componentType: string, page = 1, limit = 100, search?: string): Promise<any> =>
+  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/${encodeURIComponent(componentType)}/rows`, { params: { page, limit, search } }).then((r) => r.data);
+
+// Convenience: return an array of factory-like objects for the neighborhood by sampling meta and first page rows
+export const getCanonicalFactories = async (neighborhoodName: string, fetchFirstPage = true, pageLimit = 50): Promise<CustomFactory[]> => {
+  const types = await getCanonicalTypes(neighborhoodName);
+  const out: CustomFactory[] = [];
+  for (const t of types) {
+    try {
+      const meta = await getCanonicalMeta(neighborhoodName, t);
+      const rowsResp = fetchFirstPage ? await getCanonicalRows(neighborhoodName, t, 1, Math.min(100, pageLimit)) : { rows: [] };
+      const factory: any = {
+        _id: `${neighborhoodName}:${t}`,
+        neighborhoodName,
+        name: t,
+        columns: meta.columns || [],
+        rowCount: meta.total || 0,
+        rows: (rowsResp.rows || []).map((r: any) => ({ _id: r.primaryKey || r._id, values: r.values || {} })),
+        sourceColumnName: '',
+        shortDescription: '',
+      };
+      out.push(factory as CustomFactory);
+    } catch (e) {
+      // ignore individual type errors
+      console.warn('getCanonicalFactories error for', t, e && e.message);
+    }
+  }
+  return out;
 };
 
 export const getComponentHierarchies = (neighborhoodName?: string, componentName: string = 'Application', modelName?: string): Promise<import('./types').HierarchiesResponse> => {
@@ -233,10 +277,13 @@ export const getApplicationByCorrelationId = (correlationId: string, neighborhoo
 export const getApplicationByName = (name: string, neighborhoodName?: string): Promise<any> =>
   api.get(`/reference/applications/by-name/${encodeURIComponent(name)}`, scopedRequestConfig(neighborhoodName)).then((r) => r.data);
 
-export const uploadCustomFactory = (params: { neighborhoodName: string; file: File }): Promise<{ factories: CustomFactory[] }> => {
+export const uploadCustomFactory = (params: { neighborhoodName: string; file: File; componentName?: string }): Promise<{ factories: CustomFactory[] }> => {
   const body = new FormData();
   body.append('neighborhoodName', params.neighborhoodName);
   body.append('file', params.file);
+  if (params.componentName) {
+    body.append('componentName', params.componentName);
+  }
   return api.post('/custom-factories/upload', body).then((r) => r.data);
 };
 

@@ -98,12 +98,25 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
         }
 
         const data = await response.json();
-        setSuggestions(
-          data.suggestions?.map((s: any) => ({
-            label: `${s.value} (${s.frequency} occurrences${s.componentNames?.length > 1 ? `, ${s.componentNames.length} components` : ''})`,
-            value: s.value,
-          })) || []
-        );
+        const rowSug = (data.suggestions || []).map((s: any) => ({
+          label: `${s.value} (${s.frequency} occurrences${s.componentNames?.length > 1 ? `, ${s.componentNames.length} components` : ''})`,
+          value: s.value,
+        }));
+
+        const typeSug = (data.componentTypes || []).map((t: any) => ({
+          label: `${t.componentName} (type)`,
+          value: `__type__:${t.componentName}`,
+        }));
+
+        // Merge types first then row suggestions, de-dupe by value
+        const merged = [...typeSug, ...rowSug];
+        const seen = new Set<string>();
+        const deduped = merged.filter((x) => {
+          if (seen.has(x.value)) return false;
+          seen.add(x.value);
+          return true;
+        });
+        setSuggestions(deduped);
       } catch (err) {
         setSuggestions([]);
       } finally {
@@ -505,7 +518,38 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
               placeholder="Search component values (min 2 characters)..."
               value={searchTerm}
               onSearch={(value) => setSearchTerm(value)}
-              onSelect={(value) => setSearchTerm(value)}
+              onSelect={(value) => {
+                // If a type was selected, set the componentName filter and set searchTerm empty
+                if (typeof value === 'string' && value.startsWith('__type__:')) {
+                  const type = value.split('__type__:')[1];
+                  setSearchTerm('');
+                  // Trigger a search scoped to this component type
+                  (async () => {
+                    setLoading(true);
+                    setHasSearched(true);
+                    try {
+                      const response = await fetch(
+                        `/api/custom-factories/search/indexed?neighborhoodName=${encodeURIComponent(
+                          neighborhoodName
+                        )}&term=&componentName=${encodeURIComponent(type)}`
+                      );
+                      if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Search failed');
+                      }
+                      const data = await response.json();
+                      setResults(data.results || []);
+                    } catch (err) {
+                      console.error('Search error', err);
+                      setResults([]);
+                    } finally {
+                      setLoading(false);
+                    }
+                  })();
+                  return;
+                }
+                setSearchTerm(value as string);
+              }}
               onChange={(value) => setSearchTerm(value)}
               options={suggestions}
               {...({ loading: loadingSuggestions } as any)}

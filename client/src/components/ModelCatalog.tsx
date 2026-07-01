@@ -21,7 +21,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const SEARCH_SETTINGS_STORAGE_PREFIX = 'modelCatalogSearch:';
-  const [catalog, setCatalog] = useState<{ columns: string[]; rows: ModelCatalogRow[]; rowCount: number; sourceFileName?: string } | null>(null);
+  const [catalog, setCatalog] = useState<{ columns: string[]; rows: ModelCatalogRow[]; rowCount: number; sourceFileName?: string; pagination?: { currentPage: number; limit: number; totalPages: number; hasMore: boolean } } | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchColumn, setSearchColumn] = useState<string>(ALL_COLUMNS_OPTION);
   const [searchText, setSearchText] = useState('');
@@ -30,8 +30,10 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set());
   const [selectedNodeKey, setSelectedNodeKey] = useState<React.Key | null>(null);
+  const [tablePage, setTablePage] = useState(1);
   const horizontalTreeContainerRef = useRef<HTMLDivElement>(null);
   const horizontalTreeNodeRefMap = useRef<Map<React.Key, HTMLButtonElement>>(new Map());
+  const builtTreeDataRef = useRef<DataNode[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,9 +41,32 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
     const loadCatalog = async () => {
       setLoading(true);
       try {
-        const nextCatalog = await getModelCatalog(modelName);
+        const nextCatalog = await getModelCatalog(modelName, tablePage, 50);
+        console.log('[API_RESPONSE] Full catalog columns from API:', nextCatalog.columns);
+        console.log('[API_RESPONSE] Total columns count:', nextCatalog.columns?.length);
+        if (nextCatalog.columns && Array.isArray(nextCatalog.columns)) {
+          console.log('[API_RESPONSE] Column list with details:', nextCatalog.columns.map((col: string, idx: number) => ({
+            index: idx,
+            name: col,
+            length: col.length,
+            startsWithFK: col.toLowerCase().startsWith('fk_')
+          })));
+        }
         if (!cancelled) {
           setCatalog(nextCatalog);
+          // Auto-include FK columns and component columns in visible columns
+          if (nextCatalog.columns && Array.isArray(nextCatalog.columns)) {
+            const autoVisible = new Set<string>();
+            nextCatalog.columns.forEach((col: string) => {
+              const colLower = col.toLowerCase();
+              if (colLower.startsWith('fk_') || colLower.endsWith('component')) {
+                autoVisible.add(col);
+              }
+            });
+            if (autoVisible.size > 0) {
+              setVisibleColumns(prev => new Set([...prev, ...autoVisible]));
+            }
+          }
         }
       } catch (error: any) {
         if (!cancelled) {
@@ -57,7 +82,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
 
     loadCatalog();
     return () => { cancelled = true; };
-  }, [message, modelName]);
+  }, [message, modelName, tablePage]);
 
   useEffect(() => {
     const storageKey = `${SEARCH_SETTINGS_STORAGE_PREFIX}${modelName}`;
@@ -93,15 +118,145 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
     setExactSearch(Boolean(requestedSearch.exact));
   }, [ALL_COLUMNS_OPTION, requestedSearch]);
 
-  const columns = useMemo<ColumnsType<ModelCatalogRow>>(() => (catalog?.columns || [])
-    .filter(column => visibleColumns.has(column))
-    .map((column) => ({
-      title: column,
-      key: column,
-      dataIndex: ['values', column],
-      ellipsis: true,
-      render: (value: unknown) => (value === null || value === undefined || value === '' ? '—' : String(value)),
-    })), [catalog, visibleColumns]);
+  const columns = useMemo<ColumnsType<ModelCatalogRow>>(() => {
+    console.log(`[FK_COLUMN_INIT] Processing catalog:`, {
+      name: catalog?.name,
+      totalColumns: catalog?.columns?.length,
+      columns: catalog?.columns
+    });
+
+    // Log ALL columns to see what's actually in the catalog
+    console.log(`[FK_COLUMN_INIT_ALL_COLUMNS]`, catalog?.columns?.map((col: string) => ({
+      name: col,
+      length: col.length,
+      startsWith_FK: col.toLowerCase().startsWith('fk_'),
+      inVisibleColumns: visibleColumns.has(col),
+      charCodes: col.split('').map((c: string) => `${c}(${c.charCodeAt(0)})`)
+    })));
+
+    const cols = (catalog?.columns || [])
+      .filter(column => visibleColumns.has(column))
+      .map((column) => {
+        console.log(`[FK_COLUMN_PROCESS] Checking column: "${column}"`);
+        
+        // ONLY detect foreign key columns with FK_ prefix pattern: FK_Data[Applications].Correlation_ID
+        const columnLower = column.toLowerCase();
+        const isForeignKeyColumn = columnLower.startsWith('fk_');
+        
+        console.log(`[FK_COLUMN_PROCESS] "${column}" - starts with FK_? ${isForeignKeyColumn}`);
+        
+        // Parse FK column to extract:
+        // - Target tab from prefix: FK_Data → "Data" tab
+        // - Target subtab from brackets: [Applications] → "Applications" subtab  
+        // - Search field from suffix: Correlation_ID → searchField
+        let targetTab: string | null = null;
+        let targetSubtab: string | null = null;
+        let searchField: string | null = null;
+        
+        if (isForeignKeyColumn) {
+          // Pattern: FK_Data[Applications].Correlation_ID
+          const regexPattern = /FK_([^\[]+)\[([^\]]+)\]\.(.+)$/;
+          console.log(`[FK_COLUMN_PARSE] Attempting to parse FK column: "${column}" with pattern: ${regexPattern}`);
+          
+          const match = column.match(regexPattern);
+          console.log(`[FK_COLUMN_PARSE] Regex match result:`, match);
+          
+          if (match) {
+            targetTab = match[1];      // "Data"
+            targetSubtab = match[2];   // "Applications"
+            searchField = match[3];    // "Correlation_ID"
+            console.log(`[FK_COLUMN_SUCCESS] Column "${column}" parsed successfully:`, {
+              targetTab,
+              targetSubtab,
+              searchField
+            });
+          } else {
+            console.warn(`[FK_COLUMN_PARSE_FAIL] Column "${column}" starts with FK_ but regex didn't match. Expected pattern: FK_TabName[SubtabName].FieldName`);
+          }
+        }
+
+        return {
+          title: column,
+          key: column,
+          dataIndex: ['values', column],
+          ellipsis: true,
+          render: (value: unknown) => {
+            if (value === null || value === undefined || value === '') return '—';
+            const valueStr = String(value);
+            
+            // Render FK columns as links
+            if (isForeignKeyColumn && searchField && targetTab && targetSubtab) {
+              console.log(`[FK_LINK_RENDER] Rendering "${column}" value "${valueStr}" as link`);
+              return (
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    console.log(`[FK_LINK_CLICK]`, {
+                      column,
+                      targetTab,
+                      targetSubtab,
+                      searchField,
+                      valueStr,
+                      timestamp: new Date().toISOString()
+                    });
+                    console.log(`[FK_LINK_CLICK] User clicked: navigating to ${targetTab} > ${targetSubtab} tab, searching by ${searchField}="${valueStr}"`);
+                    window.dispatchEvent(new CustomEvent('navigateToApplication', { 
+                      detail: { 
+                        searchValue: valueStr,
+                        searchField: searchField,
+                        sourceColumn: column,
+                        targetTab,
+                        targetSubtab
+                      } 
+                    }));
+                  }}
+                  style={{ 
+                    color: '#0284c7', 
+                    textDecoration: 'underline', 
+                    fontWeight: 500, 
+                    cursor: 'pointer',
+                    transition: 'color 0.2s'
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#0369a1')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#0284c7')}
+                  title={`Navigate to ${targetTab} > ${targetSubtab}, search by ${searchField}: ${valueStr}`}
+                >
+                  {valueStr}
+                </a>
+              );
+            } else {
+              if (isForeignKeyColumn) {
+                console.log(`[FK_LINK_SKIP] Column "${column}" is FK but missing required fields:`, {
+                  hasTabs: !!targetTab,
+                  hasSubtab: !!targetSubtab,
+                  hasSearchField: !!searchField
+                });
+              }
+            }
+            
+            return valueStr;
+          },
+        };
+      });
+    
+    const fkColumnCount = cols.filter((c: any) => {
+      const colName = c.dataIndex?.[1]?.toLowerCase?.();
+      return colName?.startsWith('fk_');
+    }).length;
+    console.log(`[FK_COLUMN_SUMMARY] Catalog: ${catalog?.name}`, {
+      totalColumns: catalog?.columns?.length,
+      fkColumnsDetected: fkColumnCount,
+      visibleColumns: visibleColumns.size,
+      allVisibleColumnNames: Array.from(visibleColumns)
+    });
+    console.log(`[FK_COLUMN_DEBUG] Checking if FK column exists:`, {
+      catalogHasColumns: !!catalog?.columns,
+      catalogColumnsCount: catalog?.columns?.length,
+      visibleColumnsIncludeFK: Array.from(visibleColumns).filter((col: string) => col.toLowerCase().startsWith('fk_')).length
+    });
+    return cols;
+  }, [catalog, visibleColumns]);
 
   const filteredRows = useMemo(() => {
     if (!catalog) return [];
@@ -131,13 +286,19 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
       .sort((a, b) => a.originalIndex - b.originalIndex);
   }, [catalog]);
 
+  // Lazy tree building - only build when in tree view mode
   const treeData = useMemo<DataNode[]>(() => {
+    // Skip tree building for table view - significant performance improvement
+    if (viewMode === 'table') return [];
     if (!catalog || componentColumns.length === 0) return [];
+
+    // Use all rows for tree (not filtered by search) - user can search within tree
+    const rowsForTree = catalog.rows;
 
     const pathToNode = new Map<string, DataNode>();
     const rootNodes: DataNode[] = [];
 
-    filteredRows.forEach((row) => {
+    rowsForTree.forEach((row) => {
       let currentPath: string[] = [];
 
       for (let depth = 0; depth < componentColumns.length; depth++) {
@@ -206,7 +367,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
       const bValue = (b as any).nodeName || '';
       return String(aValue).localeCompare(String(bValue));
     });
-  }, [catalog, componentColumns, filteredRows]);
+  }, [viewMode, catalog, componentColumns]);
 
   const handleExpandAll = () => {
     const allKeys: React.Key[] = [];
@@ -281,6 +442,10 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
           position: 'relative',
           backgroundColor: '#f8fafc',
           borderRadius: '6px',
+          width: '100%',
+          height: '100%',
+          minHeight: 0,
+          minWidth: 0,
         }}
       >
         <div style={{ position: 'relative', width, height }}>
@@ -569,7 +734,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                   <span style={{ color: '#64748b', fontSize: 12 }}>Exact</span>
                 </Space>
                 <span style={{ color: '#64748b', fontSize: 12 }}>
-                  Showing {filteredRows.length} of {catalog.rowCount} rows
+                  Showing {catalog.rows.length} of {catalog.rowCount} rows {catalog.pagination ? `(page ${catalog.pagination.currentPage} of ${catalog.pagination.totalPages})` : ''}
                 </span>
               </Space>
 
@@ -578,9 +743,20 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                 dataSource={filteredRows}
                 columns={enhanceColumnsWithSortAndFilters(columns as any, filteredRows)}
                 size="small"
-                pagination={{ pageSize: 25, showSizeChanger: true, position: ['topRight'] }}
+                pagination={{
+                  pageSize: 25,
+                  showSizeChanger: false,
+                  position: ['topRight'],
+                }}
                 scroll={{ x: 'max-content' }}
               />
+              {catalog.pagination && catalog.pagination.hasMore && (
+                <div style={{ marginTop: 12, textAlign: 'center' }}>
+                  <Button onClick={() => setTablePage(tablePage + 1)} loading={loading}>
+                    Load More Data (Page {tablePage + 1} of {catalog.pagination.totalPages})
+                  </Button>
+                </div>
+              )}
             </>
           ) : viewMode === 'tree-vertical' ? (
             <div style={{ paddingTop: '16px', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>

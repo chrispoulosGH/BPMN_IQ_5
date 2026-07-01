@@ -550,34 +550,83 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     const currentVisibleColumns = getVisibleColumns(factoryId, allColumns);
     
     const dynamicColumns = allColumns
-      .filter((column) => currentVisibleColumns.has(column))
-      .map((column) => ({
-      title: column,
-      key: column,
-      dataIndex: ['values', column],
-      ellipsis: true,
-      sorter: (left: CustomFactoryRow, right: CustomFactoryRow) => String(left.values?.[column] ?? '').localeCompare(String(right.values?.[column] ?? ''), undefined, { sensitivity: 'base', numeric: true }),
-      render: (value: unknown, row: CustomFactoryRow) => {
-        const display = displayValue(value);
-        const normalizedColumn = String(column || '').trim().toLowerCase();
-        const correlationId = String(row.values?.correlation_id || row.values?.correlationId || '').trim();
+      // Always include FK_ columns, and respect visibility for others
+      .filter((column) => column.toLowerCase().startsWith('fk_') || currentVisibleColumns.has(column))
+      .map((column) => {
+        // Check if this is a FK column by name prefix
+        const isForeignKeyColumn = column.toLowerCase().startsWith('fk_');
+        let targetTab: string | null = null;
+        let targetSubtab: string | null = null;
+        let searchField: string | null = null;
 
-        if (isApplicationComponent && onApplicationLinkClick && correlationId && (normalizedColumn === 'name' || normalizedColumn === 'application' || normalizedColumn === 'applications')) {
-          return (
-            <Button
-              type="link"
-              size="small"
-              onClick={() => onApplicationLinkClick(display, correlationId, rowSearchText)}
-              style={{ padding: 0, height: 'auto' }}
-            >
-              {display}
-            </Button>
-          );
+        if (isForeignKeyColumn) {
+          const regexPattern = /FK_([^\[]+)\[([^\]]+)\]\.(.+)$/;
+          const match = column.match(regexPattern);
+          if (match) {
+            targetTab = match[1];
+            targetSubtab = match[2];
+            searchField = match[3];
+          }
         }
 
-        return display;
-      },
-    }));
+        return {
+          title: column,
+          key: column,
+          dataIndex: ['values', column],
+          ellipsis: true,
+          sorter: (left: CustomFactoryRow, right: CustomFactoryRow) => String(left.values?.[column] ?? '').localeCompare(String(right.values?.[column] ?? ''), undefined, { sensitivity: 'base', numeric: true }),
+          render: (value: unknown, row: CustomFactoryRow) => {
+            const display = displayValue(value);
+            const normalizedColumn = String(column || '').trim().toLowerCase();
+            const correlationId = String(row.values?.correlation_id || row.values?.correlationId || '').trim();
+
+            // FK columns: render as links
+            if (isForeignKeyColumn && targetTab && targetSubtab && searchField && display !== '—') {
+              return (
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.dispatchEvent(new CustomEvent('navigateToApplication', {
+                      detail: {
+                        searchValue: display,
+                        searchField: searchField,
+                        sourceColumn: column,
+                        targetTab: targetTab,
+                        targetSubtab: targetSubtab,
+                      },
+                    }));
+                  }}
+                  style={{
+                    color: '#0284c7',
+                    textDecoration: 'underline',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                  title={`Navigate to ${targetTab} > ${targetSubtab}, search by ${searchField}: ${display}`}
+                >
+                  {display}
+                </a>
+              );
+            }
+
+            if (isApplicationComponent && onApplicationLinkClick && correlationId && (normalizedColumn === 'name' || normalizedColumn === 'application' || normalizedColumn === 'applications')) {
+              return (
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => onApplicationLinkClick(display, correlationId, rowSearchText)}
+                  style={{ padding: 0, height: 'auto' }}
+                >
+                  {display}
+                </Button>
+              );
+            }
+
+            return display;
+          },
+        };
+      });
 
     return [
       ...dynamicColumns,
@@ -652,7 +701,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         ) : null,
       },
     ];
-  }, [canManageFactories, onApplicationLinkClick, selectedFactory, getVisibleColumns]);
+  }, [canManageFactories, onApplicationLinkClick, selectedFactory, getVisibleColumns, rowSearchText]);
 
   const filteredRows = useMemo(() => {
     if (!selectedFactory) return [];

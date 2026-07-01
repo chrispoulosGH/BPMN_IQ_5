@@ -1,15 +1,19 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
 const ComponentSearchIndex = require('./models/ComponentSearchIndex');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/bpmn_iq';
 
+// Accept comma-separated neighborhoods via env or first CLI arg, otherwise fall back to defaults
+const NEIGHBORHOODS = process.env.NEIGHBORHOODS
+  ? process.env.NEIGHBORHOODS.split(',').map(s => s.trim())
+  : (process.argv[2] ? process.argv[2].split(',').map(s => s.trim()) : ['CMM', 'AT&T Journey', 'LBGUPS']);
+
 mongoose.connect(MONGO_URI).then(async () => {
   try {
-    const hoods = ['CMM', 'AT&T Journey', 'LBGUPS'];
-    
     console.log('=== CHECKING CACHED HIERARCHIES ===\n');
-    
-    for (const hood of hoods) {
+
+    for (const hood of NEIGHBORHOODS) {
       console.log(`${hood}:`);
       
       try {

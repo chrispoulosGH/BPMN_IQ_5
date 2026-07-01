@@ -14,6 +14,8 @@ interface ServerFactoryProps {
   readOnly?: boolean;
   userRole?: string | null;
   onNavigateToFactory?: (tab: string, search: string) => void;
+  onDeleteAllComponents?: () => void;
+  deleteLoading?: boolean;
 }
 
 const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
@@ -65,7 +67,7 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'updatedAt', title: 'Updated At', defaultVisible: false },
 ];
 
-export default function ServerFactory({ defaultSearch, onNavigateToFactory, readOnly }: ServerFactoryProps) {
+export default function ServerFactory({ defaultSearch, onNavigateToFactory, readOnly, onDeleteAllComponents, deleteLoading }: ServerFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ServerItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -588,6 +590,9 @@ export default function ServerFactory({ defaultSearch, onNavigateToFactory, read
         </Popover>
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{items.length} servers</span>
+        {!readOnly && onDeleteAllComponents && <Button danger size="small" onClick={onDeleteAllComponents} loading={deleteLoading}>
+          Delete All
+        </Button>}
         {!readOnly && <Button danger size="small" onClick={handleBulkDelete} disabled={!selectedRowKeys.length}>
           Delete Selected ({selectedRowKeys.length})
         </Button>}

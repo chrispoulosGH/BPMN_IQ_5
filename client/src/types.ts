@@ -317,6 +317,12 @@ export interface ModelCatalog {
   sourceFileName?: string;
   createdAt?: string;
   updatedAt?: string;
+  pagination?: {
+    currentPage: number;
+    limit: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
 }
 
 export interface CustomFactoryQualifierColumn {
@@ -348,6 +354,7 @@ export interface CustomFactory {
   applicationType?: string;
   businessCriticality?: string;
   parentFactoryName?: string;
+  componentType?: string;
   columns: string[];
   qualifierColumns?: CustomFactoryQualifierColumn[];
   foreignKeyColumns?: Array<{

@@ -54,6 +54,8 @@ const modelSchema = new mongoose.Schema(
     modelCatalogColumns: { type: [String], default: [] },
     modelCatalogRows: { type: [modelCatalogRowSchema], default: [] },
     schemaFactories: { type: [modelFactorySchema], default: [] },
+    tupleType: { type: [String], default: [] }, // Column names ending in "Component" - defines the tuple key
+    modelCatalogHash: { type: Object, default: {} }, // Hash of concatenated tuple values from model rows (plain object, not Map)
   },
   { timestamps: true, collection: 'models' }
 );

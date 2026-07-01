@@ -29,6 +29,19 @@ const componentRowSchema = new mongoose.Schema(
       of: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    tuple: { type: String, default: '' }, // Concatenated tuple key for validation against model
+    componentQualifiers: {
+      // Maps component column name to its qualifier values
+      // E.g. { "Domain_Name Component": { "Domain_ID Qualifier": 110 } }
+      type: Map,
+      of: new mongoose.Schema({ type: Map, of: mongoose.Schema.Types.Mixed }, { _id: false }),
+      default: {},
+    },
+    foreignKeys: {
+      // E.g. { "FK_Data[Application].Correlation_ID": "12345" }
+      type: Object,
+      default: {},
+    },
     owner: { type: String, default: '' },
     state: { type: String, default: 'staged' },
     sourcedFrom: { type: String, default: '' },
@@ -48,6 +61,7 @@ const componentSchema = new mongoose.Schema(
     sourceColumnName: { type: String, default: '', trim: true },
     shortDescription: { type: String, default: '', trim: true },
     parentFactoryName: { type: String, default: '', trim: true },
+    componentType: { type: String, default: '', index: true, trim: true },
     columns: [{ type: String, required: true, trim: true }],
     qualifierColumns: { type: [componentQualifierSchema], default: [] },
     foreignKeyColumns: { type: [componentForeignKeySchema], default: [] },

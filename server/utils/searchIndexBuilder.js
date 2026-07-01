@@ -1,5 +1,6 @@
+const mongoose = require('mongoose');
 const ComponentSearchIndex = require('../models/ComponentSearchIndex');
-const Component = require('../models/Component');
+const CanonicalComponent = require('../models/CanonicalComponent');
 
 /**
  * Rebuild the search index for all components in a neighborhood
@@ -9,14 +10,38 @@ async function rebuildSearchIndex(neighborhoodName) {
   console.log(`[INDEX] Starting rebuild for neighborhood: ${neighborhoodName}`);
 
   try {
-    // Get all components
-    const components = await Component.find({ neighborhoodName }).lean();
-    if (!components.length) {
-      console.log(`[INDEX] No components found for neighborhood: ${neighborhoodName}`);
+    // Get canonical rows and group into synthesized "components" by componentType
+    const canonicalRows = await CanonicalComponent.find({ neighborhoodName }).lean();
+    if (!canonicalRows.length) {
+      console.log(`[INDEX] No canonicalcomponents found for neighborhood: ${neighborhoodName}`);
       return;
     }
 
-    console.log(`[INDEX] Found ${components.length} components for ${neighborhoodName}:`, components.map(c => ({ name: c.name, rowCount: (c.rows || []).length, parentFactoryName: c.parentFactoryName })));
+    // Group by componentType
+    const componentsByType = new Map();
+    for (const r of canonicalRows) {
+      const type = (r.componentType || r.component_type || 'unknown') + '';
+      if (!componentsByType.has(type)) componentsByType.set(type, []);
+      componentsByType.get(type).push(r);
+    }
+
+    const components = Array.from(componentsByType.keys()).map(type => {
+      const rows = componentsByType.get(type).map(r => ({
+        _id: r._id,
+        values: r.values || {},
+        // preserve any parentName present on the canonical row values
+        parentName: (r.values && (r.values.parentName || r.values.parent)) || r.parentName || null,
+      }));
+      return {
+        _id: type,
+        name: type,
+        // canonical rows don't carry a parentFactoryName by default; leave empty
+        parentFactoryName: '',
+        rows,
+      };
+    });
+
+    console.log(`[INDEX] Synthesized ${components.length} components from canonicalcomponents for ${neighborhoodName}`);
 
     // Create component map for hierarchy lookup
     const componentMap = new Map(components.map(c => [normalizeValue(c.name), c]));
@@ -135,14 +160,20 @@ async function rebuildSearchIndex(neighborhoodName) {
         indexEntries.push({
           neighborhoodName,
           componentName: component.name,
-          componentId: component._id,
-          rowId: row._id,
+          componentId: mongoose.isValidObjectId(component._id) ? component._id : null,
+          rowId: mongoose.isValidObjectId(row._id) ? row._id : null,
           rowName,
           searchableTextLower: allValuesStr.toLowerCase(),
           allValues: [rowName, ...Object.values(rowValues)].map(v => String(v || '')),
           fieldByValue: rowValues,
           cachedLineagePaths: pathStrings, // Multiple paths if multiple parents (backward compatibility)
-          cachedHierarchies: hierarchies, // Structured hierarchy data with component names
+          // Ensure componentId/rowId inside cachedHierarchies are ObjectIds or null
+          cachedHierarchies: hierarchies.map(path => path.map(node => ({
+            componentName: node.componentName,
+            componentId: mongoose.isValidObjectId(node.componentId) ? node.componentId : null,
+            rowName: node.rowName,
+            rowId: mongoose.isValidObjectId(node.rowId) ? node.rowId : null,
+          }))), // Structured hierarchy data with component names
           updatedAt: new Date(),
         });
 

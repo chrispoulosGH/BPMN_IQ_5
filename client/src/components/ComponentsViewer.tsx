@@ -3,7 +3,7 @@ import { App as AntApp, Card, Space, Spin, Tree, Button, Segmented, Tabs, Empty,
 import type { DataNode } from 'antd/es/tree';
 import { FolderOutlined, TableOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
 
-import { getCustomFactories, getComponentHierarchies, getCustomFactory, getCustomFactoryForModel, getApplicationByCorrelationId, getApplicationByName, getFactoryNeighborhoods, getLeafComponent } from '../api';
+import { getCustomFactories, getComponentHierarchies, getCustomFactory, getCustomFactoryForModel, getApplicationByCorrelationId, getApplicationByName, getFactoryNeighborhoods, getLeafComponent, getCanonicalFactories } from '../api';
 import type { CustomFactory, CustomFactoryRow, HierarchyPath } from '../types';
 
 interface ComponentsViewerProps {
@@ -136,8 +136,9 @@ export default function ComponentsViewer({
 
     const loadComponents = async () => {
       try {
-        console.log(`[ComponentsViewer] API CALL: Loading components for ${neighborhoodName}/${activeModelName}`);
-        const allComponents = await getCustomFactories(neighborhoodName, activeModelName);
+        console.log(`[ComponentsViewer] API CALL: Loading canonical factories for ${neighborhoodName}/${activeModelName}`);
+        // Use canonical-backed factories for large datasets
+        const allComponents = await getCanonicalFactories(neighborhoodName, true, 100).catch(() => [] as CustomFactory[]);
         
         // TRACE: Log all component names
         console.log(`[ComponentsViewer] API RESPONSE: Received ${allComponents.length} components:`, 

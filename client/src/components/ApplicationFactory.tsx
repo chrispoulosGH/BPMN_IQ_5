@@ -15,6 +15,8 @@ interface ApplicationFactoryProps {
   readOnly?: boolean;
   onNavigateToFactory?: (tab: string, search: string) => void;
   requestedDetailRequest?: { correlationId: string; nonce: number } | null;
+  onDeleteAllComponents?: () => void;
+  deleteLoading?: boolean;
 }
 
 /** All possible columns with their keys, labels, and default visibility */
@@ -44,7 +46,7 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'owner', title: 'Owner', defaultVisible: true },
 ];
 
-export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, onNavigateToFactory, requestedDetailRequest }: ApplicationFactoryProps) {
+export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, onNavigateToFactory, requestedDetailRequest, onDeleteAllComponents, deleteLoading }: ApplicationFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -112,7 +114,27 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
 
   useEffect(() => {
     if (defaultSearch !== undefined) {
+      console.log(`[APPLICATION_FACTORY_SEARCH_RECEIVED]`, {
+        defaultSearch,
+        timestamp: new Date().toISOString()
+      });
       const parsed = parseFactorySearch(defaultSearch);
+      console.log(`[APPLICATION_FACTORY_SEARCH_PARSED]`, {
+        rawSearch: defaultSearch,
+        parsedTerm: parsed.term,
+        isExact: parsed.exact
+      });
+      
+      // Check if this is a field-specific search
+      if (parsed.term.includes(':')) {
+        const [field, value] = parsed.term.split(':', 2);
+        console.log(`[APPLICATION_FACTORY_FK_SEARCH]`, {
+          field: field.trim(),
+          value: value.trim(),
+          isFieldSpecific: true
+        });
+      }
+      
       setSearch(parsed.term);
       setExactSearch(parsed.exact);
     }
@@ -191,9 +213,50 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   const searchToken = exactSearch ? encodeExactFactorySearch(search) : search;
   const filtered = search
     ? items.filter((i) => {
+        // Support field-specific searches like "Correlation_ID:value"
+        if (search.includes(':')) {
+          const [field, value] = search.split(':', 2);
+          const fieldLower = field.toLowerCase().trim().replace(/[\s_]+/g, '_'); // Normalize spaces/underscores to single underscore
+          console.log(`[FK_SEARCH_EXECUTE]`, {
+            rawSearch: search,
+            rawField: field,
+            normalizedField: fieldLower,
+            parsedValue: value,
+            itemsToSearch: items.length
+          });
+          
+          // Map normalized field name to application property
+          const fieldValue = fieldLower === 'correlation_id' || fieldLower === 'correlationid' ? i.correlationId :
+                             fieldLower === 'name' ? i.name :
+                             fieldLower === 'acronym' ? i.acronym :
+                             fieldLower === 'description' || fieldLower === 'short_description' || fieldLower === 'shortdescription' ? i.shortDescription :
+                             '';
+          
+          const matched = matchesFactorySearch([fieldValue], value);
+          if (matched) {
+            console.log(`[FK_SEARCH_MATCH]`, {
+              field: fieldLower,
+              searchValue: value,
+              applicationProperty: fieldLower === 'correlation_id' ? 'correlationId' : fieldLower,
+              applicationValue: fieldValue,
+              applicationName: i.name
+            });
+          }
+          return matched;
+        }
+        // Default: search all fields
+        console.log(`[FK_SEARCH_FALLBACK] Search does not contain ":", using default multi-field search`);
         return matchesFactorySearch([i.name, i.acronym, i.correlationId, i.shortDescription], searchToken);
       })
     : items;
+  
+  if (search && search.includes(':')) {
+    console.log(`[FK_SEARCH_RESULTS]`, {
+      search,
+      totalItems: items.length,
+      matchedItems: filtered.length
+    });
+  }
 
   const handleEdit = (record: ApplicationItem) => {
     setEditingApp(record);
@@ -403,6 +466,9 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         </Popover>
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} of {items.length} applications</span>
+        {!readOnly && onDeleteAllComponents && <Button danger size="small" onClick={onDeleteAllComponents} loading={deleteLoading}>
+          Delete All
+        </Button>}
         {!readOnly && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
           Delete Selected ({selectedRowKeys.length})
         </Button>}

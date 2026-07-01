@@ -15,9 +15,11 @@ const DatabaseInstance = require('../models/DatabaseInstance');
 const { rebuildSearchIndex } = require('../utils/searchIndexBuilder');
 const fkRegistry = require('../services/ForeignKeyRegistry');
 const fkResolver = require('../services/ForeignKeyResolver');
+const { materializeFromBatches } = require('../lib/materializer');
+const CanonicalComponent = require('../models/CanonicalComponent');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 const PRIMARY_KEY_COLUMN = 'name';
 const DEFAULT_NEIGHBORHOOD_NAME = 'ATT Journey Model';
 const LEGACY_PART_COLUMN_PATTERN = /\bparts?$/i;
@@ -188,11 +190,23 @@ function saveValidationErrorReport({ neighborhoodName, errorRows = [], matchedMo
     const filename = `validation-errors-${neighborhoodName}-${timestamp}-${safeSourceName}.xlsx`;
     const filepath = path.join(errorReportsDir, filename);
 
-    // Write file
-    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
-    fs.writeFileSync(filepath, buffer);
-
-    console.log(`[ERROR-REPORT] Saved validation errors to: ${filepath}`);
+    // Write file with error handling
+    try {
+      const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'buffer' });
+      if (!buffer || buffer.length === 0) {
+        throw new Error('Generated buffer is empty');
+      }
+      fs.writeFileSync(filepath, buffer);
+      console.log(`[ERROR-REPORT] Saved validation errors to: ${filepath}`);
+    } catch (writeErr) {
+      console.error(`[ERROR-REPORT] Failed to write file: ${writeErr.message}`);
+      // Fallback: just return error info without file
+      return {
+        filename,
+        errorCount: errorRows.length,
+        error: `Could not write report file: ${writeErr.message}`,
+      };
+    }
 
     return {
       filename,
@@ -293,6 +307,10 @@ function normalizeRowsAndColumns(rows) {
     return nextRow;
   });
 
+  console.log('[NORMALIZE_ROWS_AND_COLUMNS] Input rows count:', rows.length);
+  console.log('[NORMALIZE_ROWS_AND_COLUMNS] Output columns count:', columns.length);
+  console.log('[NORMALIZE_ROWS_AND_COLUMNS] Output columns list:', columns);
+
   return { rows: normalizedRows, columns };
 }
 
@@ -324,84 +342,164 @@ function validateComponentRows(rows, columns) {
 }
 
 function parseWorkbookRows(buffer, fileName) {
-  const workbook = XLSX.read(buffer, { type: 'buffer', raw: false, dense: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error(`No worksheet found in ${fileName || 'uploaded file'}`);
-  const sheet = workbook.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false });
-  if (matrix.length < 2) throw createValidationError('Spreadsheet must include a header row and at least one data row');
+  try {
+    if (!buffer || buffer.length === 0) {
+      throw createValidationError('File buffer is empty');
+    }
+    const workbook = XLSX.read(buffer, { type: 'buffer', raw: false, dense: true });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new Error(`No worksheet found in ${fileName || 'uploaded file'}`);
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false });
+    if (matrix.length < 2) throw createValidationError('Spreadsheet must include a header row and at least one data row');
 
-  const headers = (matrix[0] || []).map((value) => String(value || '').trim());
-  if (!headers.some(Boolean)) throw createValidationError('Spreadsheet header row is empty');
+    // DEBUG: Log raw matrix dimensions before any filtering
+    console.log('[PARSE_WORKBOOK_ROWS] Raw matrix dimensions:', { rowCount: matrix.length, headerCount: matrix[0]?.length });
+    console.log('[PARSE_WORKBOOK_ROWS] ALL raw headers (including empty):', matrix[0]);
 
-  const rawRows = matrix.slice(1)
-    .map((row) => headers.reduce((acc, header, index) => {
-      if (header) acc[header] = row[index] ?? '';
-      return acc;
-    }, {}))
-    .filter((row) => Object.values(row).some((value) => String(value ?? '').trim()));
+    const headers = (matrix[0] || []).map((value) => String(value || '').trim());
+    console.log('[PARSE_WORKBOOK_ROWS] After trim headers count:', headers.length);
+    console.log('[PARSE_WORKBOOK_ROWS] Trimmed headers:', headers);
+    if (!headers.some(Boolean)) throw createValidationError('Spreadsheet header row is empty');
 
-  if (!rawRows.length) throw createValidationError('Spreadsheet does not contain any data rows');
-  const { rows, columns } = normalizeRowsAndColumns(rawRows);
-  if (!columns.length) throw createValidationError('Spreadsheet does not contain any usable columns');
-  validateComponentRows(rows, columns);
-  return { rows, columns, sheetName };
+    const rawRows = matrix.slice(1)
+      .map((row, rowIdx) => {
+        try {
+          return headers.reduce((acc, header, index) => {
+            if (header && index < (row || []).length) {
+              acc[header] = row[index] ?? '';
+            } else if (header) {
+              acc[header] = '';
+            }
+            return acc;
+          }, {});
+        } catch (e) {
+          console.error(`[PARSE_WORKBOOK_ROWS] Error mapping row ${rowIdx}:`, e.message);
+          throw e;
+        }
+      })
+      .filter((row) => Object.values(row).some((value) => String(value ?? '').trim()));
+
+    if (!rawRows.length) throw createValidationError('Spreadsheet does not contain any data rows');
+    console.log('[PARSE_WORKBOOK_ROWS] After normalizeRowsAndColumns - input rawRows[0] keys:', Object.keys(rawRows[0] || {}).length);
+    const { rows, columns } = normalizeRowsAndColumns(rawRows);
+    if (!columns.length) throw createValidationError('Spreadsheet does not contain any usable columns');
+    validateComponentRows(rows, columns);
+    return { rows, columns, sheetName };
+  } catch (e) {
+    console.error('[PARSE_WORKBOOK_ROWS] Error:', e.message);
+    throw e;
+  }
 }
 
 function parseNeighborhoodWorkbook(buffer, fileName) {
-  const workbook = XLSX.read(buffer, { type: 'buffer', raw: false, dense: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error(`No worksheet found in ${fileName || 'uploaded file'}`);
-  const sheet = workbook.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false });
-  if (matrix.length < 2) throw createValidationError('Model CSV must include a header row and at least one data row');
+  try {
+    if (!buffer || buffer.length === 0) {
+      throw createValidationError('File buffer is empty');
+    }
+    const workbook = XLSX.read(buffer, { type: 'buffer', raw: false, dense: true });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new Error(`No worksheet found in ${fileName || 'uploaded file'}`);
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false });
+    if (matrix.length < 2) throw createValidationError('Model CSV must include a header row and at least one data row');
 
-  const headers = (matrix[0] || []).map((value) => String(value || '').trim());
-  if (!headers.some(Boolean)) throw createValidationError('Model CSV header row is empty');
+    const headers = (matrix[0] || []).map((value) => String(value || '').trim());
+    if (!headers.some(Boolean)) throw createValidationError('Model CSV header row is empty');
 
-  const rows = matrix.slice(1)
-    .map((row) => headers.reduce((acc, header, index) => {
-      if (header) acc[header] = row[index] ?? '';
-      return acc;
-    }, {}))
-    .filter((row) => Object.values(row).some((value) => String(value ?? '').trim()));
+    const rows = matrix.slice(1)
+      .map((row, rowIdx) => {
+        try {
+          return headers.reduce((acc, header, index) => {
+            if (header && index < (row || []).length) {
+              acc[header] = row[index] ?? '';
+            } else if (header) {
+              acc[header] = '';
+            }
+            return acc;
+          }, {});
+        } catch (e) {
+          console.error(`[PARSE_NEIGHBORHOOD_WORKBOOK] Error mapping row ${rowIdx}:`, e.message);
+          throw e;
+        }
+      })
+      .filter((row) => Object.values(row).some((value) => String(value ?? '').trim()));
 
-  if (!rows.length) throw createValidationError('Model CSV does not contain any usable data rows');
-  return { headers, rows, sheetName };
+    if (!rows.length) throw createValidationError('Model CSV does not contain any usable data rows');
+    return { headers, rows, sheetName };
+  } catch (e) {
+    console.error('[PARSE_NEIGHBORHOOD_WORKBOOK] Error:', e.message);
+    throw e;
+  }
 }
 
 function parseModelCatalogWorkbook(buffer, fileName) {
-  const workbook = XLSX.read(buffer, { type: 'buffer', raw: false, dense: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error(`No worksheet found in ${fileName || 'uploaded file'}`);
-  const sheet = workbook.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false });
-  if (matrix.length < 2) throw createValidationError('Model CSV must include a header row and at least one data row');
+  try {
+    if (!buffer || buffer.length === 0) {
+      throw createValidationError('File buffer is empty');
+    }
+    
+    console.log('[XLSX-READ] Starting XLSX.read with buffer size:', buffer.length);
+    const workbook = XLSX.read(buffer, { type: 'buffer', raw: false, dense: true });
+    console.log('[XLSX-READ] XLSX.read succeeded');
+    
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new Error(`No worksheet found in ${fileName || 'uploaded file'}`);
+    const sheet = workbook.Sheets[sheetName];
+    
+    console.log('[XLSX-PARSE] Converting sheet to JSON');
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false });
+    console.log('[XLSX-PARSE] Conversion succeeded, matrix size:', matrix.length);
+    
+    if (matrix.length < 2) throw createValidationError('Model CSV must include a header row and at least one data row');
 
-  const seenHeaders = new Set();
-  const columns = (matrix[0] || [])
-    .map((value) => String(value || '').trim())
-    .filter((value) => {
-      if (!value) return false;
-      const normalized = value.toLowerCase();
-      if (seenHeaders.has(normalized)) {
-        throw createValidationError(`Duplicate model column found: ${value}`);
+    // DEBUG: Log raw matrix dimensions
+    console.log('[PARSE_MODEL_CATALOG] Raw matrix dimensions:', { rowCount: matrix.length, headerCount: matrix[0]?.length });
+    console.log('[PARSE_MODEL_CATALOG] ALL raw headers (including empty):', matrix[0]);
+
+    const seenHeaders = new Set();
+    // Keep track of original index for each column to map row values correctly
+    const columnsWithIndices = [];
+    (matrix[0] || []).forEach((value, originalIndex) => {
+      const trimmed = String(value || '').trim();
+      if (trimmed) {
+        const normalized = trimmed.toLowerCase();
+        if (seenHeaders.has(normalized)) {
+          throw createValidationError(`Duplicate model column found: ${trimmed}`);
+        }
+        seenHeaders.add(normalized);
+        columnsWithIndices.push({ name: trimmed, originalIndex });
       }
-      seenHeaders.add(normalized);
-      return true;
     });
 
-  if (!columns.length) throw createValidationError('Model CSV header row is empty');
+    const columns = columnsWithIndices.map((col) => col.name);
 
-  const rows = matrix.slice(1)
-    .map((row) => columns.reduce((acc, column, index) => {
-      acc[column] = row[index] ?? '';
-      return acc;
-    }, {}))
-    .filter((row) => Object.values(row).some((value) => String(value ?? '').trim()));
+    console.log('[PARSE_MODEL_CATALOG] After filtering empty headers count:', columns.length);
+    console.log('[PARSE_MODEL_CATALOG] Filtered columns:', columns);
 
-  if (!rows.length) throw createValidationError('Model CSV does not contain any usable data rows');
-  return { columns, rows, sheetName };
+    if (!columns.length) throw createValidationError('Model CSV header row is empty');
+
+    const rows = matrix.slice(1)
+      .map((row) => columnsWithIndices.reduce((acc, colInfo) => {
+        acc[colInfo.name] = row[colInfo.originalIndex] ?? '';
+        return acc;
+      }, {}))
+      .filter((row) => Object.values(row).some((value) => String(value ?? '').trim()));
+
+    if (!rows.length) throw createValidationError('Model CSV does not contain any usable data rows');
+    console.log('[PARSE_MODEL_CATALOG] Successfully parsed workbook:', { columns: columns.length, rows: rows.length });
+    return { columns, rows, sheetName };
+  } catch (e) {
+    console.error('[PARSE_MODEL_CATALOG] Error during parsing:', {
+      message: e?.message,
+      code: e?.code,
+      type: e?.constructor?.name,
+      fileName,
+      bufferSize: buffer?.length,
+      stack: e?.stack?.substring(0, 300),
+    });
+    throw e;
+  }
 }
 
 function getNormalizedText(value) {
@@ -477,6 +575,96 @@ function parseForeignKeyColumnHeader(header) {
     targetScope,
     targetColumnName: getNormalizedText(targetColumnName),
   };
+}
+
+function identifyTupleType(columns) {
+  // tupleType = columns ending in "Component" from left to right
+  // These define the validation key for component rows against the model
+  const tupleType = (columns || []).filter((col) => {
+    const trimmed = getNormalizedText(col);
+    return isTreeComponentHeader(trimmed);
+  });
+  
+  console.log('[TUPLE] Identified tupleType:', tupleType);
+  return tupleType;
+}
+
+function findLongestPrefixMatch(uploadTupleType, modelTupleType) {
+  // Find the longest prefix of uploadTupleType that matches modelTupleType
+  // Returns { matchedTuple, isFullMatch }
+  const uploadLen = uploadTupleType.length;
+  const modelLen = modelTupleType.length;
+  
+  let matchedLength = 0;
+  for (let i = 0; i < Math.min(uploadLen, modelLen); i++) {
+    if (uploadTupleType[i] === modelTupleType[i]) {
+      matchedLength++;
+    } else {
+      break;
+    }
+  }
+  
+  const matchedTuple = uploadTupleType.slice(0, matchedLength);
+  const isFullMatch = matchedLength === modelLen;
+  
+  console.log('[TUPLE] Prefix match: upload had', uploadLen, 'columns, model has', modelLen, ', matched', matchedLength, 'columns. Is full match:', isFullMatch);
+  
+  return { matchedTuple, isFullMatch, matchedLength };
+}
+
+function buildModelCatalogHash(rows, tupleType) {
+  // Build a Map/Set of concatenated tuple values from model rows
+  // Used to validate component rows against the model
+  const hash = new Map();
+  
+  (rows || []).forEach((row, idx) => {
+    const tuple = (tupleType || [])
+      .map((col) => {
+        const val = getRowValueByColumnName(row, col);
+        return getComparableValue(val);
+      })
+      .join('\x1F');
+    
+    if (tuple && !hash.has(tuple)) {
+      hash.set(tuple, true);
+    }
+    
+    if (idx === 0) {
+      console.log('[TUPLE] First model row tuple:', tuple);
+    }
+  });
+  
+  console.log('[TUPLE] Built modelCatalogHash with', hash.size, 'tuples');
+  return hash;
+}
+
+function validateComponentRowsAgainstModelHash(uploadRows, tupleType, modelHash) {
+  // Validate each component row against the model's tupleType and hash
+  const errorRows = [];
+  
+  (uploadRows || []).forEach((uploadRow, index) => {
+    const tuple = (tupleType || [])
+      .map((col) => {
+        const val = getRowValueByColumnName(uploadRow, col);
+        return getComparableValue(val);
+      })
+      .join('\x1F');
+    
+    if (index === 0) {
+      console.log('[TUPLE-VALIDATE] First component row tuple:', tuple);
+    }
+    
+    if (!modelHash || !modelHash.has(tuple)) {
+      errorRows.push({
+        rowNumber: index + 2,
+        tuple,
+        uploadedValues: Object.fromEntries((tupleType || []).map((col) => [col, getRowValueByColumnName(uploadRow, col)])),
+      });
+    }
+  });
+  
+  console.log('[TUPLE-VALIDATE] Validation complete. Total rows:', uploadRows.length, 'Error rows:', errorRows.length);
+  return errorRows;
 }
 
 function buildHierarchyColumnPlan(columns) {
@@ -976,11 +1164,18 @@ async function buildComponentUploadFactories({ neighborhoodName, rows, component
         acc[foreignKey.fieldName] = getNormalizedText(getRowValueByColumnName(row, foreignKey.sourceColumnName));
         return acc;
       }, {});
+      
+      // Build foreignKeys map for the row (uses sourceColumnName as key for lookup)
+      const foreignKeysMap = (column.foreignKeyColumns || []).reduce((acc, foreignKey) => {
+        acc[foreignKey.sourceColumnName] = getNormalizedText(getRowValueByColumnName(row, foreignKey.sourceColumnName));
+        return acc;
+      }, {});
 
       if (!existingRow) {
         const rowValues = { [PRIMARY_KEY_COLUMN]: componentValue, ...qualifierValues, ...foreignKeyValues };
         rowMap.set(primaryKey, {
           values: rowValues,
+          foreignKeys: foreignKeysMap,
           owner,
           state: rowState,
           sourcedFrom: sourceFileName,
@@ -1020,12 +1215,20 @@ async function buildComponentUploadFactories({ neighborhoodName, rows, component
           existingRow.values[fieldName] = mergeDistinctQualifierValues(currentValue, nextValue);
         }
       });
+      
+      // Merge foreignKeys map with sourceColumnName as key
+      Object.entries(foreignKeysMap).forEach(([sourceColumnName, fkValue]) => {
+        if (fkValue) {
+          existingRow.foreignKeys = existingRow.foreignKeys || {};
+          existingRow.foreignKeys[sourceColumnName] = fkValue;
+        }
+      });
     }
   }
 
   return componentColumns
     .map((column) => {
-      const dataComponentType = getDataComponentType(column.name);
+      const componentType = column.name;
       const columnsArray = [
         PRIMARY_KEY_COLUMN,
         ...(column.qualifierColumns || []).map((qualifier) => qualifier.fieldName),
@@ -1036,6 +1239,7 @@ async function buildComponentUploadFactories({ neighborhoodName, rows, component
         name: column.name,
         sourceColumnName: column.sourceColumnName,
         parentFactoryName: column.parentFactoryName,
+        componentType: componentType,
         qualifierColumns: (column.qualifierColumns || []).map((qualifier) => ({
           name: qualifier.name,
           sourceColumnName: qualifier.sourceColumnName,
@@ -1265,7 +1469,7 @@ function serializeFactory(factory) {
   };
 }
 
-function serializeModelCatalog(model) {
+function serializeModelCatalog(model, page = 1, limit = 50) {
   const toPlainObject = (value) => {
     if (!value) return {};
     if (value instanceof Map) return Object.fromEntries(value.entries());
@@ -1273,14 +1477,127 @@ function serializeModelCatalog(model) {
     return { ...value };
   };
 
+  const allRows = model.modelCatalogRows || [];
+  const totalCount = allRows.length;
+  const totalPages = Math.ceil(totalCount / limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedRows = allRows.slice(startIndex, endIndex);
+
+  // Extract all unique column names from row data (including component-added columns like FK_)
+  // Model columns may be a subset; actual data may include more columns from component uploads
+  const allColumnNames = new Set(model.modelCatalogColumns || []);
+  
+  console.log('[SERIALIZE_CATALOG] Starting serialization');
+  console.log('[SERIALIZE_CATALOG] model.modelCatalogRows count:', allRows.length);
+  if (allRows.length > 0) {
+    const firstRow = allRows[0];
+    console.log('[SERIALIZE_CATALOG] First row raw object:', { hasValues: !!firstRow.values, valuesType: typeof firstRow.values, isMap: firstRow.values instanceof Map });
+    console.log('[SERIALIZE_CATALOG] First row.values raw keys:', firstRow.values ? Object.keys(firstRow.values) : []);
+    if (firstRow.values instanceof Map) {
+      console.log('[SERIALIZE_CATALOG] First row.values is Map, entries:', Array.from(firstRow.values.keys()));
+    }
+  }
+  
+  allRows.forEach((row, idx) => {
+    const rowValues = toPlainObject(row.values);
+    const rowKeys = Object.keys(rowValues);
+    if (idx === 0) {
+      console.log('[SERIALIZE_CATALOG] First row after toPlainObject keys:', rowKeys.length);
+      console.log('[SERIALIZE_CATALOG] First row after toPlainObject keys list:', rowKeys);
+    }
+    Object.keys(rowValues).forEach((colName) => {
+      allColumnNames.add(colName);
+    });
+  });
+  const finalColumns = Array.from(allColumnNames);
+  
+  console.log('[SERIALIZE_CATALOG] Model:', model.name);
+  console.log('[SERIALIZE_CATALOG] Model columns count:', model.modelCatalogColumns?.length);
+  console.log('[SERIALIZE_CATALOG] Actual data columns (including FK_ from components):', finalColumns.length);
+  console.log('[SERIALIZE_CATALOG] All columns:', finalColumns);
+  console.log('[SERIALIZE_CATALOG] FK columns in data:', finalColumns.filter(c => c.toLowerCase().startsWith('fk_')));
+
   return {
     name: model.name,
-    columns: model.modelCatalogColumns || [],
-    rowCount: Array.isArray(model.modelCatalogRows) ? model.modelCatalogRows.length : 0,
-    rows: (model.modelCatalogRows || []).map((row) => ({ values: toPlainObject(row.values) })),
+    columns: finalColumns,
+    rowCount: totalCount,
+    rows: paginatedRows.map((row) => ({ values: toPlainObject(row.values) })),
     sourceFileName: model.sourceFileName || '',
     createdAt: model.createdAt,
     updatedAt: model.updatedAt,
+    pagination: {
+      currentPage: page,
+      limit,
+      totalPages,
+      hasMore: page < totalPages,
+    },
+  };
+}
+
+async function serializeModelCatalogWithBatches(model, batches, page = 1, limit = 50) {
+  const toPlainObject = (value) => {
+    if (!value) return {};
+    if (value instanceof Map) return Object.fromEntries(value.entries());
+    if (typeof value.toObject === 'function') return value.toObject();
+    return { ...value };
+  };
+
+  // Combine model catalog rows with batch rows
+  let allRows = (model.modelCatalogRows || []).map(row => ({ values: toPlainObject(row.values), source: 'model' }));
+  
+  // Add rows from component batches
+  batches.forEach(batch => {
+    if (batch.rows && Array.isArray(batch.rows)) {
+      batch.rows.forEach(row => {
+        allRows.push({ values: toPlainObject(row), source: 'batch', batchId: batch.batchId, componentName: batch.name });
+      });
+    }
+  });
+
+  const totalCount = allRows.length;
+  const totalPages = Math.ceil(totalCount / limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedRows = allRows.slice(startIndex, endIndex);
+
+  // Extract all unique column names from all row data
+  const allColumnNames = new Set(model.modelCatalogColumns || []);
+  
+  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Starting serialization');
+  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Model catalog rows count:', (model.modelCatalogRows || []).length);
+  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Component batches count:', batches.length);
+  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Total combined rows:', allRows.length);
+  
+  allRows.forEach((row, idx) => {
+    const rowValues = row.values;
+    Object.keys(rowValues).forEach((colName) => {
+      allColumnNames.add(colName);
+    });
+    if (idx === 0 && row.source === 'batch') {
+      console.log('[SERIALIZE_CATALOG_WITH_BATCHES] First batch row columns:', Object.keys(rowValues));
+    }
+  });
+  const finalColumns = Array.from(allColumnNames);
+  
+  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Model:', model.name);
+  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Final column count:', finalColumns.length);
+  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] FK columns in combined data:', finalColumns.filter(c => c.toLowerCase().startsWith('fk_')));
+
+  return {
+    name: model.name,
+    columns: finalColumns,
+    rowCount: totalCount,
+    rows: paginatedRows.map((row) => ({ values: row.values })),
+    sourceFileName: model.sourceFileName || '',
+    createdAt: model.createdAt,
+    updatedAt: model.updatedAt,
+    pagination: {
+      currentPage: page,
+      limit,
+      totalPages,
+      hasMore: page < totalPages,
+    },
   };
 }
 
@@ -1315,6 +1632,171 @@ router.get('/', async (req, res) => {
     const factories = await Component.find(query, { neighborhoodName: 1, modelName: 1, name: 1, owner: 1, createdBy: 1, sourceFileName: 1, columns: 1, createdAt: 1, updatedAt: 1, rows: 1 })
       .sort({ neighborhoodName: 1, name: 1 })
       .lean();
+    try {
+      console.log('[COMPONENTS] factories query:', query, 'found:', Array.isArray(factories) ? factories.length : typeof factories);
+      if (factories && factories.length) {
+        console.log('[COMPONENTS] sample factory names:', factories.slice(0,5).map(f => f.name));
+      }
+
+      // Inspect dataComponentBatches for the same neighborhood/model to ensure batch rows exist
+      const db = mongoose.connection.db;
+      const batchQuery = (query.modelName) ? { neighborhoodName: query.modelName } : (query.neighborhoodName ? { neighborhoodName: query.neighborhoodName } : {});
+      if (Object.keys(batchQuery).length) {
+        const batchesCollection = db.collection('dataComponentBatches');
+        const batchCount = await batchesCollection.countDocuments(batchQuery);
+        console.log('[COMPONENTS] dataComponentBatches count for', batchQuery, ':', batchCount);
+        if (batchCount > 0) {
+          const preview = await batchesCollection.find(batchQuery).project({ name: 1, batchId: 1, rows: { $slice: 1 } }).limit(5).toArray();
+          console.log('[COMPONENTS] batches preview:', preview.map(b => ({ batchId: b.batchId, name: b.name, rowsSampleKeys: b.rows && b.rows[0] ? Object.keys(b.rows[0]).slice(0,10) : [] })));
+        }
+      } else {
+        console.log('[COMPONENTS] no batchQuery derived from request; skipping batch inspection');
+      }
+    } catch (e) {
+      console.error('[COMPONENTS] Error inspecting batches:', e && e.message);
+    }
+    // Optional: aggregate dataComponentBatches by name into a columnar view
+    const aggregateByName = String(req.query.aggregateByName || '').toLowerCase() === 'true';
+    if (aggregateByName) {
+      try {
+        const db = mongoose.connection.db;
+        const batchesCollection = db.collection('dataComponentBatches');
+        // Derive batchQuery from request (modelName or neighborhoodName)
+        const batchQuery = (query.modelName) ? { neighborhoodName: query.modelName } : (query.neighborhoodName ? { neighborhoodName: query.neighborhoodName } : {});
+        const batchDocs = await batchesCollection.find(batchQuery).toArray();
+        if (!Array.isArray(batchDocs) || !batchDocs.length) {
+          return res.json({ aggregated: true, columns: [], rows: [] });
+        }
+
+        const toPlainObject = (value) => {
+          if (!value) return {};
+          if (value instanceof Map) return Object.fromEntries(value.entries());
+          if (typeof value.toObject === 'function') return value.toObject();
+          return { ...value };
+        };
+
+        // Group batches by componentType so each type becomes a single column
+        const primary = PRIMARY_KEY_COLUMN;
+        const keySet = new Set();
+        const typeMaps = new Map();
+        const typeSet = new Set();
+
+        batchDocs.forEach((b) => {
+          const type = String(b.componentType || b.name || b.batchId || 'Unknown');
+          typeSet.add(type);
+          if (!typeMaps.has(type)) typeMaps.set(type, new Map());
+          const map = typeMaps.get(type);
+          (Array.isArray(b.rows) ? b.rows : []).forEach((r) => {
+            const obj = toPlainObject(r.values ? r.values : r);
+            const keyVal = String(obj[primary] ?? obj[primary.toLowerCase?.()] ?? '').trim();
+            if (!keyVal) return;
+            keySet.add(keyVal);
+            // accumulate multiple entries per key into an array
+            const existing = map.get(keyVal) || [];
+            existing.push(obj);
+            map.set(keyVal, existing);
+          });
+        });
+
+        const columns = Array.from(typeSet);
+        const rows = Array.from(keySet).sort().map((key) => {
+          const values = {};
+          for (const type of columns) {
+            const map = typeMaps.get(type);
+            const arr = map && map.has(key) ? map.get(key) : [];
+            // If only one value, return that object; if multiple, return array
+            values[type] = arr.length === 1 ? arr[0] : (arr.length ? arr : null);
+          }
+          return { key, values };
+        });
+
+        return res.json({ aggregated: true, columns, rows });
+      } catch (e) {
+        console.error('[COMPONENTS] aggregation failed:', e && e.message);
+        return res.status(500).json({ error: e?.message || 'aggregation failed' });
+      }
+    }
+
+    // Also include dataComponentBatches documents as factories so Components tab shows data components
+    try {
+      const db = mongoose.connection.db;
+      const batchesCollection = db.collection('dataComponentBatches');
+      // Fetch batches for the requested neighborhood/model
+      const batchQuery = (query.modelName) ? { neighborhoodName: query.modelName } : (query.neighborhoodName ? { neighborhoodName: query.neighborhoodName } : {});
+      const batchDocs = await batchesCollection.find(batchQuery).toArray();
+      if (Array.isArray(batchDocs) && batchDocs.length) {
+        if (batchDocs && batchDocs.length) {
+          const toPlainObject = (value) => {
+            if (!value) return {};
+            if (value instanceof Map) return Object.fromEntries(value.entries());
+            if (typeof value.toObject === 'function') return value.toObject();
+            return { ...value };
+          };
+          // Group batch docs by component `name` to avoid creating one tab per batch
+          const grouped = new Map();
+          for (const b of batchDocs) {
+            const compName = String(b.name || 'Unknown').trim();
+            if (!grouped.has(compName)) {
+              grouped.set(compName, {
+                _id: b._id || b.batchId,
+                neighborhoodName: b.neighborhoodName,
+                name: compName,
+                sourceColumnName: b.sourceColumnName || '',
+                parentFactoryName: b.parentFactoryName || '',
+                columns: b.columns || [],
+                qualifierColumns: b.qualifierColumns || [],
+                foreignKeyColumns: b.foreignKeyColumns || [],
+                owner: b.owner || '',
+                createdBy: b.createdBy || '',
+                sourceFileName: b.sourceFileName || '',
+                createdAt: b.uploadedAt || b.createdAt,
+                updatedAt: b.updatedAt,
+                rows: [],
+              });
+            }
+            const group = grouped.get(compName);
+            const rows = Array.isArray(b.rows) ? b.rows : [];
+            rows.forEach((r, i) => {
+              group.rows.push({
+                _id: r._id || `${b.batchId || b._id}:${i}`,
+                values: r.values ? toPlainObject(r.values) : toPlainObject(r),
+                owner: r.owner || '',
+                state: r.state || 'staged',
+                sourcedFrom: r.sourcedFrom || '',
+                createdBy: r.createdBy || b.createdBy || '',
+                updatedBy: r.updatedBy || '',
+                parentFactoryName: r.parentFactoryName || '',
+                parentName: r.parentName || '',
+                createdAt: r.createdAt || b.uploadedAt,
+                updatedAt: r.updatedAt || b.uploadedAt,
+              });
+            });
+          }
+
+          const converted = Array.from(grouped.values());
+
+          // Merge converted batch factories with DB factories, prefer DB factory metadata and append batch rows
+          const byName = new Map(factories.map((f) => [String(f.name), f]));
+          for (const conv of converted) {
+            const existing = byName.get(conv.name);
+            if (existing) {
+              // Append rows from batches to existing factory rows
+              existing.rows = (existing.rows || []).concat(conv.rows || []);
+              // Optionally merge columns/metadata if empty
+              existing.columns = existing.columns && existing.columns.length ? existing.columns : conv.columns;
+            } else {
+              byName.set(conv.name, conv);
+            }
+          }
+
+          const merged = Array.from(byName.values());
+          return res.json(merged.map((factory) => serializeFactory(factory)));
+        }
+      }
+    } catch (e) {
+      console.error('[COMPONENTS] Failed to include batch factories:', e && e.message);
+    }
+
     res.json(factories.map((factory) => serializeFactory(factory)));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1327,10 +1809,45 @@ router.get('/neighborhoods/:name/catalog', async (req, res) => {
     const name = String(req.params?.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Model name is required' });
 
+    // Extract pagination parameters
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(500, parseInt(req.query.limit) || 50));
+
     const model = await Model.findOne({ name }).lean();
     if (!model) return res.status(404).json({ error: 'Model not found' });
 
-    res.json(serializeModelCatalog(model));
+    // Fetch component batches from dataComponentBatches collection
+    const db = mongoose.connection.db;
+    const batchesCollection = db.collection('dataComponentBatches');
+    const batches = await batchesCollection
+      .find({ neighborhoodName: name })
+      .project({ rows: 1, name: 1, batchId: 1 })
+      .toArray();
+
+    console.log(`[CATALOG] Found ${batches.length} component batches for neighborhood: ${name}`);
+    try {
+      // Preview up to 5 batches with basic metadata
+      console.log('[CATALOG] batches preview:', batches.slice(0, 5).map(b => ({
+        batchId: b.batchId,
+        name: b.name,
+        rowsCount: Array.isArray(b.rows) ? b.rows.length : 'noRows',
+        sampleRowKeys: (Array.isArray(b.rows) && b.rows.length) ? Object.keys(b.rows[0]).slice(0, 10) : []
+      })));
+
+      // Detailed per-batch inspection (non-blocking)
+      batches.forEach((b, idx) => {
+        if (Array.isArray(b.rows) && b.rows.length) {
+          const first = b.rows[0];
+          console.log(`[CATALOG] batch[${idx}] ${b.batchId} name="${b.name}" rows=${b.rows.length} sampleKeys=`, Object.keys(first).slice(0, 20), 'firstRowHasValuesProp=', !!first.values, 'firstRowType=', typeof first);
+        } else {
+          console.log(`[CATALOG] batch[${idx}] ${b.batchId} name="${b.name}" has no rows or rows not an array`);
+        }
+      });
+    } catch (e) {
+      console.error('[CATALOG] Error inspecting batches:', e && e.message);
+    }
+
+    res.json(await serializeModelCatalogWithBatches(model, batches, page, limit));
   } catch (err) {
     res.status(err?.status || 500).json({ error: getValidationMessage(err) });
   }
@@ -1350,9 +1867,26 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
     const createdBy = getCurrentUserId(req);
     const { columns, rows } = parseModelCatalogWorkbook(req.file.buffer, req.file.originalname);
     console.log('[MODEL CREATE] Parsed workbook:', { columnsCount: columns.length, rowsCount: rows.length });
+    console.log('[MODEL CREATE] ALL COLUMNS FROM SPREADSHEET:', columns);
     if (rows.length > 0) {
       console.log('[MODEL CREATE] First row sample:', Object.entries(rows[0]).slice(0, 5));
     }
+    
+    // Step 1: Identify the tupleType (columns ending in "Component")
+    const tupleType = identifyTupleType(columns);
+    if (!tupleType.length) {
+      throw createValidationError('Model must contain at least one column ending in "Component"');
+    }
+    
+    // Step 2: Build the model catalog hash from rows
+    const modelCatalogHashMap = buildModelCatalogHash(rows, tupleType);
+    if (!modelCatalogHashMap.size) {
+      throw createValidationError('Model catalog has no valid tuple values');
+    }
+    
+    // Convert Map to plain object for Mongoose
+    const modelCatalogHash = Object.fromEntries(modelCatalogHashMap.entries());
+    
     const schemaFactories = deriveNeighborhoodSchema(columns);
 
     neighborhood = await Model.create({
@@ -1362,6 +1896,8 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
       sourceFileName: req.file.originalname,
       modelCatalogColumns: columns,
       modelCatalogRows: rows.map((row) => ({ values: row })),
+      tupleType, // Store the tuple type columns
+      modelCatalogHash, // Store the hash for validation
       schemaFactories: schemaFactories.map((factory) => ({
         name: factory.name,
         sourceColumnName: factory.sourceColumnName,
@@ -1421,10 +1957,13 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
     const neighborhood = await Model.findOne({ name }, { _id: 1, name: 1 }).lean();
     if (!neighborhood) return res.status(404).json({ error: 'Model not found' });
 
-    const [deletedFactories, deletedNeighborhood, deletedIndex] = await Promise.all([
+    const db = mongoose.connection.db;
+    const [deletedFactories, deletedNeighborhood, deletedIndex, deletedBatches, deletedCanonical] = await Promise.all([
       Component.deleteMany({ neighborhoodName: name }),
       Model.deleteOne({ _id: neighborhood._id }),
       ComponentSearchIndex.deleteMany({ neighborhoodName: name }),
+      db.collection('dataComponentBatches').deleteMany({ neighborhoodName: name }),
+      db.collection('canonicalcomponents').deleteMany({ neighborhoodName: name }),
     ]);
 
     if ((deletedNeighborhood.deletedCount || 0) !== 1) {
@@ -1432,8 +1971,11 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
     }
 
     const remainingFactoryCount = await Component.countDocuments({ neighborhoodName: name });
-    if (remainingFactoryCount > 0) {
-      throw createValidationError(`Model ${name} still has ${remainingFactoryCount} components after delete`, 500);
+    const remainingBatchCount = await db.collection('dataComponentBatches').countDocuments({ neighborhoodName: name });
+    const remainingCanonicalCount = await db.collection('canonicalcomponents').countDocuments({ neighborhoodName: name });
+
+    if (remainingFactoryCount > 0 || remainingBatchCount > 0 || remainingCanonicalCount > 0) {
+      throw createValidationError(`Model ${name} still has data after delete: components=${remainingFactoryCount}, batches=${remainingBatchCount}, canonical=${remainingCanonicalCount}`, 500);
     }
 
     res.json({
@@ -1441,6 +1983,8 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
       name,
       deletedNeighborhoodCount: deletedNeighborhood.deletedCount || 0,
       deletedFactoryCount: deletedFactories.deletedCount || 0,
+      deletedBatchCount: deletedBatches.deletedCount || 0,
+      deletedCanonicalCount: deletedCanonical.deletedCount || 0,
       deletedPartCount: deletedFactories.deletedCount || 0,
       deletedComponentCount: deletedFactories.deletedCount || 0,
     });
@@ -1449,8 +1993,36 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
   }
 });
 
+// DELETE all components and related artifacts for a neighborhood (data + canonical + search index)
+router.delete('/neighborhoods/:name/components', requireAdminWrite, async (req, res) => {
+  const name = String(req.params?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Model name is required' });
+  try {
+    const db = mongoose.connection.db;
+    const [deletedFactories, deletedBatches, deletedCanonical, deletedIndex] = await Promise.all([
+      Component.deleteMany({ neighborhoodName: name }),
+      db.collection('dataComponentBatches').deleteMany({ neighborhoodName: name }),
+      db.collection('canonicalcomponents').deleteMany({ neighborhoodName: name }),
+      ComponentSearchIndex.deleteMany({ neighborhoodName: name }),
+    ]);
+
+    return res.json({
+      success: true,
+      neighborhoodName: name,
+      deletedFactoryCount: deletedFactories.deletedCount || 0,
+      deletedBatchCount: deletedBatches.deletedCount || 0,
+      deletedCanonicalCount: deletedCanonical.deletedCount || 0,
+      deletedIndexCount: deletedIndex.deletedCount || 0,
+    });
+  } catch (err) {
+    console.error('[DELETE ALL COMPONENTS] error', err && err.message);
+    return res.status(500).json({ error: getValidationMessage(err) });
+  }
+});
+
 router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res) => {
   const neighborhoodName = String(req.body?.neighborhoodName || '').trim();
+  const componentName = String(req.body?.componentName || '').trim();
   if (!neighborhoodName) return res.status(400).json({ error: 'Model name is required' });
   if (!req.file?.buffer) return res.status(400).json({ error: 'Spreadsheet file is required' });
 
@@ -1480,127 +2052,92 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
     });
     neighborhood.modelCatalogRows = normalizedModelRows;
 
-    const { columns: uploadColumns, rows: uploadRows } = parseModelCatalogWorkbook(req.file.buffer, req.file.originalname);
-    const { componentColumns } = splitUploadColumns(uploadColumns);
-    const { matchedModelColumns, unmatchedComponentColumns } = classifyComponentColumnsAgainstModel({
-      modelCatalogColumns: neighborhood.modelCatalogColumns,
-      componentColumns,
-    });
-
-    // Check for validation errors but collect them instead of throwing
-    console.log('[UPLOAD DEBUG] modelCatalogRows count:', (neighborhood.modelCatalogRows || []).length);
-    if ((neighborhood.modelCatalogRows || []).length > 0) {
-      const firstRow = neighborhood.modelCatalogRows[0];
-      console.log('[UPLOAD DEBUG] first modelCatalogRow structure:', {
-        isMap: firstRow.values instanceof Map,
-        hasValues: !!firstRow.values,
-        type: typeof firstRow.values,
-        keys: firstRow.values ? Object.keys(firstRow.values).slice(0, 10) : null,
+    // Parse uploaded file with enhanced error handling
+    let uploadColumns, uploadRows;
+    try {
+      const parsed = parseModelCatalogWorkbook(req.file.buffer, req.file.originalname);
+      uploadColumns = parsed.columns;
+      uploadRows = parsed.rows;
+      console.log('[UPLOAD] File parsed successfully:', { columnCount: uploadColumns.length, rowCount: uploadRows.length });
+    } catch (parseErr) {
+      console.error('[UPLOAD] File parsing failed:', {
+        message: parseErr?.message,
+        code: parseErr?.code,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        bufferLength: req.file.buffer?.length,
       });
-      console.log('[UPLOAD DEBUG] first modelCatalogRow values:', JSON.stringify(firstRow, null, 2).substring(0, 500));
-    }
-    console.log('[UPLOAD DEBUG] matchedModelColumns:', matchedModelColumns.map(c => ({ name: c.name, sourceColumnName: c.sourceColumnName, matchedModelHeader: c.matchedModelHeader })));
-    console.log('[UPLOAD DEBUG] uploadRows count:', uploadRows.length);
-    if (uploadRows.length > 0) {
-      const firstRow = uploadRows[0];
-      console.log('[UPLOAD DEBUG] first uploadRow structure:', {
-        keys: Object.keys(firstRow),
-        sample: Object.fromEntries(Object.entries(firstRow).slice(0, 5)),
-      });
+      throw parseErr;
     }
     
-    const errorRows = collectValidationErrors({
-      modelCatalogRows: neighborhood.modelCatalogRows,
-      matchedModelColumns,
-      uploadRows,
-    });
-
-    if (errorRows.length) {
-      // Save error report to disk
-      const errorReport = saveValidationErrorReport({
-        neighborhoodName,
-        errorRows,
-        matchedModelColumns,
-        sourceFileName: req.file.originalname,
+    // NOTE: Data components are completely independent from models
+    // No tuple type identification, validation, or model hash needed
+    // Proceed directly to processing component columns
+    
+    // Step 1: Process component columns for schema factories
+    const { componentColumns } = splitUploadColumns(uploadColumns);
+    
+    // Step 2: Filter component columns by specified component type (if provided)
+    let filteredComponentColumns = componentColumns;
+    if (componentName) {
+      const targetComponentType = getDataComponentType(componentName);
+      if (!targetComponentType) {
+        return res.status(400).json({
+          error: `Invalid component name: "${componentName}". Supported types: Application, Server, Database.`,
+        });
+      }
+      filteredComponentColumns = componentColumns.filter((col) => {
+        const colComponentType = getDataComponentType(col.name);
+        return colComponentType === targetComponentType;
       });
-
-      return res.status(409).json({
-        error: `Component upload validation failed. ${errorRows.length} row(s) did not match model hierarchy.`,
-        errorCount: errorRows.length,
-        errorRows,
-        matchedModelColumns,
-        errorReport: errorReport ? {
-          filename: errorReport.filename,
-          relativePath: errorReport.relativePath,
-          errorCount: errorReport.errorCount,
-        } : null,
-      });
+      if (!filteredComponentColumns.length) {
+        return res.status(400).json({
+          error: `No columns found for component type "${componentName}" in the uploaded file.`,
+        });
+      }
     }
+
 
     const owner = req.currentUser?.displayName || req.currentUser?.userId || '';
     const createdBy = req.currentUser?.userId || '';
 
-    const uploadedFactories = await buildComponentUploadFactories({
-      neighborhoodName,
-      rows: uploadRows,
-      componentColumns,
-      sourceFileName: req.file.originalname,
-      owner,
-      createdBy,
-    });
-
-    // If any uploaded rows were marked 'invalid' (referenced data missing), abort before writing
-    const invalidRowDetails = [];
-    (uploadedFactories || []).forEach((factory) => {
-      (factory.rows || []).forEach((row, rowIndex) => {
-        if (String(row.state || '').toLowerCase() === 'invalid') {
-          invalidRowDetails.push({ factory: factory.name, rowNumber: rowIndex + 1, values: row.values });
-        }
-      });
-    });
-
-    if (invalidRowDetails.length) {
-      // Save a brief failure report for user inspection
-      try {
-        const errRows = invalidRowDetails.map((d) => ({
-          rowNumber: d.rowNumber,
-          uploadedValues: d.values,
-        }));
-        saveValidationErrorReport({
-          neighborhoodName,
-          errorRows: errRows,
-          matchedModelColumns: componentColumns || [],
-          sourceFileName: req.file.originalname,
-        });
-      } catch (e) {
-        // noop - best effort
-      }
-
-      return res.status(409).json({
-        error: `Component upload failed: ${invalidRowDetails.length} uploaded row(s) reference missing data components (applications/products/servers/etc).`,
-        invalidCount: invalidRowDetails.length,
-        invalidRows: invalidRowDetails.slice(0, 50),
-      });
+    // Split large uploads into batches to avoid BSON serialization limits
+    // Use smaller batch size (100 rows) to safely stay under 16MB BSON limit with 231 columns
+    const BATCH_SIZE = 100;
+    const rowBatches = [];
+    for (let i = 0; i < uploadRows.length; i += BATCH_SIZE) {
+      rowBatches.push(uploadRows.slice(i, i + BATCH_SIZE));
     }
+    console.log(`[UPLOAD] Split ${uploadRows.length} rows into ${rowBatches.length} batches of ~${BATCH_SIZE} rows`);
 
-    const factoryNames = uploadedFactories.map((factory) => factory.name);
-    const existingFactories = await Component.find({ neighborhoodName, modelName: neighborhoodName, name: { $in: factoryNames } });
-    const existingFactoryMap = new Map(existingFactories.map((factory) => [factory.name, factory]));
-
-    const alreadyStagedFactory = existingFactories.find((factory) =>
-      (factory.rows || []).some((row) => {
-        const state = getComparableValue(row.state || '');
-        return state === 'staged' || state === 'invalid';
-      })
-    );
-
-    if (alreadyStagedFactory) {
-      return res.status(409).json({
-        error: `Component data already staged for model ${neighborhoodName}. Delete the model and reload before importing components again.`,
+    // Process each batch of rows separately - NO MERGING within same upload
+    const allUploadedFactories = [];
+    for (let batchIdx = 0; batchIdx < rowBatches.length; batchIdx++) {
+      const batchRows = rowBatches[batchIdx];
+      console.log(`[UPLOAD] Processing batch ${batchIdx + 1}/${rowBatches.length} with ${batchRows.length} rows`);
+      
+      const batchFactories = await buildComponentUploadFactories({
+        neighborhoodName,
+        rows: batchRows,
+        componentColumns: filteredComponentColumns,
+        sourceFileName: req.file.originalname,
+        owner,
+        createdBy,
       });
+      
+      allUploadedFactories.push(...batchFactories);
     }
+    
+    const uploadedFactories = allUploadedFactories;
 
-    const rollbackSnapshots = existingFactories.map((factory) => factory.toObject({ depopulate: true }));
+    // NOTE: Data components are completely independent from the model
+    // No classification, validation, or state checks needed
+    // Just process the uploaded factories directly
+
+    // NOTE: Data components are independent from models
+    // Each batch is stored as a separate factory - no merging
+    
+    const rollbackSnapshots = [];
     const rollbackModelSchemaFactories = Array.isArray(neighborhood.schemaFactories)
       ? JSON.parse(JSON.stringify(neighborhood.schemaFactories))
       : [];
@@ -1609,147 +2146,74 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
 
     try {
       for (const uploadedFactory of uploadedFactories) {
-        const existingFactory = existingFactoryMap.get(uploadedFactory.name);
-
-        if (existingFactory) {
-              existingFactory.columns = mergeStringColumns(existingFactory.columns || [], uploadedFactory.columns || []);
-              existingFactory.qualifierColumns = mergeColumnMetadata(existingFactory.qualifierColumns || [], uploadedFactory.qualifierColumns || []);
-              existingFactory.foreignKeyColumns = mergeColumnMetadata(existingFactory.foreignKeyColumns || [], uploadedFactory.foreignKeyColumns || []);
-
-          if (existingFactory.parentFactoryName && uploadedFactory.parentFactoryName && existingFactory.parentFactoryName !== uploadedFactory.parentFactoryName) {
-            throw createValidationError(`Component hierarchy mismatch for ${uploadedFactory.name}. Expected parent ${existingFactory.parentFactoryName}, received ${uploadedFactory.parentFactoryName}`);
-          }
-
-          mergeUploadedRowsIntoFactory({
-            existingFactory,
-            uploadedFactory,
-            createdBy,
-            sourceFileName: req.file.originalname,
-          });
-
-          await existingFactory.save();
-          
-          // Register FK columns in the registry
-          (existingFactory.foreignKeyColumns || []).forEach((fk) => {
-            fkRegistry.registerForeignKey(fk, {
-              neighborhoodName: existingFactory.neighborhoodName,
-              modelName: existingFactory.modelName,
-              componentName: existingFactory.name,
-            });
-          });
-          
-          savedFactories.push(serializeFactory(existingFactory.toObject()));
-          continue;
-        }
-
-        // Ensure uploaded factories persist the modelName for namespace isolation
+        // Data components are stored in a dedicated collection for batches
+        // Each batch is a separate document to avoid 16MB limit and unique index conflicts
         uploadedFactory.modelName = neighborhoodName;
-        const createdFactory = await Component.create(uploadedFactory);
+        uploadedFactory.neighborhoodName = neighborhoodName;
+        // Preserve the uploaded header-derived name as the componentType (no alias mapping)
+        uploadedFactory.componentType = uploadedFactory.name;
+        
+        // Get the MongoDB collection directly - use dedicated batch collection
+        const db = mongoose.connection.db;
+        const collection = db.collection('dataComponentBatches');
+        
+        // Add unique batch ID and timestamps
+        const batchId = Date.now() + Math.random().toString(36).substr(2, 9);
+        uploadedFactory.batchId = batchId;
+        uploadedFactory.uploadedAt = new Date();
+        
+        console.log(`[UPLOAD] Creating batch ${batchId} for ${uploadedFactory.componentType}/${uploadedFactory.name} with ${uploadedFactory.rows?.length || 0} rows`);
+        const insertResult = await collection.insertOne(uploadedFactory);
+        createdFactoryIds.push({ collection: 'dataComponentBatches', id: insertResult.insertedId });
         
         // Register FK columns in the registry
-        (createdFactory.foreignKeyColumns || []).forEach((fk) => {
+        (uploadedFactory.foreignKeyColumns || []).forEach((fk) => {
           fkRegistry.registerForeignKey(fk, {
-            neighborhoodName: createdFactory.neighborhoodName,
-            modelName: createdFactory.modelName,
-            componentName: createdFactory.name,
+            neighborhoodName,
+            modelName: neighborhoodName,
+            componentName: uploadedFactory.name,
           });
         });
         
-        createdFactoryIds.push(String(createdFactory._id));
-        savedFactories.push(serializeFactory(createdFactory.toObject()));
+        // Add to saved factories
+        const savedFactory = { ...uploadedFactory, _id: insertResult.insertedId };
+        savedFactories.push(serializeFactory(savedFactory));
       }
 
-      if (unmatchedComponentColumns.length) {
-        const existingSchemaColumnNames = new Set(
-          rollbackModelSchemaFactories
-            .map((factory) => getComparableValue(factory?.sourceColumnName))
-            .filter(Boolean)
-        );
-        const currentMaxLevel = rollbackModelSchemaFactories.reduce((maxLevel, factory) => {
-          const level = Number(factory?.level || 0);
-          return Number.isFinite(level) && level > maxLevel ? level : maxLevel;
-        }, 0);
+      // Component upload complete
+      console.log('[COMPONENT] Component upload complete - created', createdFactoryIds.length, 'factories');
 
-        const schemaAppends = unmatchedComponentColumns
-          .filter((column) => !existingSchemaColumnNames.has(getComparableValue(column.sourceColumnName)))
-          .map((column, index) => ({
-            name: column.name,
-            sourceColumnName: column.sourceColumnName,
-            parentFactoryName: column.parentFactoryName || '',
-            qualifierColumns: (column.qualifierColumns || []).map((qualifier) => ({
-              name: qualifier.name,
-              sourceColumnName: qualifier.sourceColumnName,
-              fieldName: qualifier.fieldName,
-            })),
-            foreignKeyColumns: (column.foreignKeyColumns || []).map((foreignKey) => ({
-              name: foreignKey.name,
-              sourceColumnName: foreignKey.sourceColumnName,
-              fieldName: foreignKey.fieldName,
-              targetReference: foreignKey.targetReference,
-              targetGroup: foreignKey.targetGroup,
-              targetScope: foreignKey.targetScope,
-              targetColumnName: foreignKey.targetColumnName,
-            })),
-            level: currentMaxLevel + index + 1,
-          }));
-
-        if (schemaAppends.length) {
-          await Model.updateOne(
-            { name: neighborhoodName },
-            {
-              $push: {
-                schemaFactories: { $each: schemaAppends },
-              },
-            }
-          );
-        }
-      }
-
-      // Populate model catalog rows with component data from upload rows
+      // Trigger materializer in background to populate canonical components from newly created batches
       try {
-        const model = await Model.findOne({ name: neighborhoodName });
-        if (model && Array.isArray(model.modelCatalogRows) && model.modelCatalogRows.length > 0) {
-          // Update existing model catalog rows with component column values from uploadRows
-          for (let i = 0; i < model.modelCatalogRows.length; i += 1) {
-            const modelRow = model.modelCatalogRows[i];
-            if (!modelRow.values) modelRow.values = {};
-
-            // Find matching upload row and fill in missing component columns
-            for (const uploadRow of uploadRows) {
-              // Check if this could be the same row by comparing known values
-              let couldMatch = true;
-              for (const col of neighborhood.modelCatalogColumns) {
-                const modelVal = String(modelRow.values?.[col] || '').trim().toLowerCase();
-                const uploadVal = String(uploadRow[col] || '').trim().toLowerCase();
-                
-                // If both have values and they don't match, it's not the same row
-                if (modelVal && uploadVal && modelVal !== uploadVal) {
-                  couldMatch = false;
-                  break;
-                }
-              }
-
-              if (couldMatch) {
-                // Fill in all values from upload row
-                for (const col of neighborhood.modelCatalogColumns) {
-                  const uploadValue = uploadRow[col];
-                  if (uploadValue && !modelRow.values[col]) {
-                    modelRow.values[col] = uploadValue;
-                  }
-                }
-                break;
-              }
-            }
+        // Run materializer synchronously so canonical components are available
+        try {
+          const matRes = await materializeFromBatches({ neighborhoodName });
+          console.log('[MATERIALIZER] processed', matRes.processed);
+          try {
+            await materializeFromBatches.postProcess({ neighborhoodName });
+          } catch (err) {
+            console.error('[MATERIALIZER] postProcess failed', err && err.message);
           }
-          await model.save();
+        } catch (err) {
+          console.error('[MATERIALIZER] error', err);
+          // do not fail the upload; surface a warning
         }
-      } catch (updateError) {
-        console.error(`[COMPONENT] Failed to update model catalog rows: ${updateError.message}`);
-        // Don't fail the upload if model catalog update fails
+      } catch (err) {
+        console.error('[MATERIALIZER] trigger failed', err);
       }
     } catch (writeError) {
+      // Rollback: delete created documents from dynamic collections
       if (createdFactoryIds.length) {
-        await Component.deleteMany({ _id: { $in: createdFactoryIds } }).catch(() => null);
+        const db = mongoose.connection.db;
+        for (const entry of createdFactoryIds) {
+          try {
+            const collection = db.collection(entry.collection);
+            await collection.deleteOne({ _id: entry.id });
+            console.log(`[ROLLBACK] Deleted ${entry.collection}/${entry.id}`);
+          } catch (e) {
+            console.error(`[ROLLBACK] Failed to delete ${entry.collection}/${entry.id}:`, e.message);
+          }
+        }
       }
 
       await Promise.all(rollbackSnapshots.map((snapshot) =>
@@ -1782,7 +2246,17 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
 
     res.status(201).json({ factories: savedFactories, parts: savedFactories, components: savedFactories });
   } catch (err) {
-    res.status(err?.status || 500).json({ error: getValidationMessage(err) });
+    console.error('[UPLOAD ERROR] Full error:', {
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack?.substring(0, 500),
+      type: err?.constructor?.name,
+    });
+    res.status(err?.status || 500).json({ 
+      error: getValidationMessage(err),
+      details: err?.message,
+      code: err?.code,
+    });
   }
 });
 
@@ -1884,7 +2358,7 @@ router.get('/search/typeahead', async (req, res) => {
       return res.json({ suggestions: [] });
     }
     
-    // Build query
+    // Build query for row suggestions
     const query = {
       neighborhoodName,
       searchableTextLower: { $regex: `^${prefix}`, $options: 'i' }
@@ -1917,8 +2391,21 @@ router.get('/search/typeahead', async (req, res) => {
         }
       }
     ]);
-    
-    res.json({ suggestions, prefix, neighborhoodName });
+
+    // Also return matching component types (componentName) so the UI can suggest types
+    const typeQuery = {
+      neighborhoodName,
+      componentName: { $regex: `^${prefix}`, $options: 'i' }
+    };
+    const componentTypesAgg = await ComponentSearchIndex.aggregate([
+      { $match: typeQuery },
+      { $group: { _id: '$componentName', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: limit },
+      { $project: { _id: 0, componentName: '$_id', count: 1 } }
+    ]);
+
+    res.json({ suggestions, componentTypes: componentTypesAgg, prefix, neighborhoodName });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2627,11 +3114,219 @@ router.get('/fk-registry/targets/:targetGroup/:targetScope/sources', async (req,
 // Generic component fetch by ID - must be last to not shadow specific routes
 router.get('/:id', async (req, res) => {
   try {
-    const factory = await Component.findById(req.params.id).lean();
-    if (!factory) return res.status(404).json({ error: 'Component not found' });
+    const id = String(req.params.id || '').trim();
+
+    // If the client is requesting a synthetic canonical-backed id like "<neighborhood>:<componentType>
+    // resolve it directly from canonicalcomponents to avoid ObjectId cast errors and return
+    // a legacy-shaped factory.
+    if (id.includes(':')) {
+      const parts = id.split(':');
+      const neighborhoodFromId = parts.shift();
+      const componentTypeFromId = parts.join(':');
+      try {
+        const docs = await CanonicalComponent.find({ neighborhoodName: neighborhoodFromId, componentType: componentTypeFromId }).sort({ primaryKey: 1 }).limit(1000).lean();
+        if (Array.isArray(docs) && docs.length) {
+          // Derive column list from canonical values
+          const columnsSet = new Set();
+          docs.forEach((d) => {
+            if (d.values && typeof d.values === 'object') Object.keys(d.values).forEach((k) => columnsSet.add(k));
+          });
+          const converted = {
+            _id: id,
+            neighborhoodName: neighborhoodFromId,
+            name: componentTypeFromId,
+            sourceColumnName: componentTypeFromId,
+            parentFactoryName: '',
+            columns: Array.from(columnsSet),
+            qualifierColumns: [],
+            foreignKeyColumns: [],
+            owner: '',
+            createdBy: '',
+            sourceFileName: '',
+            createdAt: null,
+            updatedAt: null,
+            rows: docs.map((d) => ({ _id: String(d._id), values: d.values || {}, owner: '', state: 'staged', sourcedFrom: 'canonical', createdBy: '', updatedBy: '', parentFactoryName: '', parentName: '', createdAt: d.createdAt, updatedAt: d.updatedAt })),
+            rowCount: docs.length,
+          };
+          return res.json(serializeFactory(converted));
+        }
+      } catch (err) {
+        console.error('[COMPONENT GET] Error resolving canonical fallback for', id, err && err.message);
+        // fallthrough to regular resolution
+      }
+    }
+
+    let factory = null;
+    // Only call findById when id is a valid ObjectId to avoid Cast errors
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      factory = await Component.findById(id).lean();
+    } else {
+      // Try to find by name or string _id
+      factory = await Component.findOne({ $or: [{ _id: id }, { name: id }] }).lean();
+    }
+    if (!factory) {
+      // Try to resolve from dataComponentBatches if not found in Component collection
+      try {
+        const db = mongoose.connection.db;
+        const batches = db.collection('dataComponentBatches');
+        let batch = null;
+        const { ObjectId } = require('mongodb');
+        // Try ObjectId lookup
+        try {
+          batch = await batches.findOne({ _id: new ObjectId(id) });
+        } catch (e) {
+          // ignore invalid ObjectId errors
+        }
+        // Try batchId or string _id match
+        if (!batch) batch = await batches.findOne({ batchId: id }) || await batches.findOne({ _id: id });
+        if (batch) {
+          const toPlainObject = (value) => {
+            if (!value) return {};
+            if (value instanceof Map) return Object.fromEntries(value.entries());
+            if (typeof value.toObject === 'function') return value.toObject();
+            return { ...value };
+          };
+
+          const converted = {
+            _id: batch._id || batch.batchId,
+            neighborhoodName: batch.neighborhoodName,
+            name: batch.name,
+            sourceColumnName: batch.sourceColumnName || '',
+            parentFactoryName: batch.parentFactoryName || '',
+            columns: batch.columns || [],
+            qualifierColumns: batch.qualifierColumns || [],
+            foreignKeyColumns: batch.foreignKeyColumns || [],
+            owner: batch.owner || '',
+            createdBy: batch.createdBy || '',
+            sourceFileName: batch.sourceFileName || '',
+            createdAt: batch.uploadedAt || batch.createdAt,
+            updatedAt: batch.updatedAt,
+            rows: (Array.isArray(batch.rows) ? batch.rows : []).map((r, i) => ({
+              _id: r._id || `${batch.batchId || batch._id}:${i}`,
+              values: r.values ? toPlainObject(r.values) : toPlainObject(r),
+              owner: r.owner || '',
+              state: r.state || 'staged',
+              sourcedFrom: r.sourcedFrom || '',
+              createdBy: r.createdBy || batch.createdBy || '',
+              updatedBy: r.updatedBy || '',
+              parentFactoryName: r.parentFactoryName || '',
+              parentName: r.parentName || '',
+              createdAt: r.createdAt || batch.uploadedAt,
+              updatedAt: r.updatedAt || batch.uploadedAt,
+            }))
+          };
+          return res.json(serializeFactory(converted));
+        }
+      } catch (e) {
+        console.error('[COMPONENT GET] Error resolving batch fallback:', e && e.message);
+      }
+
+      return res.status(404).json({ error: 'Component not found' });
+    }
+
     res.json(serializeFactory(factory));
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Debug: dump dataComponentBatches summary for a neighborhood/model
+router.get('/batches/debug/:neighborhood', async (req, res) => {
+  try {
+    const name = String(req.params?.neighborhood || req.query?.neighborhoodName || req.query?.modelName || '').trim();
+    if (!name) return res.status(400).json({ error: 'Neighborhood/model name required' });
+    const db = mongoose.connection.db;
+    const batchesColl = db.collection('dataComponentBatches');
+    const total = await batchesColl.countDocuments({ neighborhoodName: name });
+    const distinctNames = await batchesColl.distinct('name', { neighborhoodName: name });
+    const sample = await batchesColl.find({ neighborhoodName: name }).project({ batchId: 1, name: 1, rows: { $slice: 3 } }).limit(50).toArray();
+
+    // Collect distinct primary key values across sampled rows (best-effort)
+    const PRIMARY = PRIMARY_KEY_COLUMN || 'name';
+    const pkSet = new Set();
+    const rowKeySamples = [];
+    sample.forEach((b) => {
+      (Array.isArray(b.rows) ? b.rows : []).forEach((r) => {
+        const vals = r.values ? (typeof r.values === 'object' ? r.values : {}) : (typeof r === 'object' ? r : {});
+        const keyVal = String(vals[PRIMARY] ?? vals[PRIMARY.toLowerCase?.()] ?? '').trim();
+        if (keyVal) pkSet.add(keyVal);
+        rowKeySamples.push(Object.keys(vals).slice(0, 10));
+      });
+    });
+
+    res.json({ neighborhood: name, totalBatches: total, distinctBatchNames: distinctNames.length, batchNames: distinctNames.slice(0, 50), sampleCount: sample.length, sampleRowsKeySamples: rowKeySamples.slice(0, 20), distinctPrimaryKeysInSample: Array.from(pkSet).slice(0, 200) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Adapter: Serve legacy-shaped factories/pages from canonicalcomponents
+// GET /api/custom-factories/canonical-paged?neighborhoodName=...                        -> list component types and counts
+// GET /api/custom-factories/canonical-paged?neighborhoodName=...&componentType=Name&page=1&limit=50 -> factory with paged rows
+router.get('/canonical-paged', async (req, res) => {
+  try {
+    const neighborhood = String(req.query.neighborhoodName || req.headers['x-model-name'] || req.query.modelName || '').trim();
+    if (!neighborhood) return res.status(400).json({ error: 'neighborhoodName is required' });
+
+    const componentType = req.query.componentType ? String(req.query.componentType).trim() : null;
+    if (!componentType) {
+      // return list of component types with counts
+      const db = mongoose.connection.db;
+      const agg = await db.collection('canonicalcomponents').aggregate([
+        { $match: { neighborhoodName: neighborhood } },
+        { $group: { _id: '$componentType', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]).toArray();
+      const factories = agg.map((r) => ({ name: r._id, rowCount: r.count }));
+      return res.json({ neighborhood, factories });
+    }
+
+    // componentType provided — return legacy-shaped factory with paged rows
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+
+    const filter = { neighborhoodName: neighborhood, componentType };
+    const [total, docs] = await Promise.all([
+      CanonicalComponent.countDocuments(filter),
+      CanonicalComponent.find(filter).sort({ primaryKey: 1 }).skip(skip).limit(limit).lean(),
+    ]);
+
+    const rows = docs.map((d) => ({
+      _id: String(d._id),
+      values: d.values || {},
+      sourceBatches: d.sourceBatches || [],
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+    }));
+
+    // Derive columns from returned docs
+    const columnsSet = new Set();
+    docs.forEach((d) => {
+      if (d.values && typeof d.values === 'object') Object.keys(d.values).forEach((k) => columnsSet.add(k));
+    });
+
+    const factory = {
+      _id: componentType,
+      neighborhoodName: neighborhood,
+      name: componentType,
+      sourceColumnName: componentType,
+      columns: Array.from(columnsSet),
+      qualifierColumns: [],
+      foreignKeyColumns: [],
+      owner: '',
+      createdBy: '',
+      sourceFileName: '',
+      createdAt: null,
+      updatedAt: null,
+      rowCount: total,
+      rows,
+    };
+
+    return res.json(serializeFactory(factory));
+  } catch (err) {
+    console.error('[CANONICAL-ADAPTER] error', err && err.message);
+    res.status(500).json({ error: err?.message || 'canonical adapter error' });
   }
 });
 

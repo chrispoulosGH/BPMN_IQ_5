@@ -17,6 +17,9 @@ const dashboardRouter = require('./routes/dashboard');
 const reportsRouter   = require('./routes/reports');
 const databasesRouter = require('./routes/databases');
 const customFactoriesRouter = require('./routes/customFactories');
+const componentsRouter = require('./routes/components');
+const componentSummariesRouter = require('./routes/componentSummaries');
+const canonicalRouter = require('./routes/canonical');
 const Session = require('./models/Session');
 const User = require('./models/User');
 const Diagram = require('./models/Diagram');
@@ -60,6 +63,9 @@ const publicApiPaths = [
   '/custom-factories/search',
   '/custom-factories/leaf-component',
   '/custom-factories/hierarchies/tree',
+  // Allow canonical reads and adapter pages without session for smoke tests and public consumption
+  '/canonical',
+  '/custom-factories/canonical',
 ];
 
 // Session guard — protect all other /api routes
@@ -101,6 +107,11 @@ app.use('/api/dashboard', dashboardRouter);
 app.use('/api/reports',   reportsRouter);
 app.use('/api/databases', databasesRouter);
 app.use('/api/custom-factories', customFactoriesRouter);
+app.use('/api/components', componentsRouter);
+app.use('/api/component-summaries', componentSummariesRouter);
+app.use('/api/canonical', canonicalRouter);
+const materializeRouter = require('./routes/materialize');
+app.use('/api/materialize', materializeRouter);
 
 // Connect to MongoDB then start server
 async function backfillNeighborhoods() {
