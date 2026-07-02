@@ -1,10 +1,27 @@
-const DEFAULT_NEIGHBORHOOD_NAME = 'ATT Journey Model';
+// No neighborhood/model names are hardcoded. The default (used only when a
+// request omits the neighborhood header) and any alias mappings are supplied
+// via environment variables so deployments are not tied to specific models.
+//   DEFAULT_NEIGHBORHOOD_NAME - a single model name string (default: '')
+//   NEIGHBORHOOD_ALIASES      - JSON object mapping a canonical name to an
+//                               array of accepted aliases, e.g.
+//                               '{"My Model":["My Model","legacy name"]}'
+const DEFAULT_NEIGHBORHOOD_NAME = String(process.env.DEFAULT_NEIGHBORHOOD_NAME || '').trim();
 const NEIGHBORHOOD_HEADER = 'x-neighborhood-name';
 const ALL_NEIGHBORHOODS_TOKEN = '__all__';
-const NEIGHBORHOOD_ALIASES = {
-  [DEFAULT_NEIGHBORHOOD_NAME]: [DEFAULT_NEIGHBORHOOD_NAME, 'AT&T Journey'],
-  'LBGUPS Ref Model': ['LBGUPS Ref Model', 'LBGUPS'],
-};
+
+function parseNeighborhoodAliases() {
+  const raw = process.env.NEIGHBORHOOD_ALIASES;
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (err) {
+    console.warn('[neighborhoodScope] Invalid NEIGHBORHOOD_ALIASES env (expected JSON object):', err && err.message);
+    return {};
+  }
+}
+
+const NEIGHBORHOOD_ALIASES = parseNeighborhoodAliases();
 
 function getNeighborhoodName(req) {
   const headerValue = req?.headers?.[NEIGHBORHOOD_HEADER] || req?.headers?.[NEIGHBORHOOD_HEADER.toUpperCase()];

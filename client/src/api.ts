@@ -1,6 +1,6 @@
 import axios from 'axios';
-import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, DiagramValidationRequest, DiagramValidationReport, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog, ModelCatalogRow } from './types';
-export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog, ModelCatalogRow };
+import type { Diagram, DiagramMeta, DiagramCreatePayload, DiagramUpdatePayload, DiagramValidationRequest, DiagramValidationReport, FileSaveResult, CapabilityMatchResult, TaskRecord, TaskCreatePayload, ReferenceData, RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog, ModelCatalogRow, CatalogTreeResponse, CatalogTreeChildrenResponse, CatalogTreeSearchResponse } from './types';
+export type { RefItem, CapabilityItem, ActorItem, ServerItem, DatabaseItem, FactoryNeighborhoodSummary, CustomFactory, CustomFactoryRow, ModelCatalog, ModelCatalogRow, CatalogTreeResponse, CatalogTreeChildrenResponse, CatalogTreeSearchResponse };
 
 const api = axios.create({ baseURL: '/api', withCredentials: true });
 
@@ -197,8 +197,30 @@ export const createFactoryNeighborhood = (params: { name: string; file: File }):
 export const deleteFactoryNeighborhood = (name: string): Promise<{ success: boolean; name: string; deletedFactoryCount: number }> =>
   api.delete(`/custom-factories/neighborhoods/${encodeURIComponent(name)}`).then((r) => r.data);
 
-export const getModelCatalog = (name: string, page = 1, limit = 50): Promise<ModelCatalog> =>
-  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog`, { params: { page, limit } }).then((r) => r.data);
+export const getModelCatalog = (
+  name: string,
+  page = 1,
+  limit = 50,
+  search = '',
+  searchColumn = '__all__',
+  exact = false,
+): Promise<ModelCatalog> =>
+  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog`, {
+    params: { page, limit, search, searchColumn, exact },
+  }).then((r) => r.data);
+
+export const getModelCatalogTree = (name: string): Promise<CatalogTreeResponse> =>
+  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog/tree`).then((r) => r.data);
+
+export const getModelCatalogTreeChildren = (name: string, path: string[]): Promise<CatalogTreeChildrenResponse> =>
+  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog/tree/children`, {
+    params: { path: path.join('|') },
+  }).then((r) => r.data);
+
+export const searchModelCatalogTree = (name: string, term: string, limit = 500): Promise<CatalogTreeSearchResponse> =>
+  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog/tree/search`, {
+    params: { term, limit },
+  }).then((r) => r.data);
 
 export const getCustomFactories = (neighborhoodName?: string, modelName?: string): Promise<CustomFactory[]> => {
   // Prefer canonical-backed factories for display. Fallback to legacy endpoint if canonical fails.

@@ -1,11 +1,87 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { App as AntApp, Card, Input, Select, Space, Spin, Switch, Table, Tree, Button, Segmented, Checkbox, Popover } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { DataNode } from 'antd/es/tree';
 import { SearchOutlined, FolderOutlined, TableOutlined, BarsOutlined, UnorderedListOutlined } from '@ant-design/icons';
 
-import { getModelCatalog, type ModelCatalogRow } from '../api';
+import { getModelCatalog, getModelCatalogTree, getModelCatalogTreeChildren, searchModelCatalogTree, type ModelCatalogRow } from '../api';
+import type { CatalogTreeNode, ModelCatalog } from '../types';
 import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
+
+const CATALOG_PAGE_SIZE = 50;
+
+// Insert freshly-loaded children into a lazy tree at the matching node key.
+function insertChildrenAt(nodes: CatalogTreeNode[], key: string, children: CatalogTreeNode[]): CatalogTreeNode[] {
+  return nodes.map((node) => {
+    if (node.key === key) return { ...node, children };
+    if (node.children && node.children.length) {
+      return { ...node, children: insertChildrenAt(node.children, key, children) };
+    }
+    return node;
+  });
+}
+
+// Build a nested tree from flat search-result paths.
+function buildTreeFromPaths(paths: { name: string; typeName: string; depth: number }[][]): CatalogTreeNode[] {
+  const map = new Map<string, CatalogTreeNode>();
+  const roots: CatalogTreeNode[] = [];
+  for (const path of paths) {
+    const parts: string[] = [];
+    for (const node of path) {
+      parts.push(node.name);
+      const key = parts.join('|');
+      if (!map.has(key)) {
+        const created: CatalogTreeNode = { key, name: node.name, typeName: node.typeName, depth: node.depth, isLeaf: false, children: [] };
+        map.set(key, created);
+        if (node.depth === 0) roots.push(created);
+        else {
+          const parent = map.get(parts.slice(0, node.depth).join('|'));
+          if (parent) parent.children!.push(created);
+        }
+      }
+    }
+  }
+  const markLeaves = (list: CatalogTreeNode[]) => {
+    list.forEach((n) => {
+      n.isLeaf = !n.children || n.children.length === 0;
+      if (n.children) markLeaves(n.children);
+    });
+  };
+  markLeaves(roots);
+  return roots;
+}
+
+
+const TREE_BG_COLORS = ['#EFF6FF', '#F0FDF4', '#FEF3C7', '#FCE7F3', '#F3E8FF', '#ECFDF5'];
+const TREE_TEXT_COLORS = ['#0C63E4', '#15803D', '#B45309', '#BE185D', '#6D28D9', '#0891B2'];
+
+function makeTreeTitle(typeName: string, name: string, depth: number) {
+  const bgColor = TREE_BG_COLORS[depth % TREE_BG_COLORS.length];
+  const textColor = TREE_TEXT_COLORS[depth % TREE_TEXT_COLORS.length];
+  return (
+    <div style={{ display: 'flex', gap: '24px', alignItems: 'center', width: '100%', padding: '4px 8px' }}>
+      <div
+        style={{
+          minWidth: '130px',
+          maxWidth: '130px',
+          textAlign: 'left',
+          color: textColor,
+          fontSize: '12px',
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          padding: '4px 8px',
+          backgroundColor: bgColor,
+          borderRadius: '4px',
+          flexShrink: 0,
+        }}
+      >
+        {typeName}
+      </div>
+      <div style={{ fontSize: '13px', color: '#1E293B', fontWeight: 500 }}>{name}</div>
+    </div>
+  );
+}
 
 interface ModelCatalogProps {
   modelName: string;
@@ -21,16 +97,27 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const SEARCH_SETTINGS_STORAGE_PREFIX = 'modelCatalogSearch:';
-  const [catalog, setCatalog] = useState<{ columns: string[]; rows: ModelCatalogRow[]; rowCount: number; sourceFileName?: string; pagination?: { currentPage: number; limit: number; totalPages: number; hasMore: boolean } } | null>(null);
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchColumn, setSearchColumn] = useState<string>(ALL_COLUMNS_OPTION);
   const [searchText, setSearchText] = useState('');
   const [exactSearch, setExactSearch] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'tree-vertical' | 'tree-horizontal'>('table');
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set());
   const [selectedNodeKey, setSelectedNodeKey] = useState<React.Key | null>(null);
   const [tablePage, setTablePage] = useState(1);
+
+  // Tree view state (server-driven, independent of table pagination)
+  const [treeMode, setTreeMode] = useState<'full' | 'lazy'>('full');
+  const [treeRoots, setTreeRoots] = useState<CatalogTreeNode[]>([]);
+  const [treeTupleColumns, setTreeTupleColumns] = useState<string[]>([]);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [loadedChildKeys, setLoadedChildKeys] = useState<Set<string>>(new Set());
+  const [treeSearchText, setTreeSearchText] = useState('');
+  const [treeSearchResults, setTreeSearchResults] = useState<CatalogTreeNode[] | null>(null);
+  const treeLoadedModelRef = useRef<string | null>(null);
   const horizontalTreeContainerRef = useRef<HTMLDivElement>(null);
   const horizontalTreeNodeRefMap = useRef<Map<React.Key, HTMLButtonElement>>(new Map());
   const builtTreeDataRef = useRef<DataNode[]>([]);
@@ -41,17 +128,14 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
     const loadCatalog = async () => {
       setLoading(true);
       try {
-        const nextCatalog = await getModelCatalog(modelName, tablePage, 50);
-        console.log('[API_RESPONSE] Full catalog columns from API:', nextCatalog.columns);
-        console.log('[API_RESPONSE] Total columns count:', nextCatalog.columns?.length);
-        if (nextCatalog.columns && Array.isArray(nextCatalog.columns)) {
-          console.log('[API_RESPONSE] Column list with details:', nextCatalog.columns.map((col: string, idx: number) => ({
-            index: idx,
-            name: col,
-            length: col.length,
-            startsWithFK: col.toLowerCase().startsWith('fk_')
-          })));
-        }
+        const nextCatalog = await getModelCatalog(
+          modelName,
+          tablePage,
+          CATALOG_PAGE_SIZE,
+          debouncedSearch,
+          searchColumn,
+          exactSearch,
+        );
         if (!cancelled) {
           setCatalog(nextCatalog);
           // Auto-include FK columns and component columns in visible columns
@@ -82,7 +166,18 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
 
     loadCatalog();
     return () => { cancelled = true; };
-  }, [message, modelName, tablePage]);
+  }, [message, modelName, tablePage, debouncedSearch, searchColumn, exactSearch]);
+
+  // Debounce the free-text search box before hitting the server.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchText.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  // Reset to page 1 whenever the effective search changes.
+  useEffect(() => {
+    setTablePage(1);
+  }, [debouncedSearch, searchColumn, exactSearch]);
 
   useEffect(() => {
     const storageKey = `${SEARCH_SETTINGS_STORAGE_PREFIX}${modelName}`;
@@ -258,21 +353,8 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
     return cols;
   }, [catalog, visibleColumns]);
 
-  const filteredRows = useMemo(() => {
-    if (!catalog) return [];
-    const normalizedSearch = searchText.trim().toLowerCase();
-    if (!normalizedSearch) return catalog.rows;
-
-    const columnsToSearch = searchColumn === ALL_COLUMNS_OPTION
-      ? catalog.columns
-      : [searchColumn];
-
-    return catalog.rows.filter((row) => columnsToSearch.some((column) => {
-      const value = row?.values?.[column];
-      const normalizedValue = String(value ?? '').toLowerCase().trim();
-      return exactSearch ? normalizedValue === normalizedSearch : normalizedValue.includes(normalizedSearch);
-    }));
-  }, [ALL_COLUMNS_OPTION, catalog, exactSearch, searchColumn, searchText]);
+  // Server already applies search + pagination; render rows as-is.
+  const filteredRows = useMemo(() => catalog?.rows ?? [], [catalog]);
 
   const componentColumns = useMemo(() => {
     if (!catalog) return [];
@@ -286,88 +368,121 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
       .sort((a, b) => a.originalIndex - b.originalIndex);
   }, [catalog]);
 
-  // Lazy tree building - only build when in tree view mode
+  // The tree to display: search results override the loaded tree when a search is active.
+  const displayRoots = useMemo<CatalogTreeNode[]>(
+    () => (treeSearchResults ?? treeRoots),
+    [treeSearchResults, treeRoots],
+  );
+
+  // Convert the server-provided tree (full or lazy) into AntD DataNodes.
   const treeData = useMemo<DataNode[]>(() => {
-    // Skip tree building for table view - significant performance improvement
     if (viewMode === 'table') return [];
-    if (!catalog || componentColumns.length === 0) return [];
+    const toDataNode = (n: CatalogTreeNode): DataNode => ({
+      key: n.key,
+      title: makeTreeTitle(n.typeName, n.name, n.depth),
+      nodeName: n.name,
+      typeName: n.typeName,
+      isLeaf: n.isLeaf,
+      children: n.children ? n.children.map(toDataNode) : undefined,
+    } as DataNode);
+    return displayRoots.map(toDataNode);
+  }, [viewMode, displayRoots]);
 
-    // Use all rows for tree (not filtered by search) - user can search within tree
-    const rowsForTree = catalog.rows;
+  // Load the aggregated tree structure from the server when entering a tree view
+  // (or when the model changes). Full mode returns the entire tree; lazy mode
+  // returns only root nodes and children are fetched on expand.
+  useEffect(() => {
+    if (viewMode === 'table') return;
+    if (treeLoadedModelRef.current === modelName) return;
 
-    const pathToNode = new Map<string, DataNode>();
-    const rootNodes: DataNode[] = [];
+    let cancelled = false;
+    treeLoadedModelRef.current = modelName;
+    setTreeLoading(true);
+    setTreeSearchText('');
+    setTreeSearchResults(null);
+    setLoadedChildKeys(new Set());
+    setExpandedKeys([]);
 
-    rowsForTree.forEach((row) => {
-      let currentPath: string[] = [];
-
-      for (let depth = 0; depth < componentColumns.length; depth++) {
-        const col = componentColumns[depth];
-        const value = row?.values?.[col.fullName];
-        if (!value) break;
-
-        const valueStr = String(value).trim();
-        currentPath.push(valueStr);
-        const pathKey = currentPath.join('|');
-
-        if (!pathToNode.has(pathKey)) {
-          const colors = ['#EFF6FF', '#F0FDF4', '#FEF3C7', '#FCE7F3', '#F3E8FF', '#ECFDF5'];
-          const bgColor = colors[depth % colors.length];
-          const typeColor = ['#0C63E4', '#15803D', '#B45309', '#BE185D', '#6D28D9', '#0891B2'];
-          const textColor = typeColor[depth % typeColor.length];
-
-          const node: DataNode & { nodeName?: string } = {
-            key: pathKey,
-            title: (
-              <div style={{ display: 'flex', gap: '24px', alignItems: 'center', width: '100%', padding: '4px 8px' }}>
-                <div
-                  style={{
-                    minWidth: '130px',
-                    maxWidth: '130px',
-                    textAlign: 'left',
-                    color: textColor,
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
-                    padding: '4px 8px',
-                    backgroundColor: bgColor,
-                    borderRadius: '4px',
-                    flexShrink: 0,
-                  }}
-                >
-                  {col.typeName}
-                </div>
-                <div style={{ fontSize: '13px', color: '#1E293B', fontWeight: 500 }}>{valueStr}</div>
-              </div>
-            ),
-            nodeName: valueStr,
-            children: [],
-            isLeaf: depth === componentColumns.length - 1,
-          };
-
-          // Add to parent or to roots
-          if (depth === 0) {
-            rootNodes.push(node);
-          } else {
-            const parentPath = currentPath.slice(0, depth).join('|');
-            const parentNode = pathToNode.get(parentPath);
-            if (parentNode && parentNode.children) {
-              parentNode.children.push(node);
-            }
-          }
-
-          pathToNode.set(pathKey, node);
+    (async () => {
+      try {
+        const resp = await getModelCatalogTree(modelName);
+        if (cancelled) return;
+        setTreeMode(resp.mode);
+        setTreeTupleColumns(resp.tupleColumns || []);
+        setTreeRoots(resp.roots || []);
+        // Auto-expand the first level for full trees so the user sees structure.
+        if (resp.mode === 'full') {
+          setExpandedKeys((resp.roots || []).map((r) => r.key));
         }
+      } catch (error: any) {
+        if (!cancelled) {
+          treeLoadedModelRef.current = null;
+          setTreeRoots([]);
+          message.error(error.response?.data?.error || error.message);
+        }
+      } finally {
+        if (!cancelled) setTreeLoading(false);
       }
-    });
+    })();
 
-    return rootNodes.sort((a, b) => {
-      const aValue = (a as any).nodeName || '';
-      const bValue = (b as any).nodeName || '';
-      return String(aValue).localeCompare(String(bValue));
-    });
-  }, [viewMode, catalog, componentColumns]);
+    return () => { cancelled = true; };
+  }, [viewMode, modelName, message]);
+
+  // Reset cached tree when the model changes so it reloads next time a tree view opens.
+  useEffect(() => {
+    treeLoadedModelRef.current = null;
+    setTreeRoots([]);
+    setTreeSearchResults(null);
+    setTreeSearchText('');
+  }, [modelName]);
+
+  // Lazily fetch children for a node (used only in lazy tree mode).
+  const loadChildren = useCallback(async (nodeKey: string) => {
+    if (treeMode !== 'lazy') return;
+    if (loadedChildKeys.has(nodeKey)) return;
+    const pathValues = String(nodeKey).split('|');
+    try {
+      const resp = await getModelCatalogTreeChildren(modelName, pathValues);
+      setTreeRoots((prev) => insertChildrenAt(prev, nodeKey, resp.children || []));
+      setLoadedChildKeys((prev) => new Set(prev).add(nodeKey));
+    } catch (error: any) {
+      message.error(error.response?.data?.error || error.message);
+    }
+  }, [treeMode, loadedChildKeys, modelName, message]);
+
+  // AntD Tree loadData callback for lazy mode.
+  const handleLoadData = useCallback(async (node: any) => {
+    await loadChildren(String(node.key));
+  }, [loadChildren]);
+
+  // Debounced tree search against the server.
+  useEffect(() => {
+    if (viewMode === 'table') return;
+    const term = treeSearchText.trim();
+    if (!term) {
+      setTreeSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await searchModelCatalogTree(modelName, term);
+        if (cancelled) return;
+        const roots = buildTreeFromPaths(resp.paths || []);
+        setTreeSearchResults(roots);
+        // Expand everything in the search result set.
+        const keys: React.Key[] = [];
+        const collect = (list: CatalogTreeNode[]) => list.forEach((n) => {
+          if (n.children && n.children.length) { keys.push(n.key); collect(n.children); }
+        });
+        collect(roots);
+        setExpandedKeys(keys);
+      } catch (error: any) {
+        if (!cancelled) message.error(error.response?.data?.error || error.message);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [treeSearchText, viewMode, modelName, message]);
 
   const handleExpandAll = () => {
     const allKeys: React.Key[] = [];
@@ -484,7 +599,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
             const pos = positionById.get(p.node.key)!;
             const isSelected = selectedNodeKey === p.node.key;
             const isExpanded = expandedKeys.includes(p.node.key);
-            const hasChildren = p.node.children && p.node.children.length > 0;
+            const hasChildren = !(p.node as any).isLeaf;
             
             const bgColor = bgColors[p.depth % bgColors.length];
             const textColor = textColors[p.depth % textColors.length];
@@ -541,7 +656,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                       wordBreak: 'break-word',
                     }}
                   >
-                    {componentColumns[p.depth]?.typeName || ''}
+                    {(p.node as any).typeName || ''}
                   </div>
                   <div
                     style={{
@@ -562,6 +677,10 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                   <span
                     onClick={(e) => {
                       e.stopPropagation();
+                      const willExpand = !expandedKeys.includes(p.node.key);
+                      if (willExpand) {
+                        void loadChildren(String(p.node.key));
+                      }
                       setExpandedKeys(prev =>
                         prev.includes(p.node.key)
                           ? prev.filter(k => k !== p.node.key)
@@ -703,8 +822,17 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
             ) : null}
             {(viewMode === 'tree-vertical' || viewMode === 'tree-horizontal') && componentColumns.length > 0 ? (
               <>
+                <Input
+                  allowClear
+                  prefix={<SearchOutlined />}
+                  placeholder="Search tree"
+                  style={{ width: 240 }}
+                  value={treeSearchText}
+                  onChange={(event) => setTreeSearchText(event.target.value)}
+                />
                 <Button size="small" onClick={handleExpandAll}>Expand All</Button>
                 <Button size="small" onClick={handleCollapseAll}>Collapse All</Button>
+                {treeLoading && <Spin size="small" />}
               </>
             ) : null}
           </Space>
@@ -744,19 +872,17 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                 columns={enhanceColumnsWithSortAndFilters(columns as any, filteredRows)}
                 size="small"
                 pagination={{
-                  pageSize: 25,
+                  current: catalog.pagination?.currentPage ?? tablePage,
+                  pageSize: CATALOG_PAGE_SIZE,
+                  total: catalog.pagination?.totalCount ?? catalog.rowCount,
                   showSizeChanger: false,
                   position: ['topRight'],
+                  onChange: (page) => setTablePage(page),
+                  showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}`,
                 }}
+                loading={loading}
                 scroll={{ x: 'max-content' }}
               />
-              {catalog.pagination && catalog.pagination.hasMore && (
-                <div style={{ marginTop: 12, textAlign: 'center' }}>
-                  <Button onClick={() => setTablePage(tablePage + 1)} loading={loading}>
-                    Load More Data (Page {tablePage + 1} of {catalog.pagination.totalPages})
-                  </Button>
-                </div>
-              )}
             </>
           ) : viewMode === 'tree-vertical' ? (
             <div style={{ paddingTop: '16px', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -782,6 +908,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                   treeData={treeData}
                   expandedKeys={expandedKeys}
                   onExpand={setExpandedKeys}
+                  loadData={treeMode === 'lazy' ? handleLoadData : undefined}
                   style={{ padding: '8px 0' }}
                 />
               </div>

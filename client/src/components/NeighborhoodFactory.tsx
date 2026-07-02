@@ -736,7 +736,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 onClick={openNeighborhoodModal}
                 className="btn-create-model"
               >
-                Create Model
+                Import Framework
               </Button>
             ) : null}
             {showAddFactory ? (
@@ -787,7 +787,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 onClick={() => handleDeleteNeighborhood(fixedNeighborhoodName)}
                 style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
               >
-                Delete Model
+                Delete Framework
               </Button>
             ) : null}
           </Space>

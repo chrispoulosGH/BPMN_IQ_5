@@ -1895,7 +1895,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               },
               {
                 key: 'bpmn',
-                label: outerTabLabel('bpmn', <span><PartitionOutlined /> BPMN Canvas</span>),
+                label: outerTabLabel('bpmn', <span><PartitionOutlined /> Diagrams</span>),
                 children: (
                   <div className="flex h-full w-full min-h-0">
                     <div className="bpmn-ribbon w-[92px] shrink-0 px-2 py-3 overflow-y-auto">
@@ -2119,7 +2119,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               })()),
               {
                 key: 'neighborhoods',
-                label: outerTabLabel('neighborhoods', <span><ShoppingOutlined /> Models</span>),
+                label: outerTabLabel('neighborhoods', <span><ShoppingOutlined /> Frameworks</span>),
                 children: loadingNeighborhoodTabs ? (
                   <div className="flex min-h-[240px] items-center justify-center">
                     <Spin size="large" tip="Loading models..." />
@@ -2230,7 +2230,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                             items={[
                               {
                                 key: getModelCatalogTabKey(neighborhood.name),
-                                label: fTabLabel(getModelCatalogTabKey(neighborhood.name), <><DatabaseOutlined /> Model Catalog</>),
+                                label: fTabLabel(getModelCatalogTabKey(neighborhood.name), <><DatabaseOutlined /> Model</>),
                                 children: renderScrollablePane(
                                   <ModelCatalog
                                     modelName={neighborhood.name}
@@ -2240,7 +2240,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                               },
                               {
                                 key: getModelComponentsTabKey(neighborhood.name),
-                                label: fTabLabel(getModelComponentsTabKey(neighborhood.name), <><AppstoreOutlined /> Components</>),
+                                label: fTabLabel(getModelComponentsTabKey(neighborhood.name), <><AppstoreOutlined /> Model Components</>),
                                 children: renderScrollablePane(
                                   <ComponentsViewer
                                     neighborhoodName={neighborhood.name}

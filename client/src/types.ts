@@ -313,6 +313,7 @@ export interface ModelCatalog {
   name: string;
   columns: string[];
   rowCount: number;
+  unfilteredRowCount?: number;
   rows: ModelCatalogRow[];
   sourceFileName?: string;
   createdAt?: string;
@@ -322,7 +323,42 @@ export interface ModelCatalog {
     limit: number;
     totalPages: number;
     hasMore: boolean;
+    totalCount?: number;
   };
+}
+
+export interface CatalogTreeNode {
+  key: string;
+  name: string;
+  typeName: string;
+  depth: number;
+  isLeaf: boolean;
+  children?: CatalogTreeNode[];
+}
+
+export interface CatalogTreeResponse {
+  mode: 'full' | 'lazy';
+  tupleColumns: string[];
+  nodeCount?: number;
+  roots: CatalogTreeNode[];
+}
+
+export interface CatalogTreeChildrenResponse {
+  path: string[];
+  children: CatalogTreeNode[];
+}
+
+export interface CatalogTreeSearchPathNode {
+  name: string;
+  typeName: string;
+  depth: number;
+}
+
+export interface CatalogTreeSearchResponse {
+  term: string;
+  tupleColumns: string[];
+  paths: CatalogTreeSearchPathNode[][];
+  truncated: boolean;
 }
 
 export interface CustomFactoryQualifierColumn {

@@ -17,11 +17,11 @@ const fkRegistry = require('../services/ForeignKeyRegistry');
 const fkResolver = require('../services/ForeignKeyResolver');
 const { materializeFromBatches } = require('../lib/materializer');
 const CanonicalComponent = require('../models/CanonicalComponent');
+const { DEFAULT_NEIGHBORHOOD_NAME } = require('../utils/neighborhoodScope');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 const PRIMARY_KEY_COLUMN = 'name';
-const DEFAULT_NEIGHBORHOOD_NAME = 'ATT Journey Model';
 const LEGACY_PART_COLUMN_PATTERN = /\bparts?$/i;
 const COMPONENT_COLUMN_PATTERN = /\bcomponents?$/i;
 const FK_COLUMN_PREFIX = /^fk_/i;
@@ -1535,70 +1535,203 @@ function serializeModelCatalog(model, page = 1, limit = 50) {
   };
 }
 
-async function serializeModelCatalogWithBatches(model, batches, page = 1, limit = 50) {
-  const toPlainObject = (value) => {
-    if (!value) return {};
-    if (value instanceof Map) return Object.fromEntries(value.entries());
-    if (typeof value.toObject === 'function') return value.toObject();
-    return { ...value };
-  };
+function toPlainCatalogValue(value) {
+  if (!value) return {};
+  if (value instanceof Map) return Object.fromEntries(value.entries());
+  if (typeof value.toObject === 'function') return value.toObject();
+  return { ...value };
+}
 
-  // Combine model catalog rows with batch rows
-  let allRows = (model.modelCatalogRows || []).map(row => ({ values: toPlainObject(row.values), source: 'model' }));
-  
-  // Add rows from component batches
-  batches.forEach(batch => {
-    if (batch.rows && Array.isArray(batch.rows)) {
-      batch.rows.forEach(row => {
-        allRows.push({ values: toPlainObject(row), source: 'batch', batchId: batch.batchId, componentName: batch.name });
+// Combine a model's static catalog rows with any dynamic component-batch rows
+// and compute the full column list. Returns { allRows, finalColumns }.
+function combineCatalogRows(model, batches) {
+  const allRows = (model.modelCatalogRows || []).map((row) => ({ values: toPlainCatalogValue(row.values) }));
+  (batches || []).forEach((batch) => {
+    if (Array.isArray(batch.rows)) {
+      batch.rows.forEach((row) => {
+        allRows.push({ values: toPlainCatalogValue(row) });
       });
     }
   });
 
-  const totalCount = allRows.length;
-  const totalPages = Math.ceil(totalCount / limit);
-  const startIndex = (page - 1) * limit;
-  const endIndex = startIndex + limit;
-  const paginatedRows = allRows.slice(startIndex, endIndex);
+  const columnSet = new Set(model.modelCatalogColumns || []);
+  allRows.forEach((row) => Object.keys(row.values).forEach((col) => columnSet.add(col)));
+  return { allRows, finalColumns: Array.from(columnSet) };
+}
 
-  // Extract all unique column names from all row data
-  const allColumnNames = new Set(model.modelCatalogColumns || []);
-  
-  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Starting serialization');
-  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Model catalog rows count:', (model.modelCatalogRows || []).length);
-  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Component batches count:', batches.length);
-  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Total combined rows:', allRows.length);
-  
-  allRows.forEach((row, idx) => {
-    const rowValues = row.values;
-    Object.keys(rowValues).forEach((colName) => {
-      allColumnNames.add(colName);
-    });
-    if (idx === 0 && row.source === 'batch') {
-      console.log('[SERIALIZE_CATALOG_WITH_BATCHES] First batch row columns:', Object.keys(rowValues));
-    }
-  });
-  const finalColumns = Array.from(allColumnNames);
-  
-  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Model:', model.name);
-  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] Final column count:', finalColumns.length);
-  console.log('[SERIALIZE_CATALOG_WITH_BATCHES] FK columns in combined data:', finalColumns.filter(c => c.toLowerCase().startsWith('fk_')));
+// Columns that define the hierarchy: those ending in "component" (case-insensitive),
+// preserving the order they appear in the combined column list.
+function getTupleColumns(finalColumns) {
+  return (finalColumns || []).filter((col) => String(col).toLowerCase().endsWith('component'));
+}
+
+function tupleTypeName(col) {
+  return String(col).replace(/\s*component\s*$/i, '').trim();
+}
+
+// Filter combined rows by a search term across all or a specific column.
+function filterCatalogRows(allRows, { search, searchColumn, exact, columns }) {
+  const term = String(search || '').trim().toLowerCase();
+  if (!term) return allRows;
+  const cols = (searchColumn && searchColumn !== '__all__') ? [searchColumn] : columns;
+  return allRows.filter((row) => cols.some((col) => {
+    const value = String(row.values?.[col] ?? '').toLowerCase().trim();
+    return exact ? value === term : value.includes(term);
+  }));
+}
+
+function serializeModelCatalogWithBatches(model, batches, options = {}) {
+  const {
+    page = 1,
+    limit = 50,
+    search = '',
+    searchColumn = '__all__',
+    exact = false,
+  } = options;
+
+  const { allRows, finalColumns } = combineCatalogRows(model, batches);
+  const filteredRows = filterCatalogRows(allRows, { search, searchColumn, exact, columns: finalColumns });
+
+  const totalCount = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIndex = (safePage - 1) * limit;
+  const paginatedRows = filteredRows.slice(startIndex, startIndex + limit);
 
   return {
     name: model.name,
     columns: finalColumns,
     rowCount: totalCount,
+    unfilteredRowCount: allRows.length,
     rows: paginatedRows.map((row) => ({ values: row.values })),
     sourceFileName: model.sourceFileName || '',
     createdAt: model.createdAt,
     updatedAt: model.updatedAt,
     pagination: {
-      currentPage: page,
+      currentPage: safePage,
       limit,
       totalPages,
-      hasMore: page < totalPages,
+      hasMore: safePage < totalPages,
+      totalCount,
     },
   };
+}
+
+// Maximum number of tree nodes to return in a single "full tree" response.
+// Beyond this the client falls back to lazy per-level loading.
+const MAX_FULL_TREE_NODES = Number(process.env.MAX_FULL_TREE_NODES || 20000);
+
+// Build the complete hierarchy tree from combined rows. Returns null if the
+// node count would exceed maxNodes (signal to use lazy mode instead).
+function buildFullCatalogTree(allRows, tupleColumns, maxNodes = MAX_FULL_TREE_NODES) {
+  const pathToNode = new Map();
+  const roots = [];
+  let nodeCount = 0;
+
+  for (const row of allRows) {
+    const path = [];
+    for (let depth = 0; depth < tupleColumns.length; depth++) {
+      const raw = row.values?.[tupleColumns[depth]];
+      if (raw === null || raw === undefined || String(raw).trim() === '') break;
+      const value = String(raw).trim();
+      path.push(value);
+      const key = path.join('|');
+
+      if (!pathToNode.has(key)) {
+        const node = {
+          key,
+          name: value,
+          typeName: tupleTypeName(tupleColumns[depth]),
+          depth,
+          isLeaf: depth === tupleColumns.length - 1,
+          children: [],
+        };
+        pathToNode.set(key, node);
+        nodeCount += 1;
+        if (nodeCount > maxNodes) return null;
+        if (depth === 0) {
+          roots.push(node);
+        } else {
+          const parent = pathToNode.get(path.slice(0, depth).join('|'));
+          if (parent) parent.children.push(node);
+        }
+      }
+    }
+  }
+
+  const sortRec = (nodes) => {
+    nodes.sort((a, b) => a.name.localeCompare(b.name));
+    nodes.forEach((n) => {
+      n.isLeaf = n.children.length === 0;
+      sortRec(n.children);
+    });
+  };
+  sortRec(roots);
+
+  return { roots, nodeCount };
+}
+
+// Lazy: return the direct children of a given ancestor path (array of values).
+function getCatalogTreeChildren(allRows, tupleColumns, pathValues) {
+  const depth = pathValues.length; // children live at this depth
+  if (depth >= tupleColumns.length) return [];
+  const childCol = tupleColumns[depth];
+  const info = new Map(); // value -> hasChildren
+
+  for (const row of allRows) {
+    let matchesPrefix = true;
+    for (let i = 0; i < depth; i++) {
+      if (String(row.values?.[tupleColumns[i]] ?? '').trim() !== pathValues[i]) {
+        matchesPrefix = false;
+        break;
+      }
+    }
+    if (!matchesPrefix) continue;
+
+    const raw = row.values?.[childCol];
+    if (raw === null || raw === undefined || String(raw).trim() === '') continue;
+    const value = String(raw).trim();
+    const hasNext = depth + 1 < tupleColumns.length
+      && String(row.values?.[tupleColumns[depth + 1]] ?? '').trim() !== '';
+    if (!info.has(value)) info.set(value, hasNext);
+    else if (hasNext) info.set(value, true);
+  }
+
+  return Array.from(info.entries())
+    .map(([value, hasChildren]) => ({
+      key: [...pathValues, value].join('|'),
+      name: value,
+      typeName: tupleTypeName(childCol),
+      depth,
+      isLeaf: !hasChildren,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Search the tree: return matching full paths (arrays of {name,typeName,depth}).
+function searchCatalogTree(allRows, tupleColumns, term, limitPaths = 500) {
+  const needle = String(term || '').trim().toLowerCase();
+  if (!needle) return [];
+  const results = [];
+  const seen = new Set();
+
+  for (const row of allRows) {
+    const path = [];
+    for (let depth = 0; depth < tupleColumns.length; depth++) {
+      const raw = row.values?.[tupleColumns[depth]];
+      if (raw === null || raw === undefined || String(raw).trim() === '') break;
+      path.push({ name: String(raw).trim(), typeName: tupleTypeName(tupleColumns[depth]), depth });
+    }
+    if (!path.length) continue;
+    if (!path.some((node) => node.name.toLowerCase().includes(needle))) continue;
+    const key = path.map((node) => node.name).join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(path);
+    if (results.length >= limitPaths) break;
+  }
+
+  return results;
 }
 
 router.get('/neighborhoods', async (_req, res) => {
@@ -1809,14 +1942,16 @@ router.get('/neighborhoods/:name/catalog', async (req, res) => {
     const name = String(req.params?.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Model name is required' });
 
-    // Extract pagination parameters
+    // Pagination + server-side search parameters
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.max(1, Math.min(500, parseInt(req.query.limit) || 50));
+    const search = String(req.query.search || '').trim();
+    const searchColumn = String(req.query.searchColumn || '__all__');
+    const exact = String(req.query.exact || '').toLowerCase() === 'true';
 
     const model = await Model.findOne({ name }).lean();
     if (!model) return res.status(404).json({ error: 'Model not found' });
 
-    // Fetch component batches from dataComponentBatches collection
     const db = mongoose.connection.db;
     const batchesCollection = db.collection('dataComponentBatches');
     const batches = await batchesCollection
@@ -1824,30 +1959,86 @@ router.get('/neighborhoods/:name/catalog', async (req, res) => {
       .project({ rows: 1, name: 1, batchId: 1 })
       .toArray();
 
-    console.log(`[CATALOG] Found ${batches.length} component batches for neighborhood: ${name}`);
-    try {
-      // Preview up to 5 batches with basic metadata
-      console.log('[CATALOG] batches preview:', batches.slice(0, 5).map(b => ({
-        batchId: b.batchId,
-        name: b.name,
-        rowsCount: Array.isArray(b.rows) ? b.rows.length : 'noRows',
-        sampleRowKeys: (Array.isArray(b.rows) && b.rows.length) ? Object.keys(b.rows[0]).slice(0, 10) : []
-      })));
+    res.json(serializeModelCatalogWithBatches(model, batches, { page, limit, search, searchColumn, exact }));
+  } catch (err) {
+    res.status(err?.status || 500).json({ error: getValidationMessage(err) });
+  }
+});
 
-      // Detailed per-batch inspection (non-blocking)
-      batches.forEach((b, idx) => {
-        if (Array.isArray(b.rows) && b.rows.length) {
-          const first = b.rows[0];
-          console.log(`[CATALOG] batch[${idx}] ${b.batchId} name="${b.name}" rows=${b.rows.length} sampleKeys=`, Object.keys(first).slice(0, 20), 'firstRowHasValuesProp=', !!first.values, 'firstRowType=', typeof first);
-        } else {
-          console.log(`[CATALOG] batch[${idx}] ${b.batchId} name="${b.name}" has no rows or rows not an array`);
-        }
-      });
-    } catch (e) {
-      console.error('[CATALOG] Error inspecting batches:', e && e.message);
+// Helper: load a model + its combined rows and tuple columns for tree operations.
+async function loadCatalogForTree(name) {
+  const model = await Model.findOne({ name }).lean();
+  if (!model) return null;
+  const db = mongoose.connection.db;
+  const batches = await db.collection('dataComponentBatches')
+    .find({ neighborhoodName: name })
+    .project({ rows: 1, name: 1, batchId: 1 })
+    .toArray();
+  const { allRows, finalColumns } = combineCatalogRows(model, batches);
+  return { model, allRows, tupleColumns: getTupleColumns(finalColumns) };
+}
+
+// Full hierarchy tree (with node-count guard). Falls back to lazy mode when too large.
+router.get('/neighborhoods/:name/catalog/tree', async (req, res) => {
+  try {
+    const name = String(req.params?.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Model name is required' });
+
+    const data = await loadCatalogForTree(name);
+    if (!data) return res.status(404).json({ error: 'Model not found' });
+    const { allRows, tupleColumns } = data;
+
+    if (!tupleColumns.length) {
+      return res.json({ mode: 'full', tupleColumns: [], nodeCount: 0, roots: [] });
     }
 
-    res.json(await serializeModelCatalogWithBatches(model, batches, page, limit));
+    const built = buildFullCatalogTree(allRows, tupleColumns);
+    if (built === null) {
+      // Too large for a single payload — return roots only for lazy loading.
+      const roots = getCatalogTreeChildren(allRows, tupleColumns, []);
+      return res.json({ mode: 'lazy', tupleColumns, roots });
+    }
+
+    res.json({ mode: 'full', tupleColumns, nodeCount: built.nodeCount, roots: built.roots });
+  } catch (err) {
+    res.status(err?.status || 500).json({ error: getValidationMessage(err) });
+  }
+});
+
+// Lazy: direct children of an ancestor path (pipe-delimited values in ?path=).
+router.get('/neighborhoods/:name/catalog/tree/children', async (req, res) => {
+  try {
+    const name = String(req.params?.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Model name is required' });
+
+    const data = await loadCatalogForTree(name);
+    if (!data) return res.status(404).json({ error: 'Model not found' });
+    const { allRows, tupleColumns } = data;
+
+    const rawPath = String(req.query.path || '');
+    const pathValues = rawPath ? rawPath.split('|').map((v) => v.trim()).filter((v) => v.length) : [];
+    const children = getCatalogTreeChildren(allRows, tupleColumns, pathValues);
+    res.json({ path: pathValues, children });
+  } catch (err) {
+    res.status(err?.status || 500).json({ error: getValidationMessage(err) });
+  }
+});
+
+// Search the tree: returns matching full paths regardless of tree mode.
+router.get('/neighborhoods/:name/catalog/tree/search', async (req, res) => {
+  try {
+    const name = String(req.params?.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Model name is required' });
+
+    const term = String(req.query.term || '').trim();
+    const limitPaths = Math.max(1, Math.min(5000, parseInt(req.query.limit) || 500));
+
+    const data = await loadCatalogForTree(name);
+    if (!data) return res.status(404).json({ error: 'Model not found' });
+    const { allRows, tupleColumns } = data;
+
+    const paths = searchCatalogTree(allRows, tupleColumns, term, limitPaths);
+    res.json({ term, tupleColumns, paths, truncated: paths.length >= limitPaths });
   } catch (err) {
     res.status(err?.status || 500).json({ error: getValidationMessage(err) });
   }
