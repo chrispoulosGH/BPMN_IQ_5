@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const CanonicalComponent = require('../models/CanonicalComponent');
 const { populateComponentsFromBatches } = require('./populateComponentsFromBatches');
+const { resolveParentRefs } = require('./resolveParentRefs');
 const { rebuildSearchIndex } = require('../utils/searchIndexBuilder');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/bpmn_iq';
@@ -92,6 +93,16 @@ materializeFromBatches.postProcess = async function({ neighborhoodName } = {}) {
       console.log('[MATERIALIZER] Post-process: legacy Component docs populated for', neighborhoodName);
     } catch (err) {
       console.error('[MATERIALIZER] Post-process populateComponentsFromBatches failed:', err && err.message);
+    }
+
+    // Resolve parent/child relationships on canonical docs BEFORE rebuilding the index,
+    // so the index builder can walk parentRefs to produce full lineage paths.
+    try {
+      console.log('[MATERIALIZER] Post-process: resolving parentRefs on canonical docs for', neighborhoodName);
+      const refResult = await resolveParentRefs({ neighborhoodName });
+      console.log('[MATERIALIZER] Post-process: parentRefs resolved for', neighborhoodName, refResult);
+    } catch (err) {
+      console.error('[MATERIALIZER] Post-process resolveParentRefs failed:', err && err.message);
     }
 
     console.log('[MATERIALIZER] Post-process: rebuilding ComponentSearchIndex for', neighborhoodName);

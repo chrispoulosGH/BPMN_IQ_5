@@ -31,6 +31,8 @@ async function rebuildSearchIndex(neighborhoodName) {
         values: r.values || {},
         // preserve any parentName present on the canonical row values
         parentName: (r.values && (r.values.parentName || r.values.parent)) || r.parentName || null,
+        // include parentRefs (array of canonical ObjectId strings) for link-based hierarchies
+        parentRefs: Array.isArray(r.parentRefs) ? r.parentRefs : [],
       }));
       return {
         _id: type,
@@ -45,6 +47,9 @@ async function rebuildSearchIndex(neighborhoodName) {
 
     // Create component map for hierarchy lookup
     const componentMap = new Map(components.map(c => [normalizeValue(c.name), c]));
+
+    // Also create a map of canonical rows by their _id for direct parentRef lookups
+    const canonicalById = new Map(canonicalRows.map(r => [String(r._id), r]));
 
     // Helper function to normalize values for comparison
     function normalizeValue(val) {
@@ -65,56 +70,96 @@ async function rebuildSearchIndex(neighborhoodName) {
     const buildAllHierarchyPaths = async (component, row, visitedRowKeys = new Set()) => {
       const rowValues = getRowValues(row);
       const rowName = String(rowValues.name || row.name || 'unnamed').trim();
-      const currentRowKey = `${component.name}:${rowName}`;
-      
+      const currentRowKey = `${component.name}:${String(row._id)}`;
+
       // Prevent infinite loops
       if (visitedRowKeys.has(currentRowKey)) {
         return [[{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }]];
       }
 
-      const parentNames = row.parentName
-        ? row.parentName.split('|').map(p => p.trim()).filter(p => p)
-        : [];
+      // Use canonical parentRefs when available (preferred), otherwise fall back to parentName
+      const parentRefs = Array.isArray(row.parentRefs) && row.parentRefs.length > 0 ? row.parentRefs.map(String) : [];
 
-      if (parentNames.length === 0) {
-        // No parents - just return the row in current component
-        return [[{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }]];
+      // Helper to produce a single-node fallback path
+      const singleNode = [{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }];
+
+      if (parentRefs.length === 0) {
+        // No explicit parentRefs - fall back to legacy parentName parsing
+        const parentNames = row.parentName
+          ? row.parentName.split('|').map(p => p.trim()).filter(p => p)
+          : [];
+
+        if (parentNames.length === 0) {
+          return [singleNode];
+        }
+
+        const hierarchies = [];
+        for (const parentName of parentNames) {
+          const parentComponentName = component.parentFactoryName;
+          const parentComponent = componentMap.get(normalizeValue(parentComponentName));
+
+          if (!parentComponent) {
+            hierarchies.push(singleNode);
+            continue;
+          }
+
+          // Find parent row by name
+          const parentRow = parentComponent.rows?.find(r => {
+            const pRowValues = getRowValues(r);
+            const pName = String(pRowValues.name || r.name || 'unnamed').trim();
+            return normalizeValue(pName) === normalizeValue(parentName);
+          });
+
+          if (!parentRow) {
+            hierarchies.push(singleNode);
+            continue;
+          }
+
+          const pathVisitedSet = new Set(visitedRowKeys);
+          pathVisitedSet.add(currentRowKey);
+          const parentHierarchies = await buildAllHierarchyPaths(parentComponent, parentRow, pathVisitedSet);
+          parentHierarchies.forEach(parentPath => {
+            const fullPath = [...parentPath, {
+              componentName: component.name,
+              componentId: String(component._id),
+              rowName,
+              rowId: String(row._id)
+            }];
+            hierarchies.push(fullPath);
+          });
+        }
+
+        return hierarchies.length > 0 ? hierarchies : [singleNode];
       }
 
-      // For each parent, build a complete hierarchy path (recursively)
+      // Build hierarchies from parentRefs (canonical link-based)
       const hierarchies = [];
+      for (const parentRefId of parentRefs) {
+        const parentCanonical = canonicalById.get(String(parentRefId));
+        if (!parentCanonical) {
+          hierarchies.push(singleNode);
+          continue;
+        }
 
-      for (const parentName of parentNames) {
-        const parentComponentName = component.parentFactoryName;
+        const parentComponentName = parentCanonical.componentType || parentCanonical.component_type || 'unknown';
         const parentComponent = componentMap.get(normalizeValue(parentComponentName));
 
         if (!parentComponent) {
-          // Fallback if parent component not found
-          hierarchies.push([{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }]);
+          hierarchies.push(singleNode);
           continue;
         }
 
-        // Find parent row
-        const parentRow = parentComponent.rows?.find(r => {
-          const pRowValues = getRowValues(r);
-          const pName = String(pRowValues.name || r.name || 'unnamed').trim();
-          return normalizeValue(pName) === normalizeValue(parentName);
-        });
+        // Find the parent row in the parentComponent by matching _id
+        const parentRow = parentComponent.rows?.find(r => String(r._id) === String(parentRefId));
 
         if (!parentRow) {
-          // Fallback if parent row not found
-          hierarchies.push([{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }]);
+          hierarchies.push(singleNode);
           continue;
         }
 
-        // Create a NEW visited set for this parent path (don't share across parents!)
         const pathVisitedSet = new Set(visitedRowKeys);
         pathVisitedSet.add(currentRowKey);
-        
-        // Recursively get all hierarchies from this parent
         const parentHierarchies = await buildAllHierarchyPaths(parentComponent, parentRow, pathVisitedSet);
-        
-        // Append current row to each parent hierarchy
         parentHierarchies.forEach(parentPath => {
           const fullPath = [...parentPath, {
             componentName: component.name,
@@ -126,7 +171,7 @@ async function rebuildSearchIndex(neighborhoodName) {
         });
       }
 
-      return hierarchies.length > 0 ? hierarchies : [[{ componentName: component.name, componentId: String(component._id), rowName, rowId: String(row._id) }]];
+      return hierarchies.length > 0 ? hierarchies : [singleNode];
     };
 
     // Build index entries

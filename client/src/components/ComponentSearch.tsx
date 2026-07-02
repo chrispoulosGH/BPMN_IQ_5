@@ -77,6 +77,50 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
   const [pageSize, setPageSize] = useState(10);
 
   // Fetch type-ahead suggestions
+  // Perform indexed search for a given term or componentName
+  const performIndexedSearch = useCallback(async (term: string, componentName?: string) => {
+    const t = String(term || '').trim();
+    if (!t && !componentName) {
+      message.warning('Search term must be at least 2 characters');
+      return;
+    }
+
+    setLoading(true);
+    setHasSearched(true);
+    setResults([]);
+    try {
+      const params = new URLSearchParams();
+      if (t) params.set('term', t);
+      if (componentName) params.set('componentName', componentName);
+      params.set('neighborhoodName', neighborhoodName);
+
+      const url = `/api/custom-factories/search/indexed?${params.toString()}`;
+      console.log('[SEARCH TRACE] performIndexedSearch request', { url, term: t, componentName, neighborhoodName });
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Search failed');
+      }
+
+      const data = await response.json();
+      console.log('[SEARCH TRACE] performIndexedSearch response', { resultsCount: (data.results || []).length, dataSummary: data.results?.slice(0,5) });
+      setResults(data.results || []);
+
+      if (data.results?.length === 0) {
+        message.info('No components found matching your search');
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Search failed';
+      message.error(`Search error: ${errorMsg}`);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [neighborhoodName]);
+
+
   const handleTypeahead = useCallback(
     async (value: string) => {
       if (!value || value.length < 1) {
@@ -99,12 +143,20 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
 
         const data = await response.json();
         const rowSug = (data.suggestions || []).map((s: any) => ({
-          label: `${s.value} (${s.frequency} occurrences${s.componentNames?.length > 1 ? `, ${s.componentNames.length} components` : ''})`,
+          label: (
+            <div onDoubleClick={() => { console.log('[SEARCH TRACE] suggestion dblclick', s.value); performIndexedSearch(s.value); }}>
+              {`${s.value} (${s.frequency} occurrences${s.componentNames?.length > 1 ? `, ${s.componentNames.length} components` : ''})`}
+            </div>
+          ),
           value: s.value,
         }));
 
         const typeSug = (data.componentTypes || []).map((t: any) => ({
-          label: `${t.componentName} (type)`,
+          label: (
+            <div onDoubleClick={() => { console.log('[SEARCH TRACE] type suggestion dblclick', t.componentName); performIndexedSearch('', t.componentName); }}>
+              {`${t.componentName} (type)`}
+            </div>
+          ),
           value: `__type__:${t.componentName}`,
         }));
 
@@ -123,7 +175,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
         setLoadingSuggestions(false);
       }
     },
-    [neighborhoodName]
+    [neighborhoodName, performIndexedSearch]
   );
 
   // Debounce typeahead
@@ -178,6 +230,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
   }, [initialSearchTerm, neighborhoodName]);
 
   const handleSearch = useCallback(async () => {
+    console.debug('[SEARCH TRACE] handleSearch invoked', { searchTerm, neighborhoodName, time: new Date().toISOString() });
     if (!searchTerm || searchTerm.length < 2) {
       message.warning('Search term must be at least 2 characters');
       return;
@@ -213,6 +266,8 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
       setLoading(false);
     }
   }, [searchTerm, neighborhoodName]);
+
+  
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -320,6 +375,17 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
   const columns = [
     ...hierarchyColumns,
     {
+      title: 'Lineage Path',
+      dataIndex: 'hierarchyPath',
+      key: 'lineagePath',
+      width: '30%',
+      render: (path: string) => (
+        <Tooltip title={path}>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', maxWidth: 420 }}>{path}</span>
+        </Tooltip>
+      ),
+    },
+    {
       title: 'Matched Field',
       dataIndex: 'searchMatchFieldName',
       key: 'matchedField',
@@ -371,6 +437,9 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
       ),
     },
   ];
+
+  // Clone columns with the Lineage Path included (used for tables)
+  const columnsWithPath = columns;
 
   const mergedTree = useMemo(() => buildMergedHierarchyTree(sortedResults), [sortedResults]);
 
@@ -514,46 +583,34 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
       <Card size="small">
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Space style={{ width: '100%', display: 'flex' }}>
-            <AutoComplete
+              <AutoComplete
               placeholder="Search component values (min 2 characters)..."
               value={searchTerm}
-              onSearch={(value) => setSearchTerm(value)}
+              onSearch={(value) => { console.log('[SEARCH TRACE] onSearch', value); setSearchTerm(value); }}
               onSelect={(value) => {
+                console.log('[SEARCH TRACE] onSelect', value, new Date().toISOString());
                 // If a type was selected, set the componentName filter and set searchTerm empty
                 if (typeof value === 'string' && value.startsWith('__type__:')) {
                   const type = value.split('__type__:')[1];
                   setSearchTerm('');
                   // Trigger a search scoped to this component type
-                  (async () => {
-                    setLoading(true);
-                    setHasSearched(true);
-                    try {
-                      const response = await fetch(
-                        `/api/custom-factories/search/indexed?neighborhoodName=${encodeURIComponent(
-                          neighborhoodName
-                        )}&term=&componentName=${encodeURIComponent(type)}`
-                      );
-                      if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Search failed');
-                      }
-                      const data = await response.json();
-                      setResults(data.results || []);
-                    } catch (err) {
-                      console.error('Search error', err);
-                      setResults([]);
-                    } finally {
-                      setLoading(false);
-                    }
-                  })();
+                  console.log('[SEARCH TRACE] performIndexedSearch invoked for component type', type, new Date().toISOString());
+                  performIndexedSearch('', type);
                   return;
                 }
-                setSearchTerm(value as string);
+                const s = value as string;
+                console.log('[SEARCH TRACE] onSelect setting searchTerm', s, new Date().toISOString());
+                setSearchTerm(s);
+                // Immediately perform the indexed search for the selected suggestion
+                console.log('[SEARCH TRACE] performIndexedSearch invoked for term', s, new Date().toISOString());
+                performIndexedSearch(s);
               }}
-              onChange={(value) => setSearchTerm(value)}
+              onChange={(value) => { console.log('[SEARCH TRACE] onChange', value, new Date().toISOString()); setSearchTerm(value); }}
               options={suggestions}
               {...({ loading: loadingSuggestions } as any)}
               onKeyDown={handleKeyDown}
+              onFocus={() => console.log('[SEARCH TRACE] onFocus', new Date().toISOString())}
+              onBlur={() => console.log('[SEARCH TRACE] onBlur', new Date().toISOString())}
               style={{ flex: 1, minWidth: '300px' }}
               popupMatchSelectWidth={false}
               notFoundContent={
@@ -568,6 +625,17 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
             />
             <Button type="primary" onClick={handleSearch} loading={loading} icon={<SearchOutlined />}>
               Search
+            </Button>
+            <Button
+              style={{ marginLeft: 8 }}
+              onClick={() => {
+                console.log('[SEARCH TRACE] Go button clicked', { searchTerm, neighborhoodName, time: new Date().toISOString() });
+                handleSearch();
+              }}
+              disabled={loading}
+              size="default"
+            >
+              Go
             </Button>
           </Space>
 
@@ -629,9 +697,9 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
                     ),
                     children: (
                       <Table
-                        columns={columns}
+                        columns={columnsWithPath}
                         dataSource={group.results}
-                        rowKey={(record) => record.searchMatchRowId}
+                        rowKey={(record) => record.hierarchyPath}
                         pagination={false}
                         size="small"
                       />
@@ -640,9 +708,9 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
                 />
               ) : (
                 <Table
-                  columns={columns}
+                  columns={columnsWithPath}
                   dataSource={paginatedResults}
-                  rowKey={(record) => record.searchMatchRowId}
+                  rowKey={(record) => record.hierarchyPath}
                   pagination={{
                     current: currentPage,
                     pageSize,

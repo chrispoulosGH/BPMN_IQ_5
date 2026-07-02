@@ -2416,8 +2416,11 @@ router.get('/search/indexed', async (req, res) => {
   try {
     const neighborhoodName = String(req.query?.neighborhoodName || DEFAULT_NEIGHBORHOOD_NAME).trim();
     const rawSearchTerm = String(req.query?.term || '').trim();
-    
-    if (!rawSearchTerm || rawSearchTerm.length < 2) {
+    const componentName = req.query?.componentName ? String(req.query.componentName).trim() : null;
+
+    console.log(`[INDEX SEARCH TRACE] Request: neighborhood="${neighborhoodName}", rawTerm="${rawSearchTerm}", componentName="${componentName}"`);
+
+    if (!rawSearchTerm && !componentName) {
       return res.status(400).json({ error: 'Search term must be at least 2 characters' });
     }
 
@@ -2432,29 +2435,38 @@ router.get('/search/indexed', async (req, res) => {
     }
 
     let indexResults = [];
+    let searchPattern = '';
 
     if (isExactSearch) {
       const normalizedSearchTerm = normalizeSearchValue(searchTerm);
       const searchRegex = escapeRegExp(searchTerm);
-      const searchPattern = `\\b${searchRegex}\\b`;
+      // Use word boundaries only for simple word-only terms; otherwise use the raw regex
+      const isWordOnly = /^\w+$/.test(searchTerm);
+      searchPattern = isWordOnly ? `\\b${searchRegex}\\b` : searchRegex;
       console.log(`[INDEX SEARCH] Exact search for: "${searchTerm}" normalized="${normalizedSearchTerm}" in ${neighborhoodName}`);
 
+      console.log('[INDEX SEARCH TRACE] Executing Mongo find for exact search, pattern=', searchPattern);
       const candidateResults = await ComponentSearchIndex.find({
         neighborhoodName,
         searchableTextLower: { $regex: searchPattern, $options: 'i' }
       }).lean();
 
       indexResults = candidateResults.filter((doc) => normalizeSearchValue(doc.rowName) === normalizedSearchTerm);
+      console.log('[INDEX SEARCH TRACE] Candidate results count (exact):', candidateResults.length, 'filtered->', indexResults.length);
     } else {
-      // Search with word boundaries (both start and end)
+      // Use word boundaries for simple word-only searches, otherwise match the raw substring
       const searchRegex = escapeRegExp(searchTerm);
-      const searchPattern = `\\b${searchRegex}\\b`;
+      const isWordOnly = /^\w+$/.test(searchTerm);
+      searchPattern = isWordOnly ? `\\b${searchRegex}\\b` : searchRegex;
       console.log(`[INDEX SEARCH] Searching for: "${searchTerm}" with pattern: "${searchPattern}" in ${neighborhoodName}`);
 
-      indexResults = await ComponentSearchIndex.find({
-        neighborhoodName,
-        searchableTextLower: { $regex: searchPattern, $options: 'i' }
-      }).lean();
+      const findQuery = { neighborhoodName };
+      findQuery.searchableTextLower = { $regex: searchPattern, $options: 'i' };
+      if (componentName) findQuery.componentName = componentName;
+
+      console.log('[INDEX SEARCH TRACE] Executing Mongo find with query:', JSON.stringify(findQuery));
+      indexResults = await ComponentSearchIndex.find(findQuery).lean();
+      console.log('[INDEX SEARCH TRACE] Candidate results count:', indexResults.length);
     }
     
     console.log(`[INDEX SEARCH] Found ${indexResults.length} matching rows`);

@@ -166,34 +166,46 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
     }
   }, [initialSearchTerm, neighborhoodName]);
 
-  const handleSearch = useCallback(async () => {
-    if (!searchTerm || searchTerm.length < 2) {
+  const handleSearch = useCallback(async (overrideTerm?: string) => {
+    const effectiveTerm = (typeof overrideTerm === 'string' ? overrideTerm : searchTerm) || '';
+    console.log('%c[SEARCH TRACE] handleSearch invoked', 'color:#0a0;font-weight:bold', {
+      overrideTerm,
+      searchTerm,
+      effectiveTerm,
+      neighborhoodName,
+    });
+    if (!effectiveTerm || effectiveTerm.length < 2) {
+      console.warn('[SEARCH TRACE] aborting: term too short', effectiveTerm);
       message.warning('Search term must be at least 2 characters');
       return;
     }
 
     setLoading(true);
+    setHasSearched(true);
     setResults([]); // Clear previous results
     try {
+      const url = `/api/custom-factories/search/indexed?neighborhoodName=${encodeURIComponent(
+        neighborhoodName
+      )}&term=${encodeURIComponent(effectiveTerm)}`;
+      console.log('[SEARCH TRACE] fetching', url);
       // Use indexed search endpoint for fast results
-      const response = await fetch(
-        `/api/custom-factories/search/indexed?neighborhoodName=${encodeURIComponent(
-          neighborhoodName
-        )}&term=${encodeURIComponent(searchTerm)}`
-      );
+      const response = await fetch(url);
 
+      console.log('[SEARCH TRACE] response status', response.status);
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Search failed');
       }
 
       const data = await response.json();
+      console.log('[SEARCH TRACE] results count', (data.results || []).length, data);
       setResults(data.results || []);
 
       if (data.results?.length === 0) {
         message.info('No components found matching your search');
       }
     } catch (err) {
+      console.error('[SEARCH TRACE] fetch error', err);
       const errorMsg = err instanceof Error ? err.message : 'Search failed';
       message.error(`Search error: ${errorMsg}`);
       setResults([]);
@@ -206,6 +218,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
+        console.log('[SEARCH TRACE] Enter key pressed');
         handleSearch();
       }
     },
@@ -465,7 +478,13 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
               placeholder="Search component values (min 2 characters)..."
               value={searchTerm}
               onSearch={(value) => setSearchTerm(value)}
-              onSelect={(value) => setSearchTerm(value)}
+              onSelect={(value) => {
+                const selected = String(value);
+                console.log('[SEARCH TRACE] onSelect', selected);
+                setSearchTerm(selected);
+                // Selecting a suggestion should immediately run the search
+                handleSearch(selected);
+              }}
               onChange={(value) => setSearchTerm(value)}
               options={suggestions}
               {...({ loading: loadingSuggestions } as any)}
@@ -484,7 +503,10 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
             />
             <Button
               type="primary"
-              onClick={handleSearch}
+              onClick={() => {
+                console.log('[SEARCH TRACE] Search button clicked');
+                handleSearch();
+              }}
               loading={loading}
               icon={<SearchOutlined />}
             >
@@ -550,7 +572,7 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
           <Table
             columns={columns}
             dataSource={paginatedResults}
-            rowKey={(record) => `${record.searchMatchRowId}`}
+            rowKey={(record) => `${record.searchMatchRowId}::${record.hierarchyPath}`}
             pagination={{
               current: currentPage,
               pageSize: pageSize,

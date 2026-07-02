@@ -686,40 +686,47 @@ export default function ComponentsViewer({
       const node = flatTreeNodes.find((n) => n.key === key);
       if (node) {
         setSearchText(node.label as string);
-        const compId = node.data?.componentId ? String(node.data.componentId) : null;
-        if (compId) {
-          setViewMode('table');
-          setActiveTabKey(compId);
-          setHighlightedComponentId(compId);
-          setHighlightedRowName(node.data?.rowName ? String(node.data.rowName) : null);
-          // Find ALL hierarchy paths that include this node (for multiple lineages)
-          const matchingHierarchies = hierarchies.filter((h) =>
-            h.nodes.some(
-              (n) =>
-                n.rowName === node.data?.rowName &&
-                n.componentName === node.data?.componentName
-            )
+        const selectedComponentName = node.data?.componentName ? String(node.data.componentName) : null;
+        const selectedRowName = node.data?.rowName ? String(node.data.rowName) : null;
+
+        // Find ALL hierarchy paths that include this node (for multiple lineages).
+        // Match by componentName + rowName because canonical component types are
+        // strings (not ObjectIds), so node.componentId is null and cannot be relied on.
+        const matchingHierarchies = hierarchies.filter((h) =>
+          h.nodes.some(
+            (n) =>
+              n.rowName === selectedRowName &&
+              n.componentName === selectedComponentName
+          )
+        );
+
+        if (matchingHierarchies.length > 0) {
+          const paths = matchingHierarchies.map((h) =>
+            h.nodes.map((n) => ({
+              componentName: n.componentName,
+              rowName: n.rowName,
+              componentId: n.componentId ? String(n.componentId) : '',
+            }))
           );
-          if (matchingHierarchies.length > 0) {
-            const paths = matchingHierarchies.map((h) =>
-              h.nodes.map((n) => ({
-                componentName: n.componentName,
-                rowName: n.rowName,
-                componentId: String(n.componentId),
-              }))
-            );
-            // Deduplicate paths by serializing and comparing
-            const uniquePaths = Array.from(
-              new Map(
-                paths.map((p) => [JSON.stringify(p), p])
-              ).values()
-            );
-            setAncestryPaths(uniquePaths);
-          } else {
-            setAncestryPaths(null);
+          // Deduplicate paths by serializing and comparing
+          const uniquePaths = Array.from(
+            new Map(paths.map((p) => [JSON.stringify(p), p])).values()
+          );
+          setAncestryPaths(uniquePaths);
+
+          // Switch to the table view and, if we can resolve the component tab by
+          // matching the component name to a loaded component, activate it.
+          setViewMode('table');
+          const targetComponent = selectedComponentName
+            ? components.find((c) => c.name === selectedComponentName)
+            : undefined;
+          if (targetComponent) {
+            setActiveTabKey(targetComponent._id);
+            setHighlightedComponentId(targetComponent._id);
           }
+          setHighlightedRowName(selectedRowName);
         } else {
-          // fallback to tree view if no component mapping
+          // No hierarchy paths matched — fall back to tree view and reveal the node.
           setViewMode('tree');
           const parents = computeParentKeysForPath(key as string);
           setExpandedKeys(parents);
@@ -759,34 +766,6 @@ export default function ComponentsViewer({
     const correlationId = getCorrelationIdFromComponent(component);
     onApplicationLinkClick(component.name, correlationId, undefined);
   };
-
-  // Shared search bar used by both tree and table views
-  const searchBar = (
-    <div style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#fff', paddingBottom: '12px', marginBottom: '8px', borderBottom: '2px solid #1890ff' }}>
-      <div style={{ marginBottom: '8px', fontSize: '12px', fontWeight: 600, color: '#0050b3', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-        🔍 Component Search
-      </div>
-      <AutoComplete
-        className={searchText.trim() ? 'component-search-active' : ''}
-        style={{ width: '100%' }}
-        options={searchOptions}
-        onSelect={handleSuggestionSelect}
-        onSearch={(val) => setSearchText(val)}
-        value={searchText}
-        filterOption={(inputValue, option) => {
-          if (!inputValue) return true;
-          const normalized = inputValue.toLowerCase();
-          return String(option?.value || '').toLowerCase().includes(normalized) || String(option?.label || '').toLowerCase().includes(normalized);
-        }}
-        placeholder="Search across all components and data (e.g., 'EDGE', 'Application Name')"
-      >
-        <Input suffix={<SearchOutlined />} allowClear size="large" />
-      </AutoComplete>
-      <div style={{ marginTop: '6px', fontSize: '11px', color: '#666', fontStyle: 'italic' }}>
-        Find components by name, row data, or navigate hierarchies — results appear in both tree and table views
-      </div>
-    </div>
-  );
 
   // Auto-expand tree on load - expand root node
   useEffect(() => {
@@ -887,7 +866,6 @@ export default function ComponentsViewer({
   // Render table view with all components as tabs
   const tableViewContent = (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      {searchBar}
       {/* Ancestry paths as columnar table */}
       {ancestryPaths && ancestryPaths.length > 0 && (
         <div className="component-search-results" style={{ marginBottom: '16px', border: '1px solid #d9d9d9', borderRadius: '2px', maxHeight: '30vh', flexShrink: 0 }}>
@@ -1256,7 +1234,6 @@ export default function ComponentsViewer({
   // Render tree view
   const treeViewContent = (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      {searchBar}
       {hierarchies && hierarchies.length > 0 ? (
         <div className="component-search-results" style={{ flex: 1, paddingRight: '4px' }}>
           {treeViewMode === 'vertical' ? (
