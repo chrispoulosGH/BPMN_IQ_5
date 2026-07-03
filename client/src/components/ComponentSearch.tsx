@@ -540,7 +540,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
       <Card size="small">
         <div
           style={{
-            maxHeight: 'calc(100vh - 380px)',
+            maxHeight: 'calc(var(--app-h) - 380px)',
             overflowY: 'auto',
             paddingRight: '8px',
             paddingBottom: '180px',

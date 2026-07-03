@@ -429,7 +429,7 @@ export default function DatabaseFactory({ defaultSearch, onNavigateToFactory, re
         onChange={(_pagination, filters) => setTableFilters(filters as Record<string, FilterValue | null>)}
         pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (total) => `${total} items`, position: ['topRight'] }}
         className="flex-1"
-        scroll={{ x: scrollX, y: 'calc(100vh - 220px)' }}
+        scroll={{ x: scrollX, y: 'calc(var(--app-h) - 220px)' }}
         rowSelection={readOnly ? undefined : {
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys as string[]),

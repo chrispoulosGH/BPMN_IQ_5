@@ -750,7 +750,18 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 }}
                 style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
               >
-                Add Components
+                Add Model
+              </Button>
+            ) : null}
+            {showDeleteNeighborhood && fixedNeighborhoodName ? (
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => handleDeleteNeighborhood(fixedNeighborhoodName)}
+                style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
+              >
+                Delete Framework
               </Button>
             ) : null}
             {showAddFactory && (fixedNeighborhoodName || selectedNeighborhood) ? (
@@ -776,18 +787,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 }}
                 style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
               >
-                Delete All Components
-              </Button>
-            ) : null}
-            {showDeleteNeighborhood && fixedNeighborhoodName ? (
-              <Button
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => handleDeleteNeighborhood(fixedNeighborhoodName)}
-                style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
-              >
-                Delete Framework
+                Delete Model
               </Button>
             ) : null}
           </Space>

@@ -9,6 +9,9 @@
 @tailwind utilities;
 
 /* ─── Global Overrides ────────────────────────────────────── */
+:root {
+  --app-h: 100vh; /* overridden at runtime in main.tsx to window.innerHeight */
+}
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -141,7 +144,7 @@ html, body, #root {
   background: #f8fafc;
   min-height: 0;  /* critical for flex child to shrink */
   flex: 1;
-  height: calc(100vh - 48px); /* viewport minus header */
+  height: calc(var(--app-h) - 48px); /* viewport minus header */
   overflow: hidden;
 }
 
@@ -721,7 +724,7 @@ html, body, #root {
   height: 100%;
 }
 .ant-layout .ant-layout {
-  height: calc(100vh - 48px);
+  height: calc(var(--app-h) - 48px);
   overflow: hidden;
 }
 .ant-layout-content {

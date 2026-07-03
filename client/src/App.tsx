@@ -1745,7 +1745,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   }, [activeDiagram, message, refresh]);
 
   return (
-    <Layout className="h-screen overflow-hidden">
+    <Layout className="h-screen overflow-hidden" style={{ height: 'var(--app-h)' }}>
       {/* Hidden file input for local upload */}
       <input
         ref={fileInputRef}
@@ -2126,7 +2126,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                   </div>
                 ) : (
                   <div className="flex h-full min-h-0 flex-col">
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
                       <NeighborhoodFactory
                         canManageFactories={canEditFactories}
                         onNeighborhoodsChanged={loadNeighborhoodTabs}
@@ -2157,18 +2157,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                         children: (
                           <div className="flex h-full min-h-0 flex-col">
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
-                              <span style={{ fontWeight: 700, color: '#0f172a' }}>{neighborhood.name}</span>
-                              <span style={{ fontSize: 12, color: '#64748b' }}>All component data in this view is filtered to the selected model.</span>
-                              <div style={{ marginLeft: 'auto' }}>
+                              <div>
                                 <Space size="small">
-                                  <Button
-                                    size="small"
-                                    icon={<UploadOutlined />}
-                                    onClick={() => handleImportModelBpmn(neighborhood.name)}
-                                    className="btn-bulk-import"
-                                  >
-                                    Bulk Import BPMN 2.0 XML
-                                  </Button>
                                   <NeighborhoodFactory
                                     canManageFactories={canEditFactories}
                                     fixedNeighborhoodName={neighborhood.name}
@@ -2210,6 +2200,16 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                     mode="action"
                                   />
                                 </Space>
+                              </div>
+                              <div style={{ marginLeft: 'auto' }}>
+                                <Button
+                                  size="small"
+                                  icon={<UploadOutlined />}
+                                  onClick={() => handleImportModelBpmn(neighborhood.name)}
+                                  className="btn-bulk-import"
+                                >
+                                  Bulk Import BPMN 2.0 XML
+                                </Button>
                               </div>
                             </div>
                             <Tabs

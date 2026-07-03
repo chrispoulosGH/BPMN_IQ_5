@@ -633,7 +633,7 @@ export default function BpmnFactory({ defaultSearch, onOpenDiagram, onNavigateTo
         size="small"
         loading={loading}
         pagination={{ pageSize: 20, showSizeChanger: true, position: ['topRight'] }}
-        scroll={{ y: 'calc(100vh - 260px)' }}
+        scroll={{ y: 'calc(var(--app-h) - 260px)' }}
         rowSelection={{
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys),

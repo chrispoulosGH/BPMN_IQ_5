@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useDeferredValue, useRef } from 'react';
 import { App as AntApp, Card, Space, Spin, Tree, Button, Segmented, Tabs, Empty, AutoComplete, Input, Drawer, Divider, Descriptions, Badge, Tag, Collapse, Select } from 'antd';
 import type { DataNode } from 'antd/es/tree';
-import { FolderOutlined, TableOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
+import { FolderOutlined, TableOutlined, SearchOutlined, CloseOutlined, BarsOutlined, UnorderedListOutlined } from '@ant-design/icons';
 
 import { getCustomFactories, getComponentHierarchies, getCustomFactory, getCustomFactoryForModel, getApplicationByCorrelationId, getApplicationByName, getFactoryNeighborhoods, getLeafComponent, getCanonicalFactories } from '../api';
 import type { CustomFactory, CustomFactoryRow, HierarchyPath } from '../types';
@@ -27,7 +27,7 @@ export default function ComponentsViewer({
   const [activeModelName, setActiveModelName] = useState<string>(neighborhoodName || '');
   const [components, setComponents] = useState<CustomFactory[]>([]);
   const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'tree' | 'table'>('tree');
+  const [viewMode, setViewMode] = useState<'table' | 'tree-vertical' | 'tree-horizontal'>('tree-vertical');
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export default function ComponentsViewer({
   const [highlightedComponentId, setHighlightedComponentId] = useState<string | null>(null);
   const [highlightedRowName, setHighlightedRowName] = useState<string | null>(null);
   const [ancestryPaths, setAncestryPaths] = useState<Array<Array<{ componentName: string; rowName: string; componentId: string }>> | null>(null);
-  const [treeViewMode, setTreeViewMode] = useState<'vertical' | 'horizontal'>('vertical');
+  // treeViewMode merged into viewMode ('tree-vertical' | 'tree-horizontal')
 
   // Defer search text updates to prevent blocking the UI on every keystroke
   const deferredSearchText = useDeferredValue(searchText);
@@ -727,7 +727,7 @@ export default function ComponentsViewer({
           setHighlightedRowName(selectedRowName);
         } else {
           // No hierarchy paths matched — fall back to tree view and reveal the node.
-          setViewMode('tree');
+          setViewMode('tree-vertical');
           const parents = computeParentKeysForPath(key as string);
           setExpandedKeys(parents);
           setSelectedNodeKey(key);
@@ -812,7 +812,7 @@ export default function ComponentsViewer({
 
   // Auto-scroll horizontal tree to keep selected/expanded node centered
   useEffect(() => {
-    if (treeViewMode !== 'horizontal') return;
+    if (viewMode !== 'tree-horizontal') return;
     
     const buttonToCenter = selectedNodeKey ? horizontalTreeNodeRefMap.current.get(selectedNodeKey) : null;
     if (buttonToCenter && horizontalTreeContainerRef.current) {
@@ -830,7 +830,7 @@ export default function ComponentsViewer({
         behavior: 'smooth',
       });
     }
-  }, [selectedNodeKey, expandedKeys, treeViewMode]);
+  }, [selectedNodeKey, expandedKeys, viewMode]);
 
   // Filter tree data based on search text
   const filteredTreeData = useMemo<DataNode[]>(() => {
@@ -1027,10 +1027,41 @@ export default function ComponentsViewer({
   // Horizontal tree view - graph diagram with SVG connectors (LOB Drill down style)
   const renderHorizontalTree = () => {
     const NODE_WIDTH = 140;
-    const NODE_HEIGHT = 70;
     const COLUMN_GAP = 280;
-    const ROW_GAP = 90;
+    const BETWEEN_GAP = 20;
     const PADDING = 40;
+
+    // Measure actual text width with a canvas so height is correct for any name.
+    const CONTENT_WIDTH = 104;
+    const LINE_H = 18;
+    const TYPE_H = 18;
+    const BOX_PADDING = 24;
+    const _ctx = (() => {
+      try { return (document.createElement('canvas') as HTMLCanvasElement).getContext('2d'); } catch { return null; }
+    })();
+    if (_ctx) _ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const measureLines = (name: string): number => {
+      if (!_ctx || !name) return 1;
+      const words = name.split(/\s+/);
+      let lines = 1;
+      let line = '';
+      for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (_ctx.measureText(test).width > CONTENT_WIDTH) {
+          if (!line) {
+            lines += Math.ceil(_ctx.measureText(word).width / CONTENT_WIDTH) - 1;
+          } else {
+            lines++;
+          }
+          line = word;
+        } else {
+          line = test;
+        }
+      }
+      return lines;
+    };
+    const nodeHeight = (name: string) =>
+      Math.max(56, BOX_PADDING + TYPE_H + measureLines(name) * LINE_H);
 
     // Color scheme matching vertical tree view
     const bgColors = ['#EFF6FF', '#F0FDF4', '#FEF3C7', '#FCE7F3', '#F3E8FF', '#ECFDF5'];
@@ -1040,32 +1071,49 @@ export default function ComponentsViewer({
       node: DataNode;
       depth: number;
       y: number;
+      h: number;
       parentKey: React.Key | null;
     }
 
-    // Build positioned nodes with layout
+    // Build positioned nodes — recurse children first so each parent centres over its subtree.
     const positioned: PositionedNode[] = [];
-    const positionById = new Map<React.Key, { x: number; y: number }>();
+    const positionById = new Map<React.Key, { x: number; y: number; h: number }>();
     let maxDepth = 0;
     let maxY = 0;
 
     const traverse = (nodes: DataNode[], depth: number, parentKey: React.Key | null, yOffset: number): number => {
       let currentY = yOffset;
+      let lastBottom = yOffset;
       maxDepth = Math.max(maxDepth, depth);
 
       for (const node of nodes) {
-        positioned.push({ node, depth, y: currentY, parentKey });
-        positionById.set(node.key, { x: depth * COLUMN_GAP + PADDING, y: currentY });
-        maxY = Math.max(maxY, currentY);
+        const data = (node as any).data;
+        const name = data?.rowName || String(node.key);
+        const h = nodeHeight(name);
+        const nodeX = depth * COLUMN_GAP + PADDING;
 
         if (expandedKeys.includes(node.key) && node.children && node.children.length > 0) {
-          currentY = traverse(node.children, depth + 1, node.key, currentY);
-          currentY += ROW_GAP;
+          const childrenStartY = currentY;
+          const childrenLastBottom = traverse(node.children, depth + 1, node.key, currentY);
+
+          const mid = (childrenStartY + childrenLastBottom) / 2;
+          const nodeY = Math.max(childrenStartY, mid - h / 2);
+
+          positioned.push({ node, depth, y: nodeY, h, parentKey });
+          positionById.set(node.key, { x: nodeX, y: nodeY, h });
+
+          lastBottom = Math.max(childrenLastBottom, nodeY + h);
+          maxY = Math.max(maxY, lastBottom);
+          currentY = lastBottom + BETWEEN_GAP;
         } else {
-          currentY += ROW_GAP;
+          positioned.push({ node, depth, y: currentY, h, parentKey });
+          positionById.set(node.key, { x: nodeX, y: currentY, h });
+          lastBottom = currentY + h;
+          maxY = Math.max(maxY, lastBottom);
+          currentY = lastBottom + BETWEEN_GAP;
         }
       }
-      return currentY;
+      return lastBottom;
     };
 
     traverse(filteredTreeData, 0, null, PADDING);
@@ -1095,14 +1143,13 @@ export default function ComponentsViewer({
                 if (!from || !to) return null;
 
                 const x1 = from.x + NODE_WIDTH;
-                const y1 = from.y + NODE_HEIGHT / 2;
+                const y1 = from.y + from.h / 2;
                 const x2 = to.x;
-                const y2 = to.y + NODE_HEIGHT / 2;
+                const y2 = to.y + to.h / 2;
                 const c1 = x1 + 60;
                 const c2 = x2 - 60;
                 const path = `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`;
                 
-                // Use child node color for connector line
                 const lineColor = textColors[p.depth % textColors.length];
 
                 return (
@@ -1127,7 +1174,6 @@ export default function ComponentsViewer({
             const label = nodeData?.componentName || 'Label';
             const value = nodeData?.rowName || (typeof p.node.title === 'function' ? p.node.title({ title: 'Node' } as any) : p.node.title);
             
-            // Get colors based on depth
             const bgColor = bgColors[p.depth % bgColors.length];
             const textColor = textColors[p.depth % textColors.length];
 
@@ -1149,8 +1195,8 @@ export default function ComponentsViewer({
                   position: 'absolute',
                   left: pos.x,
                   top: pos.y,
-                  minWidth: NODE_WIDTH,
-                  minHeight: NODE_HEIGHT,
+                  width: NODE_WIDTH,
+                  minHeight: p.h,
                   borderRadius: 8,
                   border: isSelected ? '2px solid #0284c7' : `2px solid ${textColor}`,
                   background: isSelected ? '#ecf0f5' : bgColor,
@@ -1236,7 +1282,7 @@ export default function ComponentsViewer({
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
       {hierarchies && hierarchies.length > 0 ? (
         <div className="component-search-results" style={{ flex: 1, paddingRight: '4px' }}>
-          {treeViewMode === 'vertical' ? (
+          {viewMode === 'tree-vertical' ? (
             <Tree
               treeData={filteredTreeData}
               expandedKeys={expandedKeys}
@@ -1257,80 +1303,45 @@ export default function ComponentsViewer({
 
   return (
     <Card
-      title="Application Hierarchy Tree"
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
       bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px' }}
     >
-      <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <Space wrap style={{ marginBottom: 12 }}>
         <Segmented
           value={viewMode}
-          onChange={(value) => setViewMode(value as 'tree' | 'table')}
-          size="small"
-          className="view-mode-toggle"
+          onChange={(value) => setViewMode(value as 'table' | 'tree-vertical' | 'tree-horizontal')}
           options={[
-            {
-              label: (
-                <>
-                  <FolderOutlined /> Tree
-                </>
-              ),
-              value: 'tree',
-            },
-            {
-              label: (
-                <>
-                  <TableOutlined /> Table
-                </>
-              ),
-              value: 'table',
-            },
+            { label: <><TableOutlined /> Table</>, value: 'table' },
+            { label: <><UnorderedListOutlined /> Tree</>, value: 'tree-vertical' },
+            { label: <><BarsOutlined /> Tree (Horizontal)</>, value: 'tree-horizontal' },
           ]}
         />
-        {viewMode === 'tree' && (
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <Button
-                size="small"
-                onClick={() => {
-                  const allKeys = filteredTreeData
-                    .flatMap((node) => {
-                      const keys: React.Key[] = [node.key];
-                      const collect = (n: DataNode) => {
-                        if (n.children) {
-                          n.children.forEach((child) => {
-                            keys.push(child.key);
-                            collect(child);
-                          });
-                        }
-                      };
-                      collect(node);
-                      return keys;
-                    });
-                  setExpandedKeys(allKeys);
-                }}
-              >
-                Expand All
-              </Button>
-              <Button size="small" onClick={() => setExpandedKeys([])}>
-                Collapse All
-              </Button>
-            </div>
-            <Divider type="vertical" style={{ margin: 0 }} />
-            <Segmented
-              value={treeViewMode}
-              onChange={(value) => setTreeViewMode(value as 'vertical' | 'horizontal')}
-              options={[
-                { label: '↓ Vertical', value: 'vertical' },
-                { label: '→ Horizontal', value: 'horizontal' },
-              ]}
-              size="small"
+        {(viewMode === 'tree-vertical' || viewMode === 'tree-horizontal') ? (
+          <>
+            <Input
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder="Search tree"
+              style={{ width: 240 }}
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
             />
-          </div>
-        )}
-      </div>
+            <Button size="small" onClick={() => {
+              const allKeys = filteredTreeData.flatMap((node) => {
+                const keys: React.Key[] = [node.key];
+                const collect = (n: DataNode) => { if (n.children) n.children.forEach((c) => { keys.push(c.key); collect(c); }); };
+                collect(node);
+                return keys;
+              });
+              setExpandedKeys(allKeys);
+            }}>Expand All</Button>
+            <Button size="small" onClick={() => setExpandedKeys([])}>Collapse All</Button>
+          </>
+        ) : null}
+      </Space>
       <Spin spinning={loading} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {viewMode === 'tree' ? treeViewContent : tableViewContent}
+          {viewMode !== 'table' ? treeViewContent : tableViewContent}
         </div>
       </Spin>
 

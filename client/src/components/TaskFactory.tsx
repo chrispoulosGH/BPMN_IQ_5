@@ -249,7 +249,7 @@ export default function TaskFactory({ defaultSearch, defaultAddData, onItemAdded
         loading={loading}
         pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} tasks`, position: ['topRight'] }}
         className="flex-1"
-        scroll={{ y: 'calc(100vh - 220px)' }}
+        scroll={{ y: 'calc(var(--app-h) - 220px)' }}
         rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
         rowSelection={readOnly ? undefined : {
           selectedRowKeys,

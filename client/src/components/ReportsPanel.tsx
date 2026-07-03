@@ -159,7 +159,7 @@ const ReportsPanel: React.FC = () => {
           flex: 1,
           width: '100%',
           border: 'none',
-          minHeight: 'calc(100vh - 240px)',
+          minHeight: 'calc(var(--app-h) - 240px)',
           borderRadius: 8,
           background: '#fff',
         }}

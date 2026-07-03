@@ -2074,6 +2074,17 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
     if (!modelCatalogHashMap.size) {
       throw createValidationError('Model catalog has no valid tuple values');
     }
+
+    // Deduplicate rows before storing — use column-sorted JSON key so identical
+    // rows with the same data are collapsed regardless of property insertion order.
+    const seenRowKeys = new Set();
+    const uniqueRows = rows.filter((row) => {
+      const key = JSON.stringify(Object.fromEntries(columns.map((col) => [col, row[col] ?? ''])));
+      if (seenRowKeys.has(key)) return false;
+      seenRowKeys.add(key);
+      return true;
+    });
+    console.log(`[MODEL CREATE] Dedup: ${rows.length} input rows → ${uniqueRows.length} unique rows`);
     
     // Convert Map to plain object for Mongoose
     const modelCatalogHash = Object.fromEntries(modelCatalogHashMap.entries());
@@ -2086,7 +2097,7 @@ router.post('/neighborhoods', requireAdminWrite, upload.single('file'), async (r
       createdBy,
       sourceFileName: req.file.originalname,
       modelCatalogColumns: columns,
-      modelCatalogRows: rows.map((row) => ({ values: row })),
+      modelCatalogRows: uniqueRows.map((row) => ({ values: row })),
       tupleType, // Store the tuple type columns
       modelCatalogHash, // Store the hash for validation
       schemaFactories: schemaFactories.map((factory) => ({
@@ -2264,6 +2275,20 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
     // NOTE: Data components are completely independent from models
     // No tuple type identification, validation, or model hash needed
     // Proceed directly to processing component columns
+
+    // Deduplicate raw rows before processing — use column-sorted JSON key so identical
+    // rows are collapsed regardless of property insertion order.
+    const seenComponentRowKeys = new Set();
+    const uniqueUploadRows = uploadRows.filter((row) => {
+      const key = JSON.stringify(Object.fromEntries(uploadColumns.map((col) => [col, row[col] ?? ''])));
+      if (seenComponentRowKeys.has(key)) return false;
+      seenComponentRowKeys.add(key);
+      return true;
+    });
+    if (uniqueUploadRows.length !== uploadRows.length) {
+      console.log(`[UPLOAD] Dedup: ${uploadRows.length} input rows → ${uniqueUploadRows.length} unique rows`);
+    }
+    uploadRows = uniqueUploadRows;
     
     // Step 1: Process component columns for schema factories
     const { componentColumns } = splitUploadColumns(uploadColumns);

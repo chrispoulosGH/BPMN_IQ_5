@@ -503,10 +503,42 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
   // Horizontal tree view - graph diagram with SVG connectors
   const renderHorizontalTree = () => {
     const NODE_WIDTH = 140;
-    const NODE_HEIGHT = 70;
     const COLUMN_GAP = 196;
-    const ROW_GAP = 90;
+    const BETWEEN_GAP = 20;
     const PADDING = 40;
+
+    // Measure actual text width with a canvas so height is correct for any name.
+    const CONTENT_WIDTH = 104; // NODE_WIDTH - expand-arrow - inner padding
+    const LINE_H = 18;         // 13px bold * 1.3 line-height
+    const TYPE_H = 18;         // uppercase type label row
+    const BOX_PADDING = 24;    // top + bottom button padding
+    const _ctx = (() => {
+      try { return (document.createElement('canvas') as HTMLCanvasElement).getContext('2d'); } catch { return null; }
+    })();
+    if (_ctx) _ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const measureLines = (name: string): number => {
+      if (!_ctx || !name) return 1;
+      const words = name.split(/\s+/);
+      let lines = 1;
+      let line = '';
+      for (const word of words) {
+        const test = line ? line + ' ' + word : word;
+        if (_ctx.measureText(test).width > CONTENT_WIDTH) {
+          // Word alone is wider than column — it will wrap character by character
+          if (!line) {
+            lines += Math.ceil(_ctx.measureText(word).width / CONTENT_WIDTH) - 1;
+          } else {
+            lines++;
+          }
+          line = word;
+        } else {
+          line = test;
+        }
+      }
+      return lines;
+    };
+    const nodeHeight = (name: string) =>
+      Math.max(56, BOX_PADDING + TYPE_H + measureLines(name) * LINE_H);
 
     const bgColors = ['#EFF6FF', '#F0FDF4', '#FEF3C7', '#FCE7F3', '#F3E8FF', '#ECFDF5'];
     const textColors = ['#0C63E4', '#15803D', '#B45309', '#BE185D', '#6D28D9', '#0891B2'];
@@ -515,31 +547,50 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
       node: DataNode;
       depth: number;
       y: number;
+      h: number;
       parentKey: React.Key | null;
     }
 
     const positioned: PositionedNode[] = [];
-    const positionById = new Map<React.Key, { x: number; y: number }>();
+    const positionById = new Map<React.Key, { x: number; y: number; h: number }>();
     let maxDepth = 0;
     let maxY = 0;
 
+    // Returns the y-bottom of the last node placed (without trailing gap).
+    // Children are laid out first so the parent can be vertically centred over them.
     const traverse = (nodes: DataNode[], depth: number, parentKey: React.Key | null, yOffset: number): number => {
       let currentY = yOffset;
+      let lastBottom = yOffset;
       maxDepth = Math.max(maxDepth, depth);
 
       for (const node of nodes) {
-        positioned.push({ node, depth, y: currentY, parentKey });
-        positionById.set(node.key, { x: depth * COLUMN_GAP + PADDING, y: currentY });
-        maxY = Math.max(maxY, currentY);
+        const h = nodeHeight(String((node as any).nodeName || ''));
+        const nodeX = depth * COLUMN_GAP + PADDING;
 
         if (expandedKeys.includes(node.key) && node.children && node.children.length > 0) {
-          currentY = traverse(node.children, depth + 1, node.key, currentY);
-          currentY += ROW_GAP;
+          // Lay out children first so we know their full vertical span.
+          const childrenStartY = currentY;
+          const childrenLastBottom = traverse(node.children, depth + 1, node.key, currentY);
+
+          // Centre parent over the children span.
+          const mid = (childrenStartY + childrenLastBottom) / 2;
+          const nodeY = Math.max(childrenStartY, mid - h / 2);
+
+          positioned.push({ node, depth, y: nodeY, h, parentKey });
+          positionById.set(node.key, { x: nodeX, y: nodeY, h });
+
+          lastBottom = Math.max(childrenLastBottom, nodeY + h);
+          maxY = Math.max(maxY, lastBottom);
+          currentY = lastBottom + BETWEEN_GAP;
         } else {
-          currentY += ROW_GAP;
+          positioned.push({ node, depth, y: currentY, h, parentKey });
+          positionById.set(node.key, { x: nodeX, y: currentY, h });
+          lastBottom = currentY + h;
+          maxY = Math.max(maxY, lastBottom);
+          currentY = lastBottom + BETWEEN_GAP;
         }
       }
-      return currentY;
+      return lastBottom;
     };
 
     traverse(treeData, 0, null, PADDING);
@@ -573,9 +624,9 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                 if (!from || !to) return null;
 
                 const x1 = from.x + NODE_WIDTH;
-                const y1 = from.y + NODE_HEIGHT / 2;
+                const y1 = from.y + from.h / 2;
                 const x2 = to.x;
-                const y2 = to.y + NODE_HEIGHT / 2;
+                const y2 = to.y + to.h / 2;
                 const c1 = x1 + 60;
                 const c2 = x2 - 60;
                 const path = `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`;
@@ -610,7 +661,6 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                 ref={(el) => {
                   if (el) {
                     horizontalTreeNodeRefMap.current.set(p.node.key, el);
-                    // Store position as data attributes for easier access
                     (el as any)._posX = pos.x;
                     (el as any)._posY = pos.y;
                   } else {
@@ -625,8 +675,8 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                   position: 'absolute',
                   left: pos.x,
                   top: pos.y,
-                  minWidth: NODE_WIDTH,
-                  minHeight: NODE_HEIGHT,
+                  width: NODE_WIDTH,
+                  minHeight: p.h,
                   borderRadius: 8,
                   border: isSelected ? '2px solid #0284c7' : `2px solid ${textColor}`,
                   background: isSelected ? '#ecf0f5' : bgColor,
@@ -681,9 +731,9 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                       if (willExpand) {
                         void loadChildren(String(p.node.key));
                       }
-                      setExpandedKeys(prev =>
+                      setExpandedKeys((prev: React.Key[]) =>
                         prev.includes(p.node.key)
-                          ? prev.filter(k => k !== p.node.key)
+                          ? prev.filter((k: React.Key) => k !== p.node.key)
                           : [...prev, p.node.key]
                       );
                     }}
@@ -724,11 +774,9 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
 
         if (typeof posX === 'number' && typeof posY === 'number') {
           const NODE_WIDTH = 140;
-          const NODE_HEIGHT = 70;
-          
-          // Calculate scroll to center the node
+          // Scroll to centre on the node's top position (height unknown here; good enough)
           const scrollLeft = posX - (container.clientWidth / 2) + (NODE_WIDTH / 2);
-          const scrollTop = posY - (container.clientHeight / 2) + (NODE_HEIGHT / 2);
+          const scrollTop = posY - (container.clientHeight / 2) + 40;
 
           container.scrollTo({
             left: Math.max(0, scrollLeft),
@@ -770,7 +818,6 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
 
   return (
     <Card
-      title="Model Catalog"
       size="small"
       style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
       bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}

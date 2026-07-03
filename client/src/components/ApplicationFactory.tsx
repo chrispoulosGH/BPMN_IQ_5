@@ -485,7 +485,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         loading={loading}
         pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: ['25', '50', '100', '200'], showTotal: (t) => `${t} items`, position: ['topRight'] }}
         className="flex-1"
-        scroll={{ x: scrollX, y: 'calc(100vh - 220px)' }}
+        scroll={{ x: scrollX, y: 'calc(var(--app-h) - 220px)' }}
         rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
         rowSelection={readOnly ? undefined : {
           selectedRowKeys,
