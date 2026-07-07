@@ -8,6 +8,8 @@ const path = require('path');
 const User = require('../models/User');
 const Component = require('../models/Component');
 const ComponentSearchIndex = require('../models/ComponentSearchIndex');
+const Data = require('../models/Data');
+const DataSearchIndex = require('../models/DataSearchIndex');
 const Model = require('../models/Model');
 const { Application, Actor, Product } = require('../models/ReferenceData');
 const Server = require('../models/Server');
@@ -17,10 +19,22 @@ const fkRegistry = require('../services/ForeignKeyRegistry');
 const fkResolver = require('../services/ForeignKeyResolver');
 const { materializeFromBatches } = require('../lib/materializer');
 const CanonicalComponent = require('../models/CanonicalComponent');
+const CanonicalData = require('../models/CanonicalData');
 const { DEFAULT_NEIGHBORHOOD_NAME } = require('../utils/neighborhoodScope');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 250 * 1024 * 1024 } });
+const handleSpreadsheetUpload = (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum upload size is 250 MB.' });
+      }
+      return next(err);
+    }
+    return next();
+  });
+};
 const PRIMARY_KEY_COLUMN = 'name';
 const LEGACY_PART_COLUMN_PATTERN = /\bparts?$/i;
 const COMPONENT_COLUMN_PATTERN = /\bcomponents?$/i;
@@ -566,6 +580,8 @@ function parseForeignKeyColumnHeader(header) {
     ? normalizedFieldName
     : `fk_${getComponentFieldName(targetColumnName || targetGroup || rawReference || 'reference')}`;
 
+  const targetColumnNameBase = getNormalizedText(targetColumnName).replace(/\s+qualifier$/i, '').trim();
+
   return {
     name: trimmedHeader,
     sourceColumnName: trimmedHeader,
@@ -574,6 +590,7 @@ function parseForeignKeyColumnHeader(header) {
     targetGroup,
     targetScope,
     targetColumnName: getNormalizedText(targetColumnName),
+    targetColumnNameBase,
   };
 }
 
@@ -950,6 +967,7 @@ function splitUploadColumns(columns) {
       targetGroup: foreignKey.targetGroup,
       targetScope: foreignKey.targetScope,
       targetColumnName: foreignKey.targetColumnName,
+      targetColumnNameBase: foreignKey.targetColumnNameBase,
     })),
   }));
 
@@ -968,29 +986,52 @@ function validateUploadRowsAgainstModel({ modelCatalogRows = [], matchedModelCol
 }
 
 function getDataComponentType(componentName) {
-  const normalized = getComparableValue(componentName);
+  const normalized = getRequestedLoadTypeName(componentName);
   if (!normalized) return null;
 
+  const compact = normalized.toLowerCase().replace(/[^a-z0-9]+/g, '');
   const aliases = new Map([
     ['application', 'application'],
     ['applications', 'application'],
     ['app', 'application'],
     ['apps', 'application'],
-    ['product', 'product'],
-    ['products', 'product'],
     ['server', 'server'],
     ['servers', 'server'],
-    ['db', 'databaseInstance'],
-    ['database', 'databaseInstance'],
-    ['database instance', 'databaseInstance'],
-    ['database instances', 'databaseInstance'],
-    ['db instance', 'databaseInstance'],
-    ['db instances', 'databaseInstance'],
+    ['servercomponent', 'server'],
+    ['serverscomponent', 'server'],
+    ['product', 'product'],
+    ['products', 'product'],
     ['actor', 'actor'],
     ['actors', 'actor'],
+    ['database', 'databaseinstance'],
+    ['databases', 'databaseinstance'],
+    ['databaseinstance', 'databaseinstance'],
+    ['databaseinstances', 'databaseinstance'],
+    ['db', 'databaseinstance'],
+    ['dbs', 'databaseinstance'],
+    ['dbinstance', 'databaseinstance'],
+    ['dbinstances', 'databaseinstance'],
   ]);
 
-  return aliases.get(normalized) || null;
+  return aliases.get(compact) || compact;
+}
+
+function getRequestedLoadTypeName(value) {
+  return getNormalizedText(value).replace(/\s+data$/i, '').replace(/\s+component$/i, '').trim();
+}
+
+function normalizeDataTypeKey(value) {
+  return getDataComponentType(value) || '';
+}
+
+function columnMatchesRequestedLoadType(columnName, requestedTypeName) {
+  const requested = normalizeDataTypeKey(requestedTypeName);
+  if (!requested) return true;
+
+  const columnAlias = normalizeDataTypeKey(columnName);
+  if (columnAlias) return requested === columnAlias;
+
+  return getComparableValue(columnName) === getComparableValue(requestedTypeName);
 }
 
 function getApplicationCorrelationIdFromUploadRow(row) {
@@ -1432,6 +1473,9 @@ function serializeFactory(factory) {
     name: factory.name,
     sourceColumnName: factory.sourceColumnName || '',
     parentFactoryName: factory.parentFactoryName || '',
+    componentType: factory.componentType || '',
+    dataType: factory.dataType || '',
+    loadDomain: factory.loadDomain || '',
     columns: factory.columns,
     qualifierColumns: (factory.qualifierColumns || []).map((qualifier) => ({
       name: qualifier.name,
@@ -1453,8 +1497,8 @@ function serializeFactory(factory) {
     createdAt: factory.createdAt,
     updatedAt: factory.updatedAt,
     rowCount: Array.isArray(factory.rows) ? factory.rows.length : 0,
-    rows: (factory.rows || []).map((row) => ({
-      _id: String(row._id),
+    rows: (factory.rows || []).map((row, rowIndex) => ({
+      _id: String(row._id || `${factory._id || factory.batchId || factory.name}:${rowIndex}`),
       values: toPlainObject(row.values),
       owner: row.owner || '',
       state: row.state || 'staged',
@@ -1738,19 +1782,24 @@ router.get('/neighborhoods', async (_req, res) => {
   try {
     await migrateFactoriesToDefaultNeighborhood();
     await ensureNeighborhoodRecordsFromFactories();
-    const [neighborhoods, counts] = await Promise.all([
+    const [neighborhoods, counts, dataCounts] = await Promise.all([
       Model.find({}, { name: 1, owner: 1, createdBy: 1, createdAt: 1, updatedAt: 1, _id: 0 }).sort({ name: 1 }).lean(),
       Component.aggregate([
         { $group: { _id: '$neighborhoodName', componentCount: { $sum: 1 }, updatedAt: { $max: '$updatedAt' } } },
       ]),
+      Data.aggregate([
+        { $group: { _id: '$neighborhoodName', dataCount: { $sum: 1 }, updatedAt: { $max: '$updatedAt' } } },
+      ]),
     ]);
     const countMap = new Map(counts.map((row) => [row._id, row]));
+    const dataCountMap = new Map(dataCounts.map((row) => [row._id, row]));
     res.json(neighborhoods.map((neighborhood) => ({
       ...neighborhood,
-      factoryCount: countMap.get(neighborhood.name)?.componentCount || 0,
+      factoryCount: (countMap.get(neighborhood.name)?.componentCount || 0) + (dataCountMap.get(neighborhood.name)?.dataCount || 0),
       partCount: countMap.get(neighborhood.name)?.componentCount || 0,
       componentCount: countMap.get(neighborhood.name)?.componentCount || 0,
-      updatedAt: countMap.get(neighborhood.name)?.updatedAt || neighborhood.updatedAt,
+      dataCount: dataCountMap.get(neighborhood.name)?.dataCount || 0,
+      updatedAt: dataCountMap.get(neighborhood.name)?.updatedAt || countMap.get(neighborhood.name)?.updatedAt || neighborhood.updatedAt,
     })));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1760,6 +1809,76 @@ router.get('/neighborhoods', async (_req, res) => {
 router.get('/', async (req, res) => {
   try {
     const neighborhoodName = String(req.query.neighborhoodName || '').trim();
+    const loadDomain = String(req.query.loadDomain || '').trim().toLowerCase();
+
+    if (loadDomain === 'data') {
+      const dataQuery = (neighborhoodName && neighborhoodName !== '__all__') ? { neighborhoodName } : {};
+      const db = mongoose.connection.db;
+      const batchProjection = {
+        neighborhoodName: 1,
+        modelName: 1,
+        name: 1,
+        loadDomain: 1,
+        dataType: 1,
+        sourceColumnName: 1,
+        shortDescription: 1,
+        parentFactoryName: 1,
+        componentType: 1,
+        columns: 1,
+        qualifierColumns: 1,
+        foreignKeyColumns: 1,
+        owner: 1,
+        createdBy: 1,
+        sourceFileName: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        uploadedAt: 1,
+        rows: 1,
+      };
+      const dataBatchFactories = await db.collection('dataBatches')
+        .find(dataQuery, { projection: batchProjection })
+        .sort({ neighborhoodName: 1, dataType: 1, name: 1, uploadedAt: 1 })
+        .toArray()
+        .catch(() => []);
+
+      if (dataBatchFactories.length) {
+        return res.json(dataBatchFactories.map((factory) => serializeFactory(factory)));
+      }
+
+      const dataFactories = await Data.find({
+        ...dataQuery,
+        $or: [
+          { loadDomain: 'data' },
+          { modelName: '' },
+          { modelName: { $exists: false } },
+          { dataType: { $nin: ['', null] } },
+          { sourceFileName: { $not: /\bmodel\s+data\.csv$/i } },
+        ],
+      }, {
+        neighborhoodName: 1,
+        modelName: 1,
+        name: 1,
+        dataType: 1,
+        sourceColumnName: 1,
+        shortDescription: 1,
+        parentFactoryName: 1,
+        componentType: 1,
+        columns: 1,
+        qualifierColumns: 1,
+        foreignKeyColumns: 1,
+        owner: 1,
+        createdBy: 1,
+        sourceFileName: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        rows: 1,
+      })
+        .sort({ neighborhoodName: 1, name: 1 })
+        .lean();
+
+      return res.json(dataFactories.map((factory) => serializeFactory(factory)));
+    }
+
     const headerModelName = String(req.headers['x-model-name'] || req.headers['X-Model-Name'] || '').trim();
     const query = headerModelName ? { modelName: headerModelName } : (neighborhoodName ? { neighborhoodName } : {});
     const factories = await Component.find(query, { neighborhoodName: 1, modelName: 1, name: 1, owner: 1, createdBy: 1, sourceFileName: 1, columns: 1, createdAt: 1, updatedAt: 1, rows: 1 })
@@ -2177,7 +2296,7 @@ router.delete('/neighborhoods/:name', requireAdminWrite, async (req, res) => {
     const remainingCanonicalCount = await db.collection('canonicalcomponents').countDocuments({ neighborhoodName: name });
 
     if (remainingFactoryCount > 0 || remainingBatchCount > 0 || remainingCanonicalCount > 0) {
-      throw createValidationError(`Model ${name} still has data after delete: components=${remainingFactoryCount}, batches=${remainingBatchCount}, canonical=${remainingCanonicalCount}`, 500);
+      throw createValidationError(`Model ${name} still has component data after delete: components=${remainingFactoryCount}, batches=${remainingBatchCount}, canonical=${remainingCanonicalCount}`, 500);
     }
 
     res.json({
@@ -2212,9 +2331,13 @@ router.delete('/neighborhoods/:name/components', requireAdminWrite, async (req, 
       success: true,
       neighborhoodName: name,
       deletedFactoryCount: deletedFactories.deletedCount || 0,
+      deletedDataCount: deletedData.deletedCount || 0,
       deletedBatchCount: deletedBatches.deletedCount || 0,
+      deletedDataBatchCount: deletedDataBatches.deletedCount || 0,
       deletedCanonicalCount: deletedCanonical.deletedCount || 0,
+      deletedCanonicalDataCount: deletedCanonicalData.deletedCount || 0,
       deletedIndexCount: deletedIndex.deletedCount || 0,
+      deletedDataIndexCount: deletedDataIndex.deletedCount || 0,
     });
   } catch (err) {
     console.error('[DELETE ALL COMPONENTS] error', err && err.message);
@@ -2222,37 +2345,84 @@ router.delete('/neighborhoods/:name/components', requireAdminWrite, async (req, 
   }
 });
 
-router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res) => {
+// DELETE /api/custom-factories/data/:dataType — delete a single Data type (e.g. Data[Applications])
+// without affecting other Data types (e.g. Data[Servers]).
+router.delete('/data/:dataType', requireAdminWrite, async (req, res) => {
+  const rawType = String(req.params?.dataType || '').trim();
+  if (!rawType) return res.status(400).json({ error: 'Data type is required' });
+
+  const neighborhoodName = String(req.query?.neighborhoodName || '').trim();
+  try {
+    const db = mongoose.connection.db;
+    const typeRegex = new RegExp(`^${escapeRegExp(rawType)}$`, 'i');
+    const scope = (neighborhoodName && neighborhoodName !== '__all__') ? { neighborhoodName } : {};
+
+    const typeMatch = { $or: [{ dataType: typeRegex }, { componentType: typeRegex }, { name: typeRegex }] };
+    const batchFilter = { ...scope, ...typeMatch };
+    const dataFilter = { ...scope, ...typeMatch };
+    const canonicalFilter = { ...scope, componentType: typeRegex };
+    const indexFilter = { ...scope, $or: [{ componentName: typeRegex }, { dataType: typeRegex }] };
+
+    const [deletedBatches, deletedData, deletedCanonicalData, deletedDataIndex] = await Promise.all([
+      db.collection('dataBatches').deleteMany(batchFilter).catch(() => ({ deletedCount: 0 })),
+      Data.deleteMany(dataFilter).catch(() => ({ deletedCount: 0 })),
+      CanonicalData.deleteMany(canonicalFilter).catch(() => ({ deletedCount: 0 })),
+      DataSearchIndex.deleteMany(indexFilter).catch(() => ({ deletedCount: 0 })),
+    ]);
+
+    return res.json({
+      success: true,
+      dataType: rawType,
+      neighborhoodName: neighborhoodName || null,
+      deletedBatchCount: deletedBatches.deletedCount || 0,
+      deletedDataCount: deletedData.deletedCount || 0,
+      deletedCanonicalDataCount: deletedCanonicalData.deletedCount || 0,
+      deletedDataIndexCount: deletedDataIndex.deletedCount || 0,
+    });
+  } catch (err) {
+    console.error('[DELETE DATA TYPE] error', err && err.message);
+    return res.status(err?.status || 500).json({ error: getValidationMessage(err) });
+  }
+});
+
+router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, res) => {
   const neighborhoodName = String(req.body?.neighborhoodName || '').trim();
   const componentName = String(req.body?.componentName || '').trim();
+  const dataType = getRequestedLoadTypeName(req.body?.dataType || req.body?.loadType || componentName);
+  const loadDomainRaw = String(req.body?.loadDomain || req.body?.collectionType || '').trim().toLowerCase();
+  const loadDomain = loadDomainRaw === 'data' ? 'data' : 'component';
+  const batchCollectionName = loadDomain === 'data' ? 'dataBatches' : 'dataComponentBatches';
   if (!neighborhoodName) return res.status(400).json({ error: 'Model name is required' });
   if (!req.file?.buffer) return res.status(400).json({ error: 'Spreadsheet file is required' });
+  if (loadDomain === 'data' && !dataType) return res.status(400).json({ error: 'Data type is required' });
 
   try {
-    const neighborhood = await Model.findOne({ name: neighborhoodName }).lean();
-    if (!neighborhood) return res.status(404).json({ error: 'Model not found' });
+    const neighborhood = loadDomain === 'data' ? null : await Model.findOne({ name: neighborhoodName }).lean();
+    if (loadDomain !== 'data') {
+      if (!neighborhood) return res.status(404).json({ error: 'Model not found' });
 
-    if (!Array.isArray(neighborhood.modelCatalogColumns) || !neighborhood.modelCatalogColumns.length || !Array.isArray(neighborhood.modelCatalogRows) || !neighborhood.modelCatalogRows.length) {
-      return res.status(409).json({ error: 'Model catalog is missing. Delete and reload the model before loading components.' });
+      if (!Array.isArray(neighborhood.modelCatalogColumns) || !neighborhood.modelCatalogColumns.length || !Array.isArray(neighborhood.modelCatalogRows) || !neighborhood.modelCatalogRows.length) {
+        return res.status(409).json({ error: 'Model catalog is missing. Delete and reload the model before loading components.' });
+      }
+
+      // Ensure modelCatalogRows have properly structured values
+      // When using .lean() with Map fields, Mongoose may not convert them properly
+      const normalizedModelRows = (neighborhood.modelCatalogRows || []).map((row) => {
+        if (!row.values) {
+          console.log('[UPLOAD DEBUG] Row has no values field, attempting to extract from row itself');
+          return { values: row };
+        }
+        // Ensure values is a plain object
+        if (row.values instanceof Map) {
+          return { values: Object.fromEntries(row.values.entries()) };
+        }
+        if (typeof row.values === 'object' && row.values !== null) {
+          return { values: { ...row.values } };
+        }
+        return row;
+      });
+      neighborhood.modelCatalogRows = normalizedModelRows;
     }
-
-    // Ensure modelCatalogRows have properly structured values
-    // When using .lean() with Map fields, Mongoose may not convert them properly
-    const normalizedModelRows = (neighborhood.modelCatalogRows || []).map((row) => {
-      if (!row.values) {
-        console.log('[UPLOAD DEBUG] Row has no values field, attempting to extract from row itself');
-        return { values: row };
-      }
-      // Ensure values is a plain object
-      if (row.values instanceof Map) {
-        return { values: Object.fromEntries(row.values.entries()) };
-      }
-      if (typeof row.values === 'object' && row.values !== null) {
-        return { values: { ...row.values } };
-      }
-      return row;
-    });
-    neighborhood.modelCatalogRows = normalizedModelRows;
 
     // Parse uploaded file with enhanced error handling
     let uploadColumns, uploadRows;
@@ -2295,20 +2465,14 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
     
     // Step 2: Filter component columns by specified component type (if provided)
     let filteredComponentColumns = componentColumns;
-    if (componentName) {
-      const targetComponentType = getDataComponentType(componentName);
-      if (!targetComponentType) {
-        return res.status(400).json({
-          error: `Invalid component name: "${componentName}". Supported types: Application, Server, Database.`,
-        });
-      }
+    const requestedTypeName = loadDomain === 'data' ? dataType : componentName;
+    if (requestedTypeName) {
       filteredComponentColumns = componentColumns.filter((col) => {
-        const colComponentType = getDataComponentType(col.name);
-        return colComponentType === targetComponentType;
+        return columnMatchesRequestedLoadType(col.name, requestedTypeName);
       });
       if (!filteredComponentColumns.length) {
         return res.status(400).json({
-          error: `No columns found for component type "${componentName}" in the uploaded file.`,
+          error: `No columns found for ${loadDomain === 'data' ? 'data type' : 'component type'} "${requestedTypeName}" in the uploaded file.`,
         });
       }
     }
@@ -2354,9 +2518,11 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
     // Each batch is stored as a separate factory - no merging
     
     const rollbackSnapshots = [];
-    const rollbackModelSchemaFactories = Array.isArray(neighborhood.schemaFactories)
-      ? JSON.parse(JSON.stringify(neighborhood.schemaFactories))
-      : [];
+    const rollbackModelSchemaFactories = loadDomain === 'data'
+      ? []
+      : (Array.isArray(neighborhood?.schemaFactories)
+        ? JSON.parse(JSON.stringify(neighborhood.schemaFactories))
+        : []);
     const createdFactoryIds = [];
     const savedFactories = [];
 
@@ -2364,29 +2530,31 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
       for (const uploadedFactory of uploadedFactories) {
         // Data components are stored in a dedicated collection for batches
         // Each batch is a separate document to avoid 16MB limit and unique index conflicts
-        uploadedFactory.modelName = neighborhoodName;
+        uploadedFactory.modelName = loadDomain === 'data' ? '' : neighborhoodName;
         uploadedFactory.neighborhoodName = neighborhoodName;
+        uploadedFactory.loadDomain = loadDomain;
+        uploadedFactory.dataType = loadDomain === 'data' ? dataType : '';
         // Preserve the uploaded header-derived name as the componentType (no alias mapping)
         uploadedFactory.componentType = uploadedFactory.name;
         
         // Get the MongoDB collection directly - use dedicated batch collection
         const db = mongoose.connection.db;
-        const collection = db.collection('dataComponentBatches');
+        const collection = db.collection(batchCollectionName);
         
         // Add unique batch ID and timestamps
         const batchId = Date.now() + Math.random().toString(36).substr(2, 9);
         uploadedFactory.batchId = batchId;
         uploadedFactory.uploadedAt = new Date();
         
-        console.log(`[UPLOAD] Creating batch ${batchId} for ${uploadedFactory.componentType}/${uploadedFactory.name} with ${uploadedFactory.rows?.length || 0} rows`);
+        console.log(`[UPLOAD] Creating ${loadDomain} batch ${batchId} for ${uploadedFactory.componentType}/${uploadedFactory.name} with ${uploadedFactory.rows?.length || 0} rows`);
         const insertResult = await collection.insertOne(uploadedFactory);
-        createdFactoryIds.push({ collection: 'dataComponentBatches', id: insertResult.insertedId });
+        createdFactoryIds.push({ collection: batchCollectionName, id: insertResult.insertedId });
         
         // Register FK columns in the registry
         (uploadedFactory.foreignKeyColumns || []).forEach((fk) => {
           fkRegistry.registerForeignKey(fk, {
             neighborhoodName,
-            modelName: neighborhoodName,
+            modelName: loadDomain === 'data' ? '' : neighborhoodName,
             componentName: uploadedFactory.name,
           });
         });
@@ -2397,16 +2565,16 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
       }
 
       // Component upload complete
-      console.log('[COMPONENT] Component upload complete - created', createdFactoryIds.length, 'factories');
+      console.log(`[${loadDomain.toUpperCase()}] Upload complete - created`, createdFactoryIds.length, 'factories');
 
       // Trigger materializer in background to populate canonical components from newly created batches
       try {
         // Run materializer synchronously so canonical components are available
         try {
-          const matRes = await materializeFromBatches({ neighborhoodName });
+          const matRes = await materializeFromBatches({ neighborhoodName, domain: loadDomain });
           console.log('[MATERIALIZER] processed', matRes.processed);
           try {
-            await materializeFromBatches.postProcess({ neighborhoodName });
+            await materializeFromBatches.postProcess({ neighborhoodName, domain: loadDomain });
           } catch (err) {
             console.error('[MATERIALIZER] postProcess failed', err && err.message);
           }
@@ -2445,17 +2613,22 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
         factory.foreignKeyColumns = mergeColumnMetadata(factory.foreignKeyColumns || [], matchingUploadedFactory.foreignKeyColumns || []);
       });
 
-      await Model.updateOne(
-        { name: neighborhoodName },
-        { $set: { schemaFactories: rollbackModelSchemaFactories } }
-      ).catch(() => null);
+      if (loadDomain !== 'data') {
+        await Model.updateOne(
+          { name: neighborhoodName },
+          { $set: { schemaFactories: rollbackModelSchemaFactories } }
+        ).catch(() => null);
+      }
 
       throw writeError;
     }
 
     // Rebuild search index after component upload (async, non-blocking)
     // Fire-and-forget: don't await, don't block response
-    rebuildSearchIndex(neighborhoodName).catch((err) => {
+    const rebuildOptions = loadDomain === 'data'
+      ? { CanonicalModel: CanonicalData, SearchIndexModel: DataSearchIndex, indexLabel: 'DataSearchIndex' }
+      : undefined;
+    rebuildSearchIndex(neighborhoodName, rebuildOptions).catch((err) => {
       console.error(`[INDEX] Failed to rebuild search index after upload: ${err.message}`);
       // Don't fail the upload if index rebuild fails - it can be rebuilt manually
     });
@@ -2478,6 +2651,7 @@ router.post('/upload', requireAdminWrite, upload.single('file'), async (req, res
 
 router.put('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.factoryId)) return res.status(404).json({ error: 'Component not found' });
     const factory = await Component.findById(req.params.factoryId);
     if (!factory) return res.status(404).json({ error: 'Component not found' });
     const row = factory.rows.id(req.params.rowId);
@@ -2512,6 +2686,7 @@ router.put('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => {
 
 router.delete('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.factoryId)) return res.status(404).json({ error: 'Component not found' });
     const factory = await Component.findById(req.params.factoryId);
     if (!factory) return res.status(404).json({ error: 'Component not found' });
     const row = factory.rows.id(req.params.rowId);
@@ -2526,6 +2701,7 @@ router.delete('/:factoryId/rows/:rowId', requireAdminWrite, async (req, res) => 
 
 router.delete('/:factoryId', requireAdminWrite, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.factoryId)) return res.status(404).json({ error: 'Component not found' });
     const factory = await Component.findById(req.params.factoryId).lean();
     if (!factory) return res.status(404).json({ error: 'Component not found' });
 
@@ -3241,6 +3417,7 @@ router.post('/fk-validate', async (req, res) => {
 // GET /components/:componentId/fk-enriched: Get component with resolved FK data
 router.get('/components/:componentId/fk-enriched', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.componentId)) return res.status(404).json({ error: 'Component not found' });
     const component = await Component.findById(req.params.componentId).lean();
     if (!component) return res.status(404).json({ error: 'Component not found' });
 
@@ -3257,6 +3434,7 @@ router.get('/components/:componentId/fk-enriched', async (req, res) => {
 // GET /components/:componentId/fk-references: Get all components referenced by FK columns
 router.get('/components/:componentId/fk-references', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.componentId)) return res.status(404).json({ error: 'Component not found' });
     const component = await Component.findById(req.params.componentId);
     if (!component) return res.status(404).json({ error: 'Component not found' });
 
@@ -3283,6 +3461,7 @@ router.get('/components/:componentId/fk-references', async (req, res) => {
 // POST /components/:componentId/fk-validate: Validate all FK values in a component
 router.post('/components/:componentId/fk-validate', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.componentId)) return res.status(404).json({ error: 'Component not found' });
     const component = await Component.findById(req.params.componentId);
     if (!component) return res.status(404).json({ error: 'Component not found' });
 
@@ -3348,16 +3527,50 @@ router.get('/:id', async (req, res) => {
     // resolve it directly from canonicalcomponents to avoid ObjectId cast errors and return
     // a legacy-shaped factory.
     if (id.includes(':')) {
-      const parts = id.split(':');
-      const neighborhoodFromId = parts.shift();
-      const componentTypeFromId = parts.join(':');
+      const idParts = id.split(':');
+      const possibleMatches = [];
+      for (let splitIndex = 1; splitIndex < idParts.length; splitIndex += 1) {
+        possibleMatches.push({
+          neighborhoodName: idParts.slice(0, splitIndex).join(':'),
+          componentType: idParts.slice(splitIndex).join(':'),
+        });
+      }
       try {
-        const docs = await CanonicalComponent.find({ neighborhoodName: neighborhoodFromId, componentType: componentTypeFromId }).sort({ primaryKey: 1 }).limit(1000).lean();
+        let docs = [];
+        let neighborhoodFromId = '';
+        let componentTypeFromId = '';
+        for (const match of possibleMatches) {
+          docs = await CanonicalComponent.find({ neighborhoodName: match.neighborhoodName, componentType: match.componentType }).sort({ primaryKey: 1 }).limit(1000).lean();
+          if (Array.isArray(docs) && docs.length) {
+            neighborhoodFromId = match.neighborhoodName;
+            componentTypeFromId = match.componentType;
+            break;
+          }
+        }
         if (Array.isArray(docs) && docs.length) {
           // Derive column list from canonical values
           const columnsSet = new Set();
           docs.forEach((d) => {
             if (d.values && typeof d.values === 'object') Object.keys(d.values).forEach((k) => columnsSet.add(k));
+          });
+          const db = mongoose.connection.db;
+          const batchDocs = await db.collection('dataComponentBatches')
+            .find({
+              neighborhoodName: neighborhoodFromId,
+              $or: [
+                { componentType: { $regex: `^${escapeRegExp(componentTypeFromId)}$`, $options: 'i' } },
+                { name: { $regex: `^${escapeRegExp(componentTypeFromId)}$`, $options: 'i' } },
+              ],
+            })
+            .project({ foreignKeyColumns: 1 })
+            .toArray();
+          const fkByField = new Map();
+          batchDocs.forEach((doc) => {
+            (doc.foreignKeyColumns || []).forEach((fk) => {
+              const key = String(fk.fieldName || fk.sourceColumnName || fk.name || '').trim().toLowerCase();
+              if (!key || fkByField.has(key)) return;
+              fkByField.set(key, fk);
+            });
           });
           const converted = {
             _id: id,
@@ -3367,7 +3580,7 @@ router.get('/:id', async (req, res) => {
             parentFactoryName: '',
             columns: Array.from(columnsSet),
             qualifierColumns: [],
-            foreignKeyColumns: [],
+            foreignKeyColumns: Array.from(fkByField.values()),
             owner: '',
             createdBy: '',
             sourceFileName: '',
@@ -3389,8 +3602,9 @@ router.get('/:id', async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(id)) {
       factory = await Component.findById(id).lean();
     } else {
-      // Try to find by name or string _id
-      factory = await Component.findOne({ $or: [{ _id: id }, { name: id }] }).lean();
+      // Non-ObjectId synthetic ids such as "Domain:SubDomain_Name" must not be queried
+      // against _id, because Mongoose will still attempt to cast and throw.
+      factory = await Component.findOne({ name: id }).lean();
     }
     if (!factory) {
       // Try to resolve from dataComponentBatches if not found in Component collection

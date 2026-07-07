@@ -236,24 +236,32 @@ export const getCustomFactories = (neighborhoodName?: string, modelName?: string
   return api.get('/custom-factories').then((r) => r.data as CustomFactory[]);
 };
 
+export const getDataFactories = (neighborhoodName?: string): Promise<CustomFactory[]> =>
+  api.get('/custom-factories', {
+    params: {
+      loadDomain: 'data',
+      ...(neighborhoodName ? { neighborhoodName } : {}),
+    },
+  }).then((r) => r.data as CustomFactory[]);
+
 // --- Canonical API helpers (new) ---
-export const getCanonicalTypes = (neighborhoodName: string): Promise<string[]> =>
-  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/types`).then((r) => r.data.types || []);
+export const getCanonicalTypes = (neighborhoodName: string, domain: 'component' | 'data' = 'component'): Promise<string[]> =>
+  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/types`, { params: domain === 'data' ? { domain } : undefined }).then((r) => r.data.types || []);
 
-export const getCanonicalMeta = (neighborhoodName: string, componentType: string): Promise<any> =>
-  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/${encodeURIComponent(componentType)}/meta`).then((r) => r.data);
+export const getCanonicalMeta = (neighborhoodName: string, componentType: string, domain: 'component' | 'data' = 'component'): Promise<any> =>
+  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/${encodeURIComponent(componentType)}/meta`, { params: domain === 'data' ? { domain } : undefined }).then((r) => r.data);
 
-export const getCanonicalRows = (neighborhoodName: string, componentType: string, page = 1, limit = 100, search?: string): Promise<any> =>
-  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/${encodeURIComponent(componentType)}/rows`, { params: { page, limit, search } }).then((r) => r.data);
+export const getCanonicalRows = (neighborhoodName: string, componentType: string, page = 1, limit = 100, search?: string, domain: 'component' | 'data' = 'component'): Promise<any> =>
+  api.get(`/canonical/${encodeURIComponent(neighborhoodName)}/${encodeURIComponent(componentType)}/rows`, { params: { page, limit, search, ...(domain === 'data' ? { domain } : {}) } }).then((r) => r.data);
 
 // Convenience: return an array of factory-like objects for the neighborhood by sampling meta and first page rows
-export const getCanonicalFactories = async (neighborhoodName: string, fetchFirstPage = true, pageLimit = 50): Promise<CustomFactory[]> => {
-  const types = await getCanonicalTypes(neighborhoodName);
+export const getCanonicalFactories = async (neighborhoodName: string, fetchFirstPage = true, pageLimit = 50, domain: 'component' | 'data' = 'component'): Promise<CustomFactory[]> => {
+  const types = await getCanonicalTypes(neighborhoodName, domain);
   const out: CustomFactory[] = [];
   for (const t of types) {
     try {
-      const meta = await getCanonicalMeta(neighborhoodName, t);
-      const rowsResp = fetchFirstPage ? await getCanonicalRows(neighborhoodName, t, 1, Math.min(100, pageLimit)) : { rows: [] };
+      const meta = await getCanonicalMeta(neighborhoodName, t, domain);
+      const rowsResp = fetchFirstPage ? await getCanonicalRows(neighborhoodName, t, 1, Math.min(100, pageLimit), undefined, domain) : { rows: [] };
       const factory: any = {
         _id: `${neighborhoodName}:${t}`,
         neighborhoodName,
@@ -261,11 +269,12 @@ export const getCanonicalFactories = async (neighborhoodName: string, fetchFirst
         columns: meta.columns || [],
         rowCount: meta.total || 0,
         rows: (rowsResp.rows || []).map((r: any) => ({ _id: r.primaryKey || r._id, values: r.values || {} })),
+        foreignKeyColumns: meta.foreignKeyColumns || [],
         sourceColumnName: '',
         shortDescription: '',
       };
       out.push(factory as CustomFactory);
-    } catch (e) {
+    } catch (e: any) {
       // ignore individual type errors
       console.warn('getCanonicalFactories error for', t, e && e.message);
     }
@@ -299,10 +308,16 @@ export const getApplicationByCorrelationId = (correlationId: string, neighborhoo
 export const getApplicationByName = (name: string, neighborhoodName?: string): Promise<any> =>
   api.get(`/reference/applications/by-name/${encodeURIComponent(name)}`, scopedRequestConfig(neighborhoodName)).then((r) => r.data);
 
-export const uploadCustomFactory = (params: { neighborhoodName: string; file: File; componentName?: string }): Promise<{ factories: CustomFactory[] }> => {
+export const uploadCustomFactory = (params: { neighborhoodName: string; file: File; componentName?: string; dataType?: string; loadDomain?: 'component' | 'data' }): Promise<{ factories: CustomFactory[] }> => {
   const body = new FormData();
   body.append('neighborhoodName', params.neighborhoodName);
   body.append('file', params.file);
+  if (params.loadDomain) {
+    body.append('loadDomain', params.loadDomain);
+  }
+  if (params.dataType) {
+    body.append('dataType', params.dataType);
+  }
   if (params.componentName) {
     body.append('componentName', params.componentName);
   }
@@ -317,6 +332,24 @@ export const deleteCustomFactoryRow = (factoryId: string, rowId: string, modelNa
 
 export const deleteCustomFactory = (factoryId: string, modelName?: string): Promise<{ success: boolean; factoryId: string; neighborhoodName: string; name: string }> =>
   api.delete(`/custom-factories/${encodeURIComponent(factoryId)}`, scopedModelRequestConfig(modelName) as any).then((r) => r.data);
+
+// Delete a single Data type (e.g. Data[Applications]) without affecting other Data types (e.g. Data[Servers]).
+export const deleteDataComponentType = (
+  dataType: string,
+  neighborhoodName?: string,
+): Promise<{
+  success: boolean;
+  dataType: string;
+  deletedBatchCount: number;
+  deletedDataCount: number;
+  deletedCanonicalDataCount: number;
+  deletedDataIndexCount: number;
+}> =>
+  api
+    .delete(`/custom-factories/data/${encodeURIComponent(dataType)}`, {
+      params: neighborhoodName && neighborhoodName !== '__all__' ? { neighborhoodName } : undefined,
+    })
+    .then((r) => r.data);
 
 // ── Capabilities CRUD (for CapabilitiesFactory) ─────────────
 export const getCapabilities = (): Promise<CapabilityItem[]> =>

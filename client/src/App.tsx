@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   Layout,
   Button,
@@ -74,7 +74,7 @@ import AdminPanel from './components/AdminPanel';
 import GlobalComponentSearch from './components/GlobalComponentSearch';
 import ComponentSearch from './components/ComponentSearch';
 import { encodeExactFactorySearch } from './utils/factorySearch';
-import { getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, batchImportDiagrams, getTaskReferenceForNeighborhood, getTaskNames, getTaskNamesForNeighborhood, getActorsForNeighborhood, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, getCanonicalFactories, setApiNeighborhoodScope, validateDiagramReport, uploadCustomFactory } from './api';
+import { api, getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, batchImportDiagrams, getTaskReferenceForNeighborhood, getTaskNames, getTaskNamesForNeighborhood, getActorsForNeighborhood, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, getDataFactories, getCanonicalFactories, setApiNeighborhoodScope, validateDiagramReport, uploadCustomFactory, deleteCustomFactory, deleteDataComponentType } from './api';
 import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem, CustomFactory, FactoryNeighborhoodSummary } from './types';
 
 const { Header, Sider, Content } = Layout;
@@ -276,6 +276,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [activeNeighborhoodTab, setActiveNeighborhoodTab] = useState<string>(DEFAULT_NEIGHBORHOOD_NAME);
   const [loadingNeighborhoodTabs, setLoadingNeighborhoodTabs] = useState(false);
   const [neighborhoodFactories, setNeighborhoodFactories] = useState<Record<string, CustomFactory[]>>({});
+  const [dataFactories, setDataFactories] = useState<Record<string, CustomFactory[]>>({});
   const [loadingNeighborhoodFactories, setLoadingNeighborhoodFactories] = useState<Record<string, boolean>>({});
 
   const renderScrollablePane = (child: React.ReactNode) => (
@@ -342,6 +343,26 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     ];
 
     return reservedTabEntries.find(([label]) => label === normalizedName)?.[1] || null;
+  }, []);
+
+  const getDataFactoryTabKey = useCallback((factory: CustomFactory) => {
+    const candidate = String(factory.dataType || factory.componentType || factory.name || '').trim();
+    return getReservedModelTabKey(candidate) || candidate.toLowerCase();
+  }, [getReservedModelTabKey]);
+
+  const getDataTypeDisplayName = useCallback((key: string) => {
+    const reserved: Record<string, string> = {
+      applications: 'Applications',
+      actors: 'Actors',
+      products: 'Products',
+      servers: 'Servers',
+      databases: 'Databases',
+    };
+    if (reserved[key]) return reserved[key];
+    return String(key || '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/(^|\s)\S/g, (m) => m.toUpperCase())
+      .trim();
   }, []);
 
   const getDisplayedFactoryCount = useCallback((neighborhood: FactoryNeighborhoodSummary) => {
@@ -600,27 +621,53 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     });
   }, [neighborhoodTabs]);
 
-  // Validate activeDataTab when factories change
+  // Build the list of Data subtabs, grouped by data type. Only types that
+  // actually contain data rows are shown; empty types are hidden.
+  const visibleDataTabs = useMemo(() => {
+    const factories = dataFactories[ALL_NEIGHBORHOODS_TOKEN] || [];
+    const groups = new Map<string, CustomFactory[]>();
+    for (const factory of factories) {
+      const key = getDataFactoryTabKey(factory);
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(factory);
+    }
+
+    const entries = Array.from(groups.entries())
+      .map(([key, groupFactories]) => {
+        const dataRows = groupFactories.flatMap((f) => f.rows || []);
+        const dataColumns = Array.from(new Set(groupFactories.flatMap((f) => f.columns || []))).filter(Boolean);
+        const foreignKeyColumns = groupFactories.flatMap((f) => f.foreignKeyColumns || []);
+        const dataTypeValues = Array.from(
+          new Set(
+            groupFactories
+              .map((f) => String(f.dataType || f.componentType || f.name || '').trim())
+              .filter(Boolean),
+          ),
+        );
+        return { key, dataRows, dataColumns, foreignKeyColumns, dataTypeValues };
+      })
+      .filter((entry) => entry.dataRows.length > 0);
+
+    entries.sort((a, b) => {
+      const ia = dataTabOrder.indexOf(a.key);
+      const ib = dataTabOrder.indexOf(b.key);
+      if (ia === -1 && ib === -1) return a.key.localeCompare(b.key);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+    return entries;
+  }, [dataFactories, ALL_NEIGHBORHOODS_TOKEN, getDataFactoryTabKey, dataTabOrder]);
+
+  // Validate activeDataTab when the set of visible data tabs changes
   useEffect(() => {
-    const currentModel = activeNeighborhoodTab || DEFAULT_NEIGHBORHOOD_NAME;
-    const factories = neighborhoodFactories[currentModel] || [];
-    const factoriesWithRows = factories.filter((f) => f.rows && f.rows.length > 0);
-    
-    if (factoriesWithRows.length === 0) {
-      // No factories with data, reset to empty
-      setActiveDataTab('');
-      return;
+    const keys = visibleDataTabs.map((t) => t.key);
+    if (keys.length === 0) return;
+    if (!keys.includes(activeDataTab)) {
+      setActiveDataTab(keys[0]);
     }
-    
-    // Get unique component types from factories that have rows
-    const componentTypes = new Set(factoriesWithRows.map((f) => f.componentType || 'unknown'));
-    
-    // If current activeDataTab is not a valid component type, switch to first available
-    if (activeDataTab && !componentTypes.has(activeDataTab)) {
-      const firstComponentType = Array.from(componentTypes)[0];
-      setActiveDataTab(firstComponentType || '');
-    }
-  }, [neighborhoodFactories, activeNeighborhoodTab, DEFAULT_NEIGHBORHOOD_NAME, activeDataTab]);
+  }, [visibleDataTabs, activeDataTab]);
 
   const scopedNeighborhoodName = activeOuterTab === 'data'
     ? ALL_NEIGHBORHOODS_TOKEN
@@ -705,14 +752,28 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     loadNeighborhoodFactoriesFor(activeNeighborhoodTab);
   }, [activeNeighborhoodTab, loadNeighborhoodFactoriesFor]);
 
+  const loadDataFactoriesFor = useCallback(async (neighborhoodName: string) => {
+    try {
+      const factories = await getDataFactories(neighborhoodName);
+      setDataFactories((current) => ({ ...current, [neighborhoodName]: factories }));
+    } catch {
+      setDataFactories((current) => ({ ...current, [neighborhoodName]: [] }));
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDataFactoriesFor(ALL_NEIGHBORHOODS_TOKEN);
+  }, [loadDataFactoriesFor]);
+
   const refreshNeighborhoodModelData = useCallback(async (neighborhoodName: string) => {
     await loadNeighborhoodTabs();
     await loadNeighborhoodFactoriesFor(neighborhoodName);
+    await loadDataFactoriesFor(ALL_NEIGHBORHOODS_TOKEN);
     const taskNames = await getTaskNamesForNeighborhood(undefined, neighborhoodName).catch(() => [] as string[]);
     const actors = await getActorsForNeighborhood(neighborhoodName).catch(() => [] as Array<{ name: string }>);
     setAllTaskNames(taskNames);
     setAllActorNames(actors.map((actor) => actor.name));
-  }, [loadNeighborhoodFactoriesFor, loadNeighborhoodTabs]);
+  }, [loadDataFactoriesFor, loadNeighborhoodFactoriesFor, loadNeighborhoodTabs]);
 
   const fTabLabel = useCallback((key: string, content: React.ReactNode): React.ReactNode => (
     <div
@@ -969,11 +1030,15 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       const searchValue = customEvent.detail?.searchValue;
       const searchField = customEvent.detail?.searchField;
       const sourceColumn = customEvent.detail?.sourceColumn;
+      const targetSubtab = customEvent.detail?.targetDataTab || customEvent.detail?.targetSubtab || customEvent.detail?.targetScope || 'applications';
+      const targetDataTab = getReservedModelTabKey(targetSubtab) || String(targetSubtab || '').trim().toLowerCase();
       
       console.log(`[FK_EVENT_RECEIVED]`, {
         searchValue,
         searchField,
         sourceColumn,
+        targetSubtab,
+        targetDataTab,
         timestamp: new Date().toISOString()
       });
       
@@ -984,18 +1049,19 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         console.log(`[FK_SEARCH_BUILD] Building search query: "${searchQuery}"`);
         
         setFactorySearch((prev) => {
-          console.log(`[FK_SEARCH_UPDATE] Setting applications search to encoded: "${encodeExactFactorySearch(searchQuery)}"`);
-          return { ...prev, applications: encodeExactFactorySearch(searchQuery) };
+          console.log(`[FK_SEARCH_UPDATE] Setting ${targetDataTab} search to encoded: "${encodeExactFactorySearch(searchQuery)}"`);
+          return { ...prev, [targetDataTab]: encodeExactFactorySearch(searchQuery) };
         });
         
-        console.log(`[FK_TAB_SWITCH] Switching to data outer tab and applications data tab`);
+        console.log(`[FK_TAB_SWITCH] Switching to data outer tab and ${targetDataTab} data tab`);
         setActiveOuterTab('data');
-        setActiveDataTab('applications');
+        setActiveDataTab(targetDataTab);
         
-        console.log(`[FK_NAVIGATION_COMPLETE] Navigated to applications tab with field-specific search:`, {
+        console.log(`[FK_NAVIGATION_COMPLETE] Navigated to ${targetDataTab} tab with field-specific search:`, {
           field: searchField,
           value: searchValue,
-          query: searchQuery
+          query: searchQuery,
+          targetDataTab,
         });
       } else {
         console.warn(`[FK_EVENT_INVALID] Event received but missing searchValue or searchField`, {
@@ -1012,7 +1078,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       window.removeEventListener('navigateToApplication', handleNavigateToApplication);
       console.log(`[FK_LISTENER_REMOVED] Global navigateToApplication event listener removed`);
     };
-  }, []);
+  }, [getReservedModelTabKey]);
 
   // Navigate from diagram panel to a factory tab
   const resolveModelFactoryTabKey = useCallback(async (modelName: string, tab: string) => {
@@ -1622,6 +1688,45 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     });
   }, [activeNeighborhoodTab, DEFAULT_NEIGHBORHOOD_NAME, message, loadNeighborhoodTabs]);
 
+  // Delete a single Data type (e.g. Data[Applications]) without affecting other Data types (e.g. Data[Servers]).
+  const handleDeleteDataComponentType = useCallback(async (tabKey: string, dataTypeValues: string[]) => {
+    const distinct = Array.from(new Set(dataTypeValues.map((v) => String(v || '').trim()).filter(Boolean)));
+    if (!distinct.length) {
+      message.info('No data to delete for this type');
+      return;
+    }
+    const displayName = distinct.length === 1 ? distinct[0] : `${distinct[0]} (+${distinct.length - 1})`;
+
+    Modal.confirm({
+      title: `Delete Data[${displayName}]?`,
+      content: (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div>This will permanently delete all {displayName} reference data. Other Data types are not affected.</div>
+          <div style={{ color: '#b91c1c', fontWeight: 600 }}>This action cannot be undone.</div>
+        </div>
+      ),
+      okText: `Delete Data[${displayName}]`,
+      okType: 'danger',
+      centered: true,
+      onOk: async () => {
+        setDeleteComponentTypeLoading(tabKey);
+        try {
+          let deletedBatches = 0;
+          for (const dt of distinct) {
+            const res = await deleteDataComponentType(dt);
+            deletedBatches += res?.deletedBatchCount || 0;
+          }
+          message.success(`Deleted Data[${displayName}]`);
+          await loadDataFactoriesFor(ALL_NEIGHBORHOODS_TOKEN);
+        } catch (error: any) {
+          message.error(error.response?.data?.error || error.message);
+        } finally {
+          setDeleteComponentTypeLoading(null);
+        }
+      },
+    });
+  }, [message, loadDataFactoriesFor, ALL_NEIGHBORHOODS_TOKEN]);
+
   const handleSaveDb = useCallback(
     async ({ name, description, tags, changeNote }: { name: string; description: string; tags: string[]; changeNote?: string }) => {
       try {
@@ -2026,7 +2131,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                             setShowDataComponentUploadModal(true);
                           }}
                         >
-                          Load Components
+                          Load Data
                         </Button>
                       )}
                     </div>
@@ -2034,84 +2139,40 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                       className="factory-tabs"
                       activeKey={activeDataTab}
                       onChange={setActiveDataTab}
-                      items={(() => {
-                        const currentModel = activeNeighborhoodTab || DEFAULT_NEIGHBORHOOD_NAME;
-                        const factories = neighborhoodFactories[currentModel] || [];
-                        const factoriesWithRows = factories.filter((f) => f.rows && f.rows.length > 0);
-                        // Map componentType to display info and component
-                        const typeDisplayMap: Record<string, { label: string; component: (props: any) => JSX.Element }> = {
-                          'application': {
-                            label: 'Application',
-                            component: ApplicationFactory,
-                          },
-                          'server': {
-                            label: 'Server',
-                            component: ServerFactory,
-                          },
-                          'databaseInstance': {
-                            label: 'Database',
-                            component: DatabaseFactory,
-                          },
-                          'product': {
-                            label: 'Product',
-                            component: ApplicationFactory,
-                          },
-                          'actor': {
-                            label: 'Actor',
-                            component: ApplicationFactory,
-                          },
+                      items={visibleDataTabs.map((tab) => {
+                        const componentType = tab.key;
+                        const effectiveDataColumns = tab.dataColumns.length ? tab.dataColumns : ['name', 'correlation_id'];
+
+                        return {
+                          key: componentType,
+                          label: dataTabLabel(componentType, <span>{getDataTypeDisplayName(componentType)}</span>),
+                          children: renderScrollablePane(
+                            <ApplicationFactory
+                              defaultSearch={factorySearch[componentType]}
+                              defaultAdd={typeof factoryAdd[componentType] === 'string' ? factoryAdd[componentType] : ''}
+                              userRole={user.role}
+                              readOnly={readOnly}
+                              dataColumns={effectiveDataColumns}
+                              dataRows={tab.dataRows}
+                              foreignKeyColumns={tab.foreignKeyColumns}
+                              requestedDetailRequest={componentType === 'applications' ? requestedApplicationDetail : undefined}
+                              onNavigateToFactory={(navTab: string, search: string) => {
+                                setFactorySearch((prev) => ({ ...prev, [navTab]: search }));
+                                setActiveDataTab(navTab);
+                              }}
+                              onDeleteAllComponents={() => handleDeleteDataComponentType(componentType, tab.dataTypeValues)}
+                              deleteLoading={deleteComponentTypeLoading === componentType}
+                            />,
+                          ),
                         };
-                        
-                        // Build tabs for each componentType that has data
-                        // Group by componentType, only including known types
-                        const componentTypeMap = new Map<string, CustomFactory[]>();
-                        factoriesWithRows.forEach((factory) => {
-                          const type = factory.componentType;
-                          // Skip factories without a valid componentType
-                          if (!type || !typeDisplayMap[type]) return;
-                          
-                          if (!componentTypeMap.has(type)) {
-                            componentTypeMap.set(type, []);
-                          }
-                          componentTypeMap.get(type)!.push(factory);
-                        });
-                        
-                        return Array.from(componentTypeMap.entries()).map(([componentType, factoriesOfType]) => {
-                          const displayInfo = typeDisplayMap[componentType];
-                          const tabLabel = factoriesOfType.length > 0 
-                            ? factoriesOfType[0].name 
-                            : componentType;
-                          const Component = displayInfo?.component || ApplicationFactory;
-                          const displayName = displayInfo?.label || componentType;
-                          
-                          return {
-                            key: componentType,
-                            label: dataTabLabel(componentType, <span>{tabLabel} Component</span>),
-                            children: renderScrollablePane(
-                              <Component 
-                                defaultSearch={factorySearch[componentType]} 
-                                defaultAdd={typeof factoryAdd[componentType] === 'string' ? factoryAdd[componentType] : ''} 
-                                userRole={user.role} 
-                                readOnly={readOnly} 
-                                requestedDetailRequest={requestedApplicationDetail} 
-                                onNavigateToFactory={(tab, search) => { 
-                                  setFactorySearch((prev) => ({ ...prev, [tab]: search })); 
-                                  setActiveDataTab(tab); 
-                                }} 
-                                onDeleteAllComponents={() => handleDeleteComponentType(componentType)}
-                                deleteLoading={deleteComponentTypeLoading === componentType} 
-                              />,
-                            ),
-                          };
-                        });
-                      })()}
+                      })}
                     />
                   </div>
                 ),
               },
               ...((() => {
                 const currentModel = activeNeighborhoodTab || DEFAULT_NEIGHBORHOOD_NAME;
-                const factories = neighborhoodFactories[currentModel] || [];
+                const factories = dataFactories[currentModel] || [];
                 const hasDataWithRows = factories.some((f) => f.rows && f.rows.length > 0);
                 if (!hasDataWithRows) return [];
                 
@@ -2250,7 +2311,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                     }}
                                     onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
                                       if (!correlationId) return;
-                                      const applicationSearch = rowSearchText ? encodeExactFactorySearch(rowSearchText) : encodeExactFactorySearch(applicationName);
+                                      const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
                                       setFactorySearch((current) => ({
                                         ...current,
                                         applications: applicationSearch,
@@ -2275,7 +2336,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                                           onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
                                           onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
                                             if (!correlationId) return;
-                                            const applicationSearch = rowSearchText ? encodeExactFactorySearch(rowSearchText) : encodeExactFactorySearch(applicationName);
+                                            const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
                                             setFactorySearch((current) => ({
                                               ...current,
                                               applications: applicationSearch,
@@ -2509,9 +2570,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         }}
       />
 
-      {/* Data Component Upload Modal */}
+      {/* Data Upload Modal */}
       <Modal
-        title="Load Components for Data"
+        title="Load Data"
         open={showDataComponentUploadModal}
         onCancel={() => {
           setShowDataComponentUploadModal(false);
@@ -2520,7 +2581,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         }}
         onOk={async () => {
           if (!dataComponentUploadName.trim()) {
-            message.error('Component name is required');
+            message.error('Data type is required');
             return;
           }
           if (!dataComponentUploadFile) {
@@ -2533,17 +2594,19 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
             const result = await uploadCustomFactory({
               neighborhoodName: activeNeighborhoodTab || DEFAULT_NEIGHBORHOOD_NAME,
               file: dataComponentUploadFile,
-              componentName: dataComponentUploadName.trim(),
+              dataType: dataComponentUploadName.trim(),
+              loadDomain: 'data',
             });
             const uploadedFactories = result.factories || [];
             message.success(uploadedFactories.length === 1
-              ? `Component uploaded: ${uploadedFactories[0].name}`
-              : `Components uploaded: ${uploadedFactories.length}`);
+              ? `Data uploaded: ${uploadedFactories[0].name}`
+              : `Data uploaded: ${uploadedFactories.length}`);
             setShowDataComponentUploadModal(false);
             setDataComponentUploadName('');
             setDataComponentUploadFile(null);
             // Reload neighborhoods to update component counts
             await loadNeighborhoodTabs();
+            await loadDataFactoriesFor(ALL_NEIGHBORHOODS_TOKEN);
           } catch (error: any) {
             message.error(error.response?.data?.error || error.message);
           } finally {
@@ -2554,15 +2617,15 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         confirmLoading={dataComponentUploading}
       >
         <div className="mt-4">
-          <div style={{ marginBottom: 12, fontWeight: 500 }}>Component Name</div>
+          <div style={{ marginBottom: 12, fontWeight: 500 }}>Data Type</div>
           <Input
-            placeholder="e.g., Application, Server, Database"
+            placeholder="e.g., Applications, Server"
             value={dataComponentUploadName}
             onChange={(e) => setDataComponentUploadName(e.target.value)}
             disabled={dataComponentUploading}
           />
           <div style={{ color: '#64748b', fontSize: 12, marginBottom: 16, marginTop: 6 }}>
-            Enter the name of the component to load data for (e.g., Application, Server, Database).
+            Enter the type of data being loaded (e.g., Applications or Server).
           </div>
           
           <div style={{ marginBottom: 8, fontWeight: 500 }}>CSV File</div>
@@ -2581,13 +2644,13 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               disabled={dataComponentUploading}
             >
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Upload a CSV file with component data</p>
-              <p className="ant-upload-hint">CSV should contain columns for component properties and qualifiers</p>
+              <p className="ant-upload-text">Upload a CSV file with data rows</p>
+              <p className="ant-upload-hint">CSV should contain Component, Qualifier, and FK_ columns where applicable</p>
             </Upload.Dragger>
           </div>
           
           <div style={{ color: '#64748b', fontSize: 12 }}>
-            The CSV file should follow the same format as the component upload in Models, with columns ending in Component or Qualifier.
+            The CSV file follows the same load rules as components, with Component columns for hierarchy, Qualifier columns, and FK_ columns.
           </div>
         </div>
       </Modal>

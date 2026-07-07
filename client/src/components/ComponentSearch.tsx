@@ -633,7 +633,7 @@ const ComponentSearch: React.FC<ComponentSearchProps> = ({
                 handleSearch();
               }}
               disabled={loading}
-              size="default"
+              size="middle"
             >
               Go
             </Button>

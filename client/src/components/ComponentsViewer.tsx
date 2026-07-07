@@ -959,16 +959,9 @@ export default function ComponentsViewer({
               }}
             >
               <span
-                onClick={(e) => handleComponentNameClick(component, e)}
                 style={{
-                  cursor: 'pointer',
-                  color: '#0050b3',
-                  textDecoration: 'underline',
                   fontWeight: 500,
-                  transition: 'color 0.2s',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#0a3a82')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = '#0050b3')}
               >
                 {component.name}
               </span>
@@ -1028,14 +1021,16 @@ export default function ComponentsViewer({
   const renderHorizontalTree = () => {
     const NODE_WIDTH = 140;
     const COLUMN_GAP = 280;
-    const BETWEEN_GAP = 20;
+    const BETWEEN_GAP = 36;
     const PADDING = 40;
 
     // Measure actual text width with a canvas so height is correct for any name.
-    const CONTENT_WIDTH = 104;
-    const LINE_H = 18;
-    const TYPE_H = 18;
-    const BOX_PADDING = 24;
+    // CONTENT_WIDTH is kept conservative (< real pixel width) so we always over-estimate
+    // the number of wrapped lines, preventing the rendered box from exceeding nodeHeight.
+    const CONTENT_WIDTH = 84; // conservative: NODE_WIDTH - button-padding - inner-padding - arrow
+    const LINE_H = 20;         // 13px bold * 1.3 + rounding buffer
+    const TYPE_H = 22;         // uppercase type label row (10px * 1.1 lh + wrap buffer)
+    const BOX_PADDING = 32;    // top + bottom button + inner padding + gap buffer
     const _ctx = (() => {
       try { return (document.createElement('canvas') as HTMLCanvasElement).getContext('2d'); } catch { return null; }
     })();
@@ -1196,7 +1191,8 @@ export default function ComponentsViewer({
                   left: pos.x,
                   top: pos.y,
                   width: NODE_WIDTH,
-                  minHeight: p.h,
+                  height: p.h,
+                  overflow: 'hidden',
                   borderRadius: 8,
                   border: isSelected ? '2px solid #0284c7' : `2px solid ${textColor}`,
                   background: isSelected ? '#ecf0f5' : bgColor,

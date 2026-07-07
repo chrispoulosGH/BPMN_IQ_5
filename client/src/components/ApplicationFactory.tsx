@@ -13,11 +13,104 @@ interface ApplicationFactoryProps {
   defaultAdd?: string;
   userRole?: string | null;
   readOnly?: boolean;
+  dataColumns?: string[];
+  dataRows?: Array<{ _id?: string; values?: Record<string, unknown> } | Record<string, unknown>>;
+  foreignKeyColumns?: Array<{
+    name: string;
+    sourceColumnName: string;
+    fieldName: string;
+    targetReference?: string;
+    targetGroup?: string;
+    targetScope?: string;
+    targetColumnName?: string;
+    targetColumnNameBase?: string;
+  }>;
   onNavigateToFactory?: (tab: string, search: string) => void;
   requestedDetailRequest?: { correlationId: string; nonce: number } | null;
   onDeleteAllComponents?: () => void;
   deleteLoading?: boolean;
 }
+
+type DataApplicationRow = NonNullable<ApplicationFactoryProps['dataRows']>[number];
+
+const normalizeFieldName = (value: string) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+const normalizeDataFieldName = (value: string) => normalizeFieldName(value).replace(/qualifier$/i, '');
+
+const getAliasedValue = (values: Record<string, unknown>, aliases: string[]) => {
+  const normalizedAliases = aliases.map(normalizeFieldName);
+  for (const [key, value] of Object.entries(values || {})) {
+    if (normalizedAliases.includes(normalizeFieldName(key))) return value == null ? '' : String(value);
+  }
+  return '';
+};
+
+const matchesDataFieldName = (candidate: string, requested: string) => {
+  const normalizedCandidate = normalizeDataFieldName(candidate);
+  const normalizedRequested = normalizeDataFieldName(requested);
+  return normalizedCandidate === normalizedRequested;
+};
+
+const getDataRowValues = (row: DataApplicationRow | undefined): Record<string, unknown> => {
+  const rowObject = (row || {}) as any;
+  return (rowObject.values && typeof rowObject.values === 'object') ? rowObject.values : rowObject;
+};
+
+const formatDataCell = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return '—';
+  if (Array.isArray(value)) return value.join(' | ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
+const mapDataRowsToRawItems = (dataRows: ApplicationFactoryProps['dataRows'] = []): ApplicationItem[] => {
+  return dataRows.map((row, index) => {
+    const rowObject = row as any;
+    const values = getDataRowValues(row);
+    const id = String(rowObject._id || (values as any)._id || (values as any).id || (values as any).correlation_id || (values as any).correlationId || (values as any).name || `data-application-${index}`);
+    return {
+      ...values,
+      _id: id,
+    } as ApplicationItem;
+  });
+};
+
+const buildDataColumnChoices = (dataRows: ApplicationFactoryProps['dataRows'] = [], dataColumns: string[] = []) => {
+  const keys = new Map<string, string>();
+  dataColumns.forEach((key) => {
+    const trimmed = String(key || '').trim();
+    if (!trimmed || trimmed === '_id' || keys.has(trimmed)) return;
+    keys.set(trimmed, trimmed);
+  });
+  dataRows.forEach((row) => {
+    Object.keys(getDataRowValues(row)).forEach((key) => {
+      if (!key || key === '_id') return;
+      if (!keys.has(key)) keys.set(key, key);
+    });
+  });
+  return Array.from(keys.values()).map((key) => ({ key, title: key, defaultVisible: true }));
+};
+
+const getDataTabKeyForTargetScope = (targetScope = '') => {
+  const normalized = String(targetScope || '').trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    application: 'applications',
+    applications: 'applications',
+    app: 'applications',
+    apps: 'applications',
+    server: 'servers',
+    servers: 'servers',
+    database: 'databases',
+    databases: 'databases',
+    databaseinstance: 'databases',
+    databaseinstances: 'databases',
+    product: 'products',
+    products: 'products',
+    actor: 'actors',
+    actors: 'actors',
+  };
+  return aliases[normalized.replace(/[^a-z0-9]+/g, '')] || normalized;
+};
 
 /** All possible columns with their keys, labels, and default visibility */
 const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
@@ -46,7 +139,7 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'owner', title: 'Owner', defaultVisible: true },
 ];
 
-export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, onNavigateToFactory, requestedDetailRequest, onDeleteAllComponents, deleteLoading }: ApplicationFactoryProps) {
+export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, dataColumns = [], dataRows, foreignKeyColumns = [], onNavigateToFactory, requestedDetailRequest, onDeleteAllComponents, deleteLoading }: ApplicationFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,11 +157,35 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   const [fullAppDetail, setFullAppDetail] = useState<ApplicationItem | null>(null);
   const [fullAppDetailLoading, setFullAppDetailLoading] = useState(false);
   const handledDetailRequestNonceRef = useRef<number | null>(null);
+  const isDataBacked = dataRows !== undefined;
+  const preventRowMutations = readOnly || isDataBacked;
+  const availableColumnChoices = useMemo(
+    () => isDataBacked ? buildDataColumnChoices(dataRows, dataColumns) : ALL_COLUMNS,
+    [dataColumns, dataRows, isDataBacked]
+  );
+  const foreignKeyByFieldName = useMemo(() => {
+    const map = new Map<string, NonNullable<ApplicationFactoryProps['foreignKeyColumns']>[number]>();
+    foreignKeyColumns.forEach((fk) => {
+      const key = normalizeDataFieldName(fk.fieldName || fk.targetColumnName || fk.targetColumnNameBase || fk.sourceColumnName || fk.name);
+      if (key) map.set(key, fk);
+    });
+    return map;
+  }, [foreignKeyColumns]);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(
     () => new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key))
   );
 
+  useEffect(() => {
+    setVisibleKeys(new Set(availableColumnChoices.filter((column) => column.defaultVisible).map((column) => column.key)));
+  }, [availableColumnChoices]);
+
   const loadItems = useCallback(async () => {
+    if (dataRows !== undefined) {
+      setItems(mapDataRowsToRawItems(dataRows));
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await getRefItems('applications');
@@ -78,7 +195,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     } finally {
       setLoading(false);
     }
-  }, [message]);
+  }, [dataRows, message]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
@@ -87,14 +204,19 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     if (handledDetailRequestNonceRef.current === requestedDetailRequest.nonce) return;
     handledDetailRequestNonceRef.current = requestedDetailRequest.nonce;
 
-    const nextDetail = items.find(
-      (item) => item.correlationId === requestedDetailRequest.correlationId || (item as any).correlation_id === requestedDetailRequest.correlationId
-    );
+    const nextDetail = items.find((item) => {
+      const itemCorrelationId = isDataBacked
+        ? getAliasedValue(item as any, ['correlation_id', 'correlation id', 'correlationId', 'application correlation id', 'app correlation id'])
+        : item.correlationId || (item as any).correlation_id;
+      return itemCorrelationId === requestedDetailRequest.correlationId;
+    });
 
     if (nextDetail) {
       setDetail(nextDetail);
       return;
     }
+
+    if (isDataBacked) return;
 
     let cancelled = false;
     getApplicationByCorrelationId(requestedDetailRequest.correlationId)
@@ -110,7 +232,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     return () => {
       cancelled = true;
     };
-  }, [items, requestedDetailRequest]);
+  }, [isDataBacked, items, requestedDetailRequest]);
 
   useEffect(() => {
     if (defaultSearch !== undefined) {
@@ -149,7 +271,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   }, [defaultAdd, addForm]);
 
   useEffect(() => {
-    if (!detail?.correlationId) {
+    if (isDataBacked || !detail?.correlationId) {
       setDetailServers([]);
       return;
     }
@@ -173,11 +295,11 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     return () => {
       cancelled = true;
     };
-  }, [detail, message]);
+  }, [detail, isDataBacked, message]);
 
   // Hydrate full application details when viewing a component with correlation_id
   useEffect(() => {
-    if (!detail) {
+    if (!detail || isDataBacked) {
       setFullAppDetail(null);
       return;
     }
@@ -208,7 +330,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     return () => {
       cancelled = true;
     };
-  }, [detail]);
+  }, [detail, isDataBacked]);
 
   const searchToken = exactSearch ? encodeExactFactorySearch(search) : search;
   const filtered = search
@@ -225,12 +347,13 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
             itemsToSearch: items.length
           });
           
-          // Map normalized field name to application property
-          const fieldValue = fieldLower === 'correlation_id' || fieldLower === 'correlationid' ? i.correlationId :
-                             fieldLower === 'name' ? i.name :
-                             fieldLower === 'acronym' ? i.acronym :
-                             fieldLower === 'description' || fieldLower === 'short_description' || fieldLower === 'shortdescription' ? i.shortDescription :
-                             '';
+          const fieldValue = isDataBacked
+            ? Object.entries(i).find(([key]) => matchesDataFieldName(key, fieldLower))?.[1]
+            : fieldLower === 'correlation_id' || fieldLower === 'correlationid' ? i.correlationId :
+               fieldLower === 'name' ? i.name :
+               fieldLower === 'acronym' ? i.acronym :
+               fieldLower === 'description' || fieldLower === 'short_description' || fieldLower === 'shortdescription' ? i.shortDescription :
+               '';
           
           const matched = matchesFactorySearch([fieldValue], value);
           if (matched) {
@@ -246,7 +369,8 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         }
         // Default: search all fields
         console.log(`[FK_SEARCH_FALLBACK] Search does not contain ":", using default multi-field search`);
-        return matchesFactorySearch([i.name, i.acronym, i.correlationId, i.shortDescription], searchToken);
+        const searchableValues = isDataBacked ? Object.values(i).map(formatDataCell) : [i.name, i.acronym, i.correlationId, i.shortDescription];
+        return matchesFactorySearch(searchableValues, searchToken);
       })
     : items;
   
@@ -329,8 +453,8 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     });
   };
 
-  const showAll = () => setVisibleKeys(new Set(ALL_COLUMNS.map(c => c.key)));
-  const showDefaults = () => setVisibleKeys(new Set(ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key)));
+  const showAll = () => setVisibleKeys(new Set(availableColumnChoices.map(c => c.key)));
+  const showDefaults = () => setVisibleKeys(new Set(availableColumnChoices.filter(c => c.defaultVisible).map(c => c.key)));
 
   /** Build a filterable column config helper */
   const filterCol = (dataIndex: string): Pick<any, 'filters' | 'onFilter'> => ({
@@ -338,7 +462,33 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     onFilter: (value: any, record: ApplicationItem) => (record as any)[dataIndex] === value,
   });
 
-  const allColumnDefs: ColumnsType<ApplicationItem> = useMemo(() => [
+  const dataColumnDefs: ColumnsType<ApplicationItem> = useMemo(() => availableColumnChoices.map((column, index) => ({
+    title: column.title,
+    dataIndex: column.key,
+    key: column.key,
+    width: Math.max(140, Math.min(320, String(column.title).length * 9 + 40)),
+    ellipsis: true,
+    fixed: index === 0 ? 'left' as const : undefined,
+    sorter: (a: ApplicationItem, b: ApplicationItem) => formatDataCell((a as any)[column.key]).localeCompare(formatDataCell((b as any)[column.key])),
+    render: (value: unknown, record: ApplicationItem) => {
+      const label = formatDataCell(value);
+      const fk = foreignKeyByFieldName.get(normalizeDataFieldName(column.key));
+      if (fk && label !== '—') {
+        const targetTab = getDataTabKeyForTargetScope(fk.targetScope || fk.targetReference || '');
+        const targetColumn = fk.targetColumnNameBase || fk.targetColumnName || fk.sourceColumnName || column.key;
+        return (
+          <Typography.Link onClick={() => onNavigateToFactory?.(targetTab, `${targetColumn}:${label}`)}>
+            {label}
+          </Typography.Link>
+        );
+      }
+      return index === 0
+        ? <a onClick={() => setDetail(record)}>{label}</a>
+        : label;
+    },
+  })), [availableColumnChoices, foreignKeyByFieldName, onNavigateToFactory]);
+
+  const applicationColumnDefs: ColumnsType<ApplicationItem> = useMemo(() => [
     {
       title: 'Name', dataIndex: 'name', key: 'name', width: 280, ellipsis: true, fixed: 'left' as const,
       sorter: (a: ApplicationItem, b: ApplicationItem) => a.name.localeCompare(b.name),
@@ -382,7 +532,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         const currentState = (val || 'published').toLowerCase();
         const actions = getAllowedActions(userRole, currentState);
         const tagColor = stateTagColor(currentState);
-        if (!actions.length) {
+        if (preventRowMutations || !actions.length) {
           return <Tag color={tagColor}>{currentState}</Tag>;
         }
         return (
@@ -408,7 +558,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
       },
     },
     { title: 'Owner', dataIndex: 'owner', key: 'owner', width: 130, ellipsis: true, render: (v: string) => v || '—' },
-    { title: '', key: 'actions', width: 90, render: (_: unknown, record: ApplicationItem) => readOnly ? null : (
+    { title: '', key: 'actions', width: 90, render: (_: unknown, record: ApplicationItem) => preventRowMutations ? null : (
       <Space size="small">
         <Tooltip title="Edit">
           <Button size="small" type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
@@ -418,11 +568,13 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         </Tooltip>
       </Space>
     )},
-  ], [items, readOnly]);
+  ], [items, preventRowMutations, readOnly]);
+
+  const allColumnDefs = isDataBacked ? dataColumnDefs : applicationColumnDefs;
 
   const columns = [
     ...allColumnDefs.filter(c => c.key !== 'actions' && visibleKeys.has(c.key as string)),
-    ...(readOnly ? [] : [allColumnDefs.find(c => c.key === 'actions')!]),
+    ...(preventRowMutations ? [] : [allColumnDefs.find(c => c.key === 'actions')!]),
   ];
 
   const scrollX = columns.reduce((sum, c) => sum + ((c.width as number) || 150), 0);
@@ -433,7 +585,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         <Button size="small" type="link" onClick={showAll}>All</Button>
         <Button size="small" type="link" onClick={showDefaults}>Defaults</Button>
       </div>
-      {ALL_COLUMNS.map(col => (
+      {availableColumnChoices.map(col => (
         <div key={col.key} className="py-0.5">
           <Checkbox
             checked={visibleKeys.has(col.key)}
@@ -467,12 +619,12 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} of {items.length} applications</span>
         {!readOnly && onDeleteAllComponents && <Button danger size="small" onClick={onDeleteAllComponents} loading={deleteLoading}>
-          Delete All
+          {isDataBacked ? 'Delete Data Type' : 'Delete All'}
         </Button>}
-        {!readOnly && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
+        {!preventRowMutations && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
           Delete Selected ({selectedRowKeys.length})
         </Button>}
-        {!readOnly && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { addForm.resetFields(); setShowAddForm(true); }}>
+        {!preventRowMutations && <Button type="primary" size="small" icon={<PlusOutlined />} onClick={() => { addForm.resetFields(); setShowAddForm(true); }}>
           New Application
         </Button>}
       </div>
@@ -487,19 +639,28 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
         className="flex-1"
         scroll={{ x: scrollX, y: 'calc(var(--app-h) - 220px)' }}
         rowClassName={(record) => record._id === highlightId ? 'row-just-created' : ''}
-        rowSelection={readOnly ? undefined : {
+        rowSelection={preventRowMutations ? undefined : {
           selectedRowKeys,
           onChange: (keys) => setSelectedRowKeys(keys as string[]),
         }}
       />
 
       <Drawer
-        title={detail?.name}
+        title={formatDataCell((detail as any)?.name || (detail as any)?.correlation_id || detail?._id)}
         open={!!detail}
         onClose={() => setDetail(null)}
         width={520}
       >
-        {detail && (
+        {detail && isDataBacked && (
+          <Descriptions column={1} bordered size="small">
+            {availableColumnChoices.map((column) => (
+              <Descriptions.Item key={column.key} label={column.title}>
+                {formatDataCell((detail as any)[column.key])}
+              </Descriptions.Item>
+            ))}
+          </Descriptions>
+        )}
+        {detail && !isDataBacked && (
           <Descriptions column={1} bordered size="small">
             <Descriptions.Item label="Correlation ID">
               {(detail as any)?.correlation_id || detail.correlationId || '—'}

@@ -5,11 +5,11 @@ const { materializeFromBatches } = require('../lib/materializer');
 // POST /api/materialize?neighborhoodName=CTX
 router.post('/', async (req, res) => {
   try {
-    const { neighborhoodName } = req.query;
-    const result = await materializeFromBatches({ neighborhoodName });
+    const { neighborhoodName, domain } = req.query;
+    const result = await materializeFromBatches({ neighborhoodName, domain: String(domain || '').trim().toLowerCase() === 'data' ? 'data' : 'component' });
     // Post-process: rebuild component search index for neighborhood
     try {
-      await materializeFromBatches.postProcess({ neighborhoodName });
+      await materializeFromBatches.postProcess({ neighborhoodName, domain: String(domain || '').trim().toLowerCase() === 'data' ? 'data' : 'component' });
     } catch (err) {
       console.error('[MATERIALIZE ROUTE] postProcess failed', err && err.message);
     }

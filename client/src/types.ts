@@ -391,6 +391,8 @@ export interface CustomFactory {
   businessCriticality?: string;
   parentFactoryName?: string;
   componentType?: string;
+  dataType?: string;
+  loadDomain?: string;
   columns: string[];
   qualifierColumns?: CustomFactoryQualifierColumn[];
   foreignKeyColumns?: Array<{
@@ -400,6 +402,8 @@ export interface CustomFactory {
     targetReference?: string;
     targetGroup?: string;
     targetScope?: string;
+    targetColumnName?: string;
+    targetColumnNameBase?: string;
   }>;
   owner?: string;
   createdBy?: string;

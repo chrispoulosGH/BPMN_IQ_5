@@ -49,7 +49,30 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
-export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel', defaultRowSearch, defaultRowSearchColumn = 'name', onApplicationLinkClick }: NeighborhoodFactoryProps) {
+type ForeignKeyColumn = NonNullable<CustomFactory['foreignKeyColumns']>[number];
+
+function normalizeFkFieldName(value: unknown) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '').replace(/qualifier$/i, '');
+}
+
+function getDataTabKeyForTargetScope(value: unknown) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const aliases: Record<string, string> = {
+    application: 'applications',
+    applications: 'applications',
+    app: 'applications',
+    apps: 'applications',
+    server: 'servers',
+    servers: 'servers',
+    database: 'databases',
+    databases: 'databases',
+    databaseinstance: 'databases',
+    databaseinstances: 'databases',
+  };
+  return aliases[normalized] || normalized;
+}
+
+export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel', defaultRowSearch, defaultRowSearchColumn = 'name' }: NeighborhoodFactoryProps) {
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const PRIMARY_KEY_COLUMN = 'name';
@@ -544,10 +567,18 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
   }, [DEFAULT_NEIGHBORHOOD_NAME, fixedNeighborhoodName, loadFactories, loadNeighborhoods, message, onNeighborhoodsChanged, selectedNeighborhood]);
 
   const rowColumns: ColumnsType<CustomFactoryRow> = useMemo(() => {
-    const isApplicationComponent = String(selectedFactory?.name || '').trim().toLowerCase() === 'application';
     const factoryId = selectedFactory?._id || '';
     const allColumns = selectedFactory?.columns || [];
     const currentVisibleColumns = getVisibleColumns(factoryId, allColumns);
+    const foreignKeyByFieldName = new Map<string, ForeignKeyColumn>();
+    (selectedFactory?.foreignKeyColumns || []).forEach((fk) => {
+      [fk.fieldName, fk.targetColumnNameBase, fk.targetColumnName, fk.sourceColumnName, fk.name]
+        .map(normalizeFkFieldName)
+        .filter(Boolean)
+        .forEach((key) => {
+          if (!foreignKeyByFieldName.has(key)) foreignKeyByFieldName.set(key, fk);
+        });
+    });
     
     const dynamicColumns = allColumns
       // Always include FK_ columns, and respect visibility for others
@@ -555,6 +586,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       .map((column) => {
         // Check if this is a FK column by name prefix
         const isForeignKeyColumn = column.toLowerCase().startsWith('fk_');
+        const foreignKeyColumn = foreignKeyByFieldName.get(normalizeFkFieldName(column));
         let targetTab: string | null = null;
         let targetSubtab: string | null = null;
         let searchField: string | null = null;
@@ -569,6 +601,12 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
           }
         }
 
+        if (foreignKeyColumn) {
+          targetTab = foreignKeyColumn.targetGroup || targetTab;
+          targetSubtab = foreignKeyColumn.targetScope || targetSubtab;
+          searchField = foreignKeyColumn.targetColumnNameBase || foreignKeyColumn.targetColumnName || searchField || foreignKeyColumn.fieldName;
+        }
+
         return {
           title: column,
           key: column,
@@ -577,11 +615,9 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
           sorter: (left: CustomFactoryRow, right: CustomFactoryRow) => String(left.values?.[column] ?? '').localeCompare(String(right.values?.[column] ?? ''), undefined, { sensitivity: 'base', numeric: true }),
           render: (value: unknown, row: CustomFactoryRow) => {
             const display = displayValue(value);
-            const normalizedColumn = String(column || '').trim().toLowerCase();
-            const correlationId = String(row.values?.correlation_id || row.values?.correlationId || '').trim();
-
-            // FK columns: render as links
-            if (isForeignKeyColumn && targetTab && targetSubtab && searchField && display !== '—') {
+            // FK columns are persisted using normalized field names, so match metadata as well as raw FK_ headers.
+            if ((isForeignKeyColumn || foreignKeyColumn) && targetTab && targetSubtab && searchField && display !== '—') {
+              const targetDataTab = getDataTabKeyForTargetScope(targetSubtab);
               return (
                 <a
                   href="#"
@@ -594,6 +630,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                         sourceColumn: column,
                         targetTab: targetTab,
                         targetSubtab: targetSubtab,
+                        targetDataTab,
                       },
                     }));
                   }}
@@ -607,19 +644,6 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                 >
                   {display}
                 </a>
-              );
-            }
-
-            if (isApplicationComponent && onApplicationLinkClick && correlationId && (normalizedColumn === 'name' || normalizedColumn === 'application' || normalizedColumn === 'applications')) {
-              return (
-                <Button
-                  type="link"
-                  size="small"
-                  onClick={() => onApplicationLinkClick(display, correlationId, rowSearchText)}
-                  style={{ padding: 0, height: 'auto' }}
-                >
-                  {display}
-                </Button>
               );
             }
 
@@ -701,7 +725,7 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
         ) : null,
       },
     ];
-  }, [canManageFactories, onApplicationLinkClick, selectedFactory, getVisibleColumns, rowSearchText]);
+  }, [canManageFactories, selectedFactory, getVisibleColumns]);
 
   const filteredRows = useMemo(() => {
     if (!selectedFactory) return [];
@@ -782,7 +806,11 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
                         <div style={{ color: '#b91c1c', fontWeight: 600 }}>This action cannot be undone.</div>
                       </div>
                     ),
-                    onOk: () => handleDeleteAllComponents(fixedNeighborhoodName || selectedNeighborhood),
+                    onOk: () => {
+                      const neighborhoodName = fixedNeighborhoodName || selectedNeighborhood;
+                      if (!neighborhoodName) return;
+                      return handleDeleteAllComponents(neighborhoodName);
+                    },
                   });
                 }}
                 style={{ fontSize: '10px', padding: '2px 8px', height: '20px', lineHeight: '20px' }}
@@ -1059,28 +1087,9 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
       </Card> : null}
 
       <Card
-        title={selectedFactory ? `${selectedFactory.name} Component` : 'Component'}
         size="small"
         style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}
         bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, height: '100%' }}
-        extra={selectedFactory ? (
-          <Space>
-            <span style={{ color: '#64748b', fontSize: 12 }}>{selectedFactory.neighborhoodName} · staged and invalid statuses are generated during import validation</span>
-            {canManageFactories ? (
-              <Popconfirm
-                title={`Delete component ${selectedFactory.name}?`}
-                description="This removes the entire component and all of its rows."
-                okText="Delete"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => handleDeleteFactory(selectedFactory)}
-              >
-                <Button size="small" type="text" danger icon={<DeleteOutlined />}>
-                  Remove Component
-                </Button>
-              </Popconfirm>
-            ) : null}
-          </Space>
-        ) : null}
       >
         {!selectedFactory && (loadingFactories || loadingFactoryDetail) ? <Spin /> : null}
 
@@ -1090,12 +1099,6 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
 
         {selectedFactory ? (
           <>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', color: '#64748b', fontSize: 12 }}>
-              <span><strong>Owner:</strong> {selectedFactory.owner || '—'}</span>
-              <span><strong>Created:</strong> {selectedFactory.createdAt ? new Date(selectedFactory.createdAt).toLocaleDateString() : '—'}</span>
-              <span><strong>Spreadsheet:</strong> {selectedFactory.sourceFileName || '—'}</span>
-            </div>
-
             <Space wrap>
               <Select
                 value={rowSearchColumn}

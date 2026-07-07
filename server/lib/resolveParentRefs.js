@@ -16,7 +16,7 @@ const CanonicalComponent = require('../models/CanonicalComponent');
  * @param {string} opts.neighborhoodName - required neighborhood scope
  * @returns {Promise<{updatedParents:number, updatedChildren:number, unresolved:number}>}
  */
-async function resolveParentRefs({ neighborhoodName } = {}) {
+async function resolveParentRefs({ neighborhoodName, batchCollectionName = 'dataComponentBatches', CanonicalModel = CanonicalComponent } = {}) {
   if (!neighborhoodName) {
     throw new Error('resolveParentRefs requires neighborhoodName');
   }
@@ -32,7 +32,7 @@ async function resolveParentRefs({ neighborhoodName } = {}) {
   const keyFor = (compType, primaryKey) => `${norm(compType)}||${norm(primaryKey)}`;
 
   // 1) Load all canonical docs for this neighborhood and index by (componentType, primaryKey)
-  const docs = await CanonicalComponent.find({ neighborhoodName }).lean();
+  const docs = await CanonicalModel.find({ neighborhoodName }).lean();
   const idByKey = new Map();
   const keyById = new Map();
   for (const d of docs) {
@@ -62,7 +62,7 @@ async function resolveParentRefs({ neighborhoodName } = {}) {
     childrenRefsById.get(parentId).add(childId);
   };
 
-  const cursor = db.collection('dataComponentBatches').find({ neighborhoodName }).batchSize(200);
+  const cursor = db.collection(batchCollectionName).find({ neighborhoodName }).batchSize(200);
   while (await cursor.hasNext()) {
     const batch = await cursor.next();
     if (!batch || !Array.isArray(batch.rows)) continue;
@@ -130,7 +130,7 @@ async function resolveParentRefs({ neighborhoodName } = {}) {
     const chunkSize = 500;
     for (let i = 0; i < ops.length; i += chunkSize) {
       const chunk = ops.slice(i, i + chunkSize);
-      await CanonicalComponent.bulkWrite(chunk, { ordered: false });
+      await CanonicalModel.bulkWrite(chunk, { ordered: false });
     }
     updatedParents = parentRefsById.size;
     updatedChildren = childrenRefsById.size;

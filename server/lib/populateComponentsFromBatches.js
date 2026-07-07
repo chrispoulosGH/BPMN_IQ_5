@@ -1,14 +1,14 @@
 const mongoose = require('mongoose');
 const Component = require('../models/Component');
 
-async function populateComponentsFromBatches({ neighborhoodName, batchSize = 100 } = {}) {
+async function populateComponentsFromBatches({ neighborhoodName, batchSize = 100, batchCollectionName = 'dataComponentBatches', ComponentModel = Component, logPrefix = 'POPULATE_COMPONENTS' } = {}) {
   if (mongoose.connection.readyState === 0) {
     const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/bpmn_iq';
     await mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
   }
 
   const db = mongoose.connection.db;
-  const batches = db.collection('dataComponentBatches');
+  const batches = db.collection(batchCollectionName);
 
   const query = {};
   if (neighborhoodName) query.neighborhoodName = neighborhoodName;
@@ -43,8 +43,9 @@ async function populateComponentsFromBatches({ neighborhoodName, batchSize = 100
 
     const componentDoc = {
       neighborhoodName: neighborhoodName || (docs[0] && docs[0].neighborhoodName) || '',
-      modelName: neighborhoodName || (docs[0] && docs[0].neighborhoodName) || '',
+      modelName: docs[0]?.modelName || (ComponentModel?.modelName === 'Data' ? '' : (neighborhoodName || docs[0]?.neighborhoodName || '')),
       name: name,
+      dataType: docs[0]?.dataType || '',
       sourceColumnName: docs[0]?.sourceColumnName || '',
       parentFactoryName: docs[0]?.parentFactoryName || '',
       componentType: docs[0]?.componentType || '',
@@ -59,10 +60,10 @@ async function populateComponentsFromBatches({ neighborhoodName, batchSize = 100
 
     // Upsert into components collection (rows may be capped to avoid huge documents)
     try {
-      await Component.replaceOne({ neighborhoodName: componentDoc.neighborhoodName, name: componentDoc.name }, componentDoc, { upsert: true });
+      await ComponentModel.replaceOne({ neighborhoodName: componentDoc.neighborhoodName, name: componentDoc.name }, componentDoc, { upsert: true });
       created++;
     } catch (err) {
-      console.error('[POPULATE_COMPONENTS] Failed to upsert', componentDoc.name, err && err.message);
+      console.error(`[${logPrefix}] Failed to upsert`, componentDoc.name, err && err.message);
     }
   }
 

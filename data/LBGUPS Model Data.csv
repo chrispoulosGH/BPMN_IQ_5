@@ -1,475 +1,1449 @@
-﻿L0 Component,L0 Component  Business Unit Alignment,L1 Component,L1 Component Description,L2 Capability  Component,L2 Capability  Component Description
-Learn,Business Commercialization,Marketing Management,"Conduct market research, competitive analysis, performance tracking, and launch planning to drive awareness.",Marketing Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,Business Commercialization,Marketing Management,"Conduct market research, competitive analysis, performance tracking, and launch planning to drive awareness.",Market Research & Segmentation,Conduct research and segment markets to identify target customers.
-Learn,Business Commercialization,Marketing Management,"Conduct market research, competitive analysis, performance tracking, and launch planning to drive awareness.",Competitive Intelligence,Gather and analyze competitor insights to guide marketing strategies.
-Learn,Business Commercialization,Marketing Management,"Conduct market research, competitive analysis, performance tracking, and launch planning to drive awareness.",Marketing Performance & Attribution,Measure marketing effectiveness and attribute results to activities.
-Learn,Business Commercialization,Marketing Management,"Conduct market research, competitive analysis, performance tracking, and launch planning to drive awareness.",Marketing Launch Plan,Plan and execute marketing launches for products and campaigns.
-Learn,Business Commercialization,Advertising Management,"Create, place, and optimize advertising content to reach and engage target audiences.",Advertising Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,Business Commercialization,Advertising Management,"Create, place, and optimize advertising content to reach and engage target audiences.",Advertising Content Creation & Placement,Develop and place advertising content across targeted channels.
-Learn,Business Commercialization,Advertising Management,"Create, place, and optimize advertising content to reach and engage target audiences.",Advertising Performance Tracking & Optimization,Track ad performance and optimize campaigns for better results.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Account Management,Segment and assign sales accounts to manage relationships and opportunities effectively.,Sales Account Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Account Management,Segment and assign sales accounts to manage relationships and opportunities effectively.,Sales Account Segmentation,"Segment sales accounts based on size, type, or opportunity."
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Account Management,Segment and assign sales accounts to manage relationships and opportunities effectively.,Sales Account Assignment,Assign accounts to sales teams or representatives for coverage.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Activity Management,"Enable and guide sales teams with playbooks, tools, and channel execution.",Sales Activity Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Activity Management,"Enable and guide sales teams with playbooks, tools, and channel execution.",Sales / Channel Enablement,Equip sales teams and channels with tools and resources to sell.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Activity Management,"Enable and guide sales teams with playbooks, tools, and channel execution.",Sales Playbooks & Guidance Enablement,Provide structured playbooks and guidance to support selling.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Activity Management,"Enable and guide sales teams with playbooks, tools, and channel execution.",Sales account meeting preparation / Quarterly Business Reviews(QBRs),"Preparing sales meeting materials for client meetings / QBRs, includes consolidating data, creating insights and recommendations"
-Learn,Business Commercialization,Campaign Management,"Plan, execute, and track marketing campaigns to generate demand and measure impact.",Campaign Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,Business Commercialization,Campaign Management,"Plan, execute, and track marketing campaigns to generate demand and measure impact.",Campaign Execution & Refinement,Run campaigns and adjust based on performance and feedback.
-Learn,Business Commercialization,Campaign Management,"Plan, execute, and track marketing campaigns to generate demand and measure impact.",Campaign Performance Tracking,Track campaign outcomes and measure effectiveness.
-Learn,Business Commercialization,Campaign Management,"Plan, execute, and track marketing campaigns to generate demand and measure impact.",Campaign Planning & Budgeting,Plan campaigns and allocate budgets for marketing initiatives.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Lead Management,"Capture, nurture, personalize, and qualify leads to build a healthy sales pipeline.",Lead Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Lead Management,"Capture, nurture, personalize, and qualify leads to build a healthy sales pipeline.",Lead Nurture,Build engagement with leads through ongoing communication.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Lead Management,"Capture, nurture, personalize, and qualify leads to build a healthy sales pipeline.",Lead Personalization,Tailor messaging and offers to individual lead preferences.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Lead Management,"Capture, nurture, personalize, and qualify leads to build a healthy sales pipeline.",Marketing Prospect Mgmt,Manage marketing prospects before they are converted into leads.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Lead Management,"Capture, nurture, personalize, and qualify leads to build a healthy sales pipeline.",Lead Capture & Routing,Capture leads and route them to the right systems or teams.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Lead Management,"Capture, nurture, personalize, and qualify leads to build a healthy sales pipeline.",Lead Qualification,Assess leads to determine readiness for sales engagement.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Opportunity Management,"Track, manage, and progress opportunities through the sales funnel.",Sales Opportunity Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Opportunity Management,"Track, manage, and progress opportunities through the sales funnel.",Funnel Tracking,Track sales opportunities through the funnel stages.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Opportunity Management,"Track, manage, and progress opportunities through the sales funnel.",Opportunity Management,Manage and advance opportunities toward closure.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Discovery Management,"Personalize discovery, validate customer needs, and enable solution engagement.",Discovery Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Discovery Management,"Personalize discovery, validate customer needs, and enable solution engagement.",Discovery Personalization,Personalize discovery sessions to align with customer needs.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Discovery Management,"Personalize discovery, validate customer needs, and enable solution engagement.",Search Enablement,Enable search of data and resources to support discovery.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Discovery Management,"Personalize discovery, validate customer needs, and enable solution engagement.",Discovery Engagement,Engage customers in discovery discussions and activities.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Discovery Management,"Personalize discovery, validate customer needs, and enable solution engagement.",Customer Inventory Interop Validation,Validate customer inventory data across systems for accuracy.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Qualification Management,"Validate service availability, feasibility, and coverage to qualify opportunities.",Qualification Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Qualification Management,"Validate service availability, feasibility, and coverage to qualify opportunities.",Service Availability,Verify if services are available at the customer location.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Qualification Management,"Validate service availability, feasibility, and coverage to qualify opportunities.",Address Validation,Confirm customer address details for qualification.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Qualification Management,"Validate service availability, feasibility, and coverage to qualify opportunities.",Network and Fiber Intelligence,Provide network and fiber availability insights for qualification.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Qualification Management,"Validate service availability, feasibility, and coverage to qualify opportunities.",Feasibility & Site Survey,Conduct feasibility checks and site surveys for service delivery.
-Learn,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Qualification Management,"Validate service availability, feasibility, and coverage to qualify opportunities.",Capacity & Coverage Planning,Plan capacity and coverage to meet customer requirements.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Credit Check Management,"Manage the evaluation, submission, and approval of customer credit checks.",Credit Check Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Credit Check Management,"Manage the evaluation, submission, and approval of customer credit checks.",Credit Check Evaluation,Assess customer credit-worthiness before order processing.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Credit Check Management,"Manage the evaluation, submission, and approval of customer credit checks.",Credit Check Submission,Submit customer credit information for review.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Credit Check Management,"Manage the evaluation, submission, and approval of customer credit checks.",Credit Check Status,Track the progress and outcome of credit checks.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Credit Check Management,"Manage the evaluation, submission, and approval of customer credit checks.",Credit Check Decision,Approve or reject based on credit evaluation results.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Credit Check Management,"Manage the evaluation, submission, and approval of customer credit checks.",Credit Check Expedite,Fast-track urgent credit check requests.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Credit Check Management,"Manage the evaluation, submission, and approval of customer credit checks.",Credit Check Escalation,Escalate unresolved or delayed credit check issues.
-Buy,Product & Pricing,Pricing Management,"Define, calculate, and manage pricing quotes, discounts, and approvals.",Pricing Order Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Buy,Product & Pricing,Pricing Management,"Define, calculate, and manage pricing quotes, discounts, and approvals.",Pricing Quote Calculation,Generate pricing quotes based on customer requirements.
-Buy,Product & Pricing,Pricing Management,"Define, calculate, and manage pricing quotes, discounts, and approvals.",Pricing Definition / Rate Element Mgmt,Define and manage pricing elements and rate structures.
-Buy,Product & Pricing,Pricing Management,"Define, calculate, and manage pricing quotes, discounts, and approvals.",Pricing Tier Mgmt,Manage pricing tiers across different customer segments.
-Buy,Product & Pricing,Pricing Management,"Define, calculate, and manage pricing quotes, discounts, and approvals.",Pricing Discount Mgmt,Apply and manage discounts within pricing rules.
-Buy,Product & Pricing,Pricing Management,"Define, calculate, and manage pricing quotes, discounts, and approvals.",Pricing Change Mgmt,Track and implement pricing changes or updates.
-Buy,Product & Pricing,Pricing Management,"Define, calculate, and manage pricing quotes, discounts, and approvals.",E-Rate Program Mgmt,Manage E-Rate program pricing and compliance.
-Buy,Product & Pricing,Pricing Management,"Define, calculate, and manage pricing quotes, discounts, and approvals.",Pricing Mgmt – Reporting & Analytics,Report on and analyze pricing performance and trends.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Quotation & Proposal / RFP Management,"Create, store, and manage solution proposals, quotes, and RFP responses.",Quotation & Proposal / RFP Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Quotation & Proposal / RFP Management,"Create, store, and manage solution proposals, quotes, and RFP responses.",Solution Proposal Development & Presentation,Develop and present solution proposals to customers.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Quotation & Proposal / RFP Management,"Create, store, and manage solution proposals, quotes, and RFP responses.",Solution Proposal Response,Prepare and deliver responses to proposals or bids.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Quotation & Proposal / RFP Management,"Create, store, and manage solution proposals, quotes, and RFP responses.",Solution Proposal Storage / Retrieval,Store and retrieve solution proposals for reference.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Quotation & Proposal / RFP Management,"Create, store, and manage solution proposals, quotes, and RFP responses.",Solution Proposal Reporting / Analytics,Track and analyze proposal effectiveness and outcomes.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Quotation & Proposal / RFP Management,"Create, store, and manage solution proposals, quotes, and RFP responses.",RFP/RFQ,Manage customer Requests for Proposal (RFPs) and Requests for Quote (RFQs).
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Quotation & Proposal / RFP Management,"Create, store, and manage solution proposals, quotes, and RFP responses.",Quote-to-Order Conversion,Convert approved quotes into sales orders.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Quotation & Proposal / RFP Management,"Create, store, and manage solution proposals, quotes, and RFP responses.",Integrated Quote Management,Manage quotes across systems for consistency and accuracy.
-Buy,Business Operations,Contract Management,"Generate, execute, and manage the lifecycle of customer contracts.",Contract Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Buy,Business Operations,Contract Management,"Generate, execute, and manage the lifecycle of customer contracts.",Contract Generation,Draft and generate contracts based on agreed terms.
-Buy,Business Operations,Contract Management,"Generate, execute, and manage the lifecycle of customer contracts.",Contract Execution,Execute contracts and ensure compliance with approvals.
-Buy,Business Operations,Contract Management,"Generate, execute, and manage the lifecycle of customer contracts.",Contract Lifecycle Mgmt,Manage contracts throughout their lifecycle from creation to renewal.
-Buy,Business Operations,Contract Management,"Generate, execute, and manage the lifecycle of customer contracts.",Contract Information Mgmt,Store and manage contract details and related documents.
-Buy,Business Operations,Contract Management,"Generate, execute, and manage the lifecycle of customer contracts.",Template Mgmt,Create and maintain contract templates for reuse.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Order Management,"Capture, validate, and process customer sales orders through to handoff.",Sales Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Order Management,"Capture, validate, and process customer sales orders through to handoff.",Bulk Order Creation,Create multiple customer orders in bulk efficiently.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Order Management,"Capture, validate, and process customer sales orders through to handoff.",Order Data Collection,Collect and capture order-related information from customers.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Order Management,"Capture, validate, and process customer sales orders through to handoff.",Order Creation,Create individual sales orders for processing.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Order Management,"Capture, validate, and process customer sales orders through to handoff.",Order Validation,Validate order details for accuracy and completeness.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Order Management,"Capture, validate, and process customer sales orders through to handoff.",Order Submission,Submit validated orders into the system for processing.
-Buy,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Sales Order Management,"Capture, validate, and process customer sales orders through to handoff.",Order Handoff,Transfer orders to fulfillment or downstream systems.
-Buy,Business Commercialization,Recommendation Management,"Create, validate, and compare solution recommendations for customers.",Recommendation Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Buy,Business Commercialization,Recommendation Management,"Create, validate, and compare solution recommendations for customers.",Solution Recommendation Validation,Validate recommended solutions for feasibility and fit.
-Buy,Business Commercialization,Recommendation Management,"Create, validate, and compare solution recommendations for customers.",Solution Comparison,Compare multiple solutions to identify best-fit options.
-Buy,Business Commercialization,Recommendation Management,"Create, validate, and compare solution recommendations for customers.",Cross-Sell / Up-Sell (Pro-Active),Proactively recommend add-ons or upgrades to customers.
-Buy,Business Commercialization,Recommendation Management,"Create, validate, and compare solution recommendations for customers.",Cross-Sell / Up-Sell (Reactive),Suggest cross-sell or up-sell options based on customer needs.
-Buy,Business Commercialization,Recommendation Management,"Create, validate, and compare solution recommendations for customers.",Solution Recommendation Integration,Integrate solution recommendations into sales workflows.
-Buy,Business Commercialization,Recommendation Management,"Create, validate, and compare solution recommendations for customers.",Competitor Solution Comparison,Compare customer options against competitor solutions.
-Buy,Business Commercialization,Recommendation Management,"Create, validate, and compare solution recommendations for customers.",Offer Eligibility,Determine eligibility of offers for specific customers.
-Buy,Business Commercialization,Comm & Notification Management,"Design, generate, deliver, and track customer and partner communications.",Comm & Notification Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Buy,Business Commercialization,Comm & Notification Management,"Design, generate, deliver, and track customer and partner communications.",Communication & Notification Design,Design customer and partner communications and notifications.
-Buy,Business Commercialization,Comm & Notification Management,"Design, generate, deliver, and track customer and partner communications.",Communication & Notification Consent,Manage customer consent for receiving communications.
-Buy,Business Commercialization,Comm & Notification Management,"Design, generate, deliver, and track customer and partner communications.",Communication & Notification Generation,Generate communications and notifications at scale.
-Buy,Business Commercialization,Comm & Notification Management,"Design, generate, deliver, and track customer and partner communications.",Communication & Notification Delivery,Deliver communications and notifications through channels.
-Buy,Business Commercialization,Comm & Notification Management,"Design, generate, deliver, and track customer and partner communications.",Communication & Notification Tracking,Track communications for delivery and effectiveness.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Capture,Capture customer order details into the system.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Enrichment,Add missing data or enhancements to complete orders.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Validation,Verify accuracy and completeness of order information.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Status Mgmt,"Manage order status through validation, sequencing, suspension, or resumption."
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Due Date Commitment,Commit and track due dates for order delivery.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Modification (Supp),Handle order modifications and supplemental changes.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Cancellation,Cancel customer orders when requested or required.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Orchestration (Validation + Sequencing + Suspension + Resume),Coordinate and sequence order tasks across systems.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Fallout & Recovery Mgmt (Resolution / Fallout Flow / Routing),Resolve failed orders and manage fallout recovery.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Fulfillment Trigger,Initiate fulfillment processes from order milestones.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Equipment Trigger,Trigger equipment processes linked to orders.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Test & Turn-Up Trigger,Trigger test and turn-up activities for services.
-Get,Business Operations,Order Management,"Capture, validate, track, and manage customer orders through their lifecycle.",Order Bill Trigger,Trigger billing once the order is fulfilled.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Provisioning Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Coordinate Number Porting,Manage number porting requests with external providers.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Provision Solution,Configure and provision services for customer solutions.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Equipment Order Management,Manage orders for customer equipment procurement.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Equipment Configuration,Configure equipment for service activation.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Equipment Installation (crossed out in slide),[Deprecated – removed from scope] Install and set up customer equipment as part of service provisioning
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Scheduling Activation Mgmt,Schedule activation of services with customer timelines.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Solution Activation Mgmt,Activate services and confirm solution readiness.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Test & Turn Up (TTU) Coordination,Coordinate testing and turn-up tasks with delivery teams.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Test & Turn Up (TTU),Perform service test and turn-up activities.
-Get,Business Operations,Provisioning Management,"Configure and activate solutions, coordinating resources to enable service delivery.",Solution Testing & Acceptance Monitoring (TTU),Monitor solution testing and confirm customer acceptance.
-Get,Business Operations,Logistics & Distribution Management,"Manage warehousing, shipping, tracking, and returns for equipment and materials.",Logistics & Distribution Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Get,Business Operations,Logistics & Distribution Management,"Manage warehousing, shipping, tracking, and returns for equipment and materials.",3PL Management,Manage third-party logistics providers for delivery.
-Get,Business Operations,Logistics & Distribution Management,"Manage warehousing, shipping, tracking, and returns for equipment and materials.",Warehouse & Spares Management,"Manage warehousing, spare parts, and inventory."
-Get,Business Operations,Logistics & Distribution Management,"Manage warehousing, shipping, tracking, and returns for equipment and materials.",Pick / Pack / Ship,"Handle picking, packing, and shipping of goods."
-Get,Business Operations,Logistics & Distribution Management,"Manage warehousing, shipping, tracking, and returns for equipment and materials.",Returns & Disposal Management,Manage product returns and disposal processes.
-Get,Business Operations,Logistics & Distribution Management,"Manage warehousing, shipping, tracking, and returns for equipment and materials.",Logistics Tracking & Visibility Management,Provide tracking and visibility of logistics activities.
-Get,Business Operations,Logistics & Distribution Management,"Manage warehousing, shipping, tracking, and returns for equipment and materials.",Reverse Logistics & RMA Management,Manage reverse logistics and return merchandise authorizations.
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",Field Installation & Construction Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",Work Order Management,Manage work orders for installation and construction tasks.
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",Scheduling & Dispatch Management,Schedule and dispatch field technicians for jobs.
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",Permitting & Special Construction Management,Handle permitting and special construction requirements.
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",On-Site Installation & Testing Mgmt,Perform on-site installation and testing activities.
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",Installation Verification & Completion Mgmt,Verify installation completion and service readiness.
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",Field Resource Tracking & Reporting,Track field resources and provide progress reporting.
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",Field Workforce Mgmt,"Manage scheduling, assignments, and performance of field workforce."
-Get,Business Operations,Field Installation & Construction Management,"Plan, schedule, and complete on-site installations and construction work.",Field Operations Management,Oversee daily field operations and escalations.
-Get,Business Operations,Resource & Governance Management,"Oversee workforce, partner, and project governance for delivery activities.",Resource & Governance Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Get,Business Operations,Resource & Governance Management,"Oversee workforce, partner, and project governance for delivery activities.",Workforce Capacity Planning & Forecasting,Plan and forecast workforce capacity for delivery needs.
-Get,Business Operations,Resource & Governance Management,"Oversee workforce, partner, and project governance for delivery activities.",Partner & Contractor Governance,Manage performance and compliance of partners and contractors.
-Get,Business Operations,Resource & Governance Management,"Oversee workforce, partner, and project governance for delivery activities.",Project Management,"Oversee delivery projects, timelines, and deliverables."
-Get,Business Operations,Design Management,"Define, design, and validate customer solutions to meet requirements.",Design Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Get,Business Operations,Design Management,"Define, design, and validate customer solutions to meet requirements.",Customer Information & Requirement Mgmt,Collect and manage customer requirements for solution design.
-Get,Business Operations,Design Management,"Define, design, and validate customer solutions to meet requirements.",Solution Demo & Trial,Provide solution demos and trials to validate design.
-Get,Business Operations,Design Management,"Define, design, and validate customer solutions to meet requirements.",Integrated Solution Design,Create integrated solution designs across platforms and services.
-Get,Business Operations,Design Management,"Define, design, and validate customer solutions to meet requirements.",Solution Design Help,Provide support and guidance for solution design activities.
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Access & Security Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Portal Navigation Experience,Provide a simple and intuitive navigation experience for portal users.
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Common Login,Enable a single login experience across systems and services.
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Account Access Mgmt,Manage customer account-level access permissions.
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",User Administration,"Create, update, and manage user profiles and roles."
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Function Access Mgmt,Control user access to specific features and functions.
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Product Access Mgmt,Grant and manage access rights for specific products or services.
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Profile Mgmt,Manage user profile information and preferences.
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Portal Access Registration,Register users and enable access to the customer portal.
-Use,Business Operations,Access & Security Management,"Manage user access, authentication, and security for portals and products.",Consent Policy & Preference Setup,"Capture and manage user consent, policies, and communication preferences."
-Use,Business Operations,Customer Portal & Dashboard Management,Configure dashboards and provide analytics for visibility and control.,Customer Portal & Dashboard Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Use,Business Operations,Customer Portal & Dashboard Management,Configure dashboards and provide analytics for visibility and control.,Dashboard Configuration,Configure dashboards to display customer-selected views and data.
-Use,Business Operations,Customer Portal & Dashboard Management,Configure dashboards and provide analytics for visibility and control.,Performance Analytics,Provide performance analytics and insights through dashboards.
-Use,Business Operations,Training & Tutorials Management,"Deliver training, help content, and knowledge resources for seller & customer enablement.",Training & Tutorials Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Use,Business Operations,Training & Tutorials Management,"Deliver training, help content, and knowledge resources for seller & customer enablement.",Help,Deliver help content and support tools for customers.
-Use,Business Operations,Training & Tutorials Management,"Deliver training, help content, and knowledge resources for seller & customer enablement.",Knowledge Base & Script Readiness,Provide a searchable knowledge base and ready-to-use scripts.
-Pay,Business Operations,Account Pricing Management,"Manage customer usage, rating, and discount structures for billing.",Account Pricing Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Account Pricing Management,"Manage customer usage, rating, and discount structures for billing.",Usage & Rating Mgmt,Manage customer usage data and apply rating rules for billing.
-Pay,Business Operations,Account Pricing Management,"Manage customer usage, rating, and discount structures for billing.",Discount Management,Apply and track discounts on customer accounts.
-Pay,Business Operations,Billing Comms Management,Create and deliver billing statements and communication content.,Billing Comms Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Billing Comms Management,Create and deliver billing statements and communication content.,Billing Delivery Management,Deliver billing statements through chosen channels.
-Pay,Business Operations,Billing Comms Management,Create and deliver billing statements and communication content.,Billing Communications Content Mgmt,Create and manage the content of billing communications.
-Pay,Business Operations,Billing Comms Management,Create and deliver billing statements and communication content.,Bill Format Mgmt,Define and manage formats of customer bills.
-Pay,Business Operations,Bill Event Error Management,"Identify, track, and resolve billing event errors.",Bill Event Error Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Bill Event Error Management,"Identify, track, and resolve billing event errors.",Fallout / Error Mgmt,Detect and resolve billing event errors and fallouts.
-Pay,Business Operations,Billing Management,"Oversee billing processes, disputes, leakage control, and wholesale billing.",Billing Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Billing Management,"Oversee billing processes, disputes, leakage control, and wholesale billing.",Tax Management,Apply and manage taxes within billing processes.
-Pay,Business Operations,Billing Management,"Oversee billing processes, disputes, leakage control, and wholesale billing.",Q&A (crossed out in slide),[Deprecated – removed from scope] Manage customer billing questions and provide quick answers
-Pay,Business Operations,Billing Management,"Oversee billing processes, disputes, leakage control, and wholesale billing.",Dispute Management,Manage billing disputes raised by customers.
-Pay,Business Operations,Billing Management,"Oversee billing processes, disputes, leakage control, and wholesale billing.",Billing Event Mgmt,Track and manage billing-related events and adjustments.
-Pay,Business Operations,Billing Management,"Oversee billing processes, disputes, leakage control, and wholesale billing.",Billing / Revenue Leakage Control,Identify and prevent revenue leakage in billing.
-Pay,Business Operations,Billing Management,"Oversee billing processes, disputes, leakage control, and wholesale billing.",Wholesale Billing,Manage billing processes for wholesale services.
-Pay,Business Operations,Commit & Perform Management,Track customer commitments and performance against agreed terms.,Commit & Perform Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Commit & Perform Management,Track customer commitments and performance against agreed terms.,Commitment Mgmt Tracking,Track customer commitments against agreed terms.
-Pay,Business Operations,Commit & Perform Management,Track customer commitments and performance against agreed terms.,Performance Charges / Credits,Apply charges or credits based on service performance.
-Pay,Business Operations,Post Bill Management,"Handle billing inquiries, adjustments, and post-bill corrections.",Post Bill Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Post Bill Management,"Handle billing inquiries, adjustments, and post-bill corrections.",Billing Inquiry Management,Handle customer inquiries related to bills.
-Pay,Business Operations,Post Bill Management,"Handle billing inquiries, adjustments, and post-bill corrections.",Billing Adjustment Mgmt,Process adjustments to customer bills after issuance.
-Pay,Business Operations,Invoice Arrange Management,"Manage invoice options, consolidation, and delivery formats.",Invoice Arrange Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Invoice Arrange Management,"Manage invoice options, consolidation, and delivery formats.",Flexible Invoice Options,Provide flexible invoice delivery and layout options.
-Pay,Business Operations,Invoice Arrange Management,"Manage invoice options, consolidation, and delivery formats.",Consolidation Options,Consolidate multiple invoices into a single statement.
-Pay,Business Operations,Invoice Arrange Management,"Manage invoice options, consolidation, and delivery formats.",Billing Content Customer Requested,Provide customized billing content requested by customers.
-Pay,Business Operations,Invoice Arrange Management,"Manage invoice options, consolidation, and delivery formats.",Invoice Frequency Mgmt,Manage billing and invoice frequency preferences.
-Pay,Business Operations,Payment Capture,Process and issue customer payments and settlements.,Payment Capture Leader/Management Role,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Payment Capture,Process and issue customer payments and settlements.,Invoice / Settlement Issuance,Issue invoices and settlements for customer payments.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Collections Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Collection Policy Definition and Configuration,Define and configure policies for collections.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Collection Policy Execution and Monitoring,Execute and monitor collection activities.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Collection Settlement,Process settlements for collected payments.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Payment Arrangement,Set up and manage customer payment arrangements.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Payment Investigation,Investigate and resolve payment discrepancies.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Bankruptcy Notification and Account Mgmt,Manage bankruptcy notifications and affected accounts.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Bankruptcy Court Filing,File and manage bankruptcy cases in court.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Bankruptcy Charges Reconciliation,Reconcile charges related to bankruptcy cases.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Trustee Payment Mgmt,Manage trustee payments during bankruptcy processes.
-Pay,Business Operations,Collections Management,"Execute and monitor collection policies, settlements, and payment arrangements.",Bankruptcy Reporting & Analytics,Report and analyze bankruptcy-related collections data.
-Pay,Business Operations,Receivables Management,"Manage accounts receivable, reporting, and financial reconciliation.",Receivables Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Receivables Management,"Manage accounts receivable, reporting, and financial reconciliation.",Financial Customer & Account Mgmt,Manage customer financial accounts and receivables.
-Pay,Business Operations,Receivables Management,"Manage accounts receivable, reporting, and financial reconciliation.",Accounts Receivable Sub-Ledger,Maintain detailed sub-ledger for receivables.
-Pay,Business Operations,Receivables Management,"Manage accounts receivable, reporting, and financial reconciliation.","Transaction Control, Accounting Derivation & Reporting",Control transactions and ensure accurate accounting and reporting.
-Pay,Business Operations,Receivables Management,"Manage accounts receivable, reporting, and financial reconciliation.",Credit Mgmt (crossed out in slide),"[Deprecated – removed from scope] Oversee customer credit limits, risk assessment, and credit approvals"
-Pay,Business Operations,Receivables Management,"Manage accounts receivable, reporting, and financial reconciliation.",Bankruptcy & Write-Off,Manage receivable write-offs and bankruptcies.
-Pay,Business Operations,Revenue Assurance Management,"Monitor, analyze, and enforce revenue assurance controls and compliance.",Revenue Assurance Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,Revenue Assurance Management,"Monitor, analyze, and enforce revenue assurance controls and compliance.",RA Audits & Controls,Perform audits and enforce revenue assurance controls.
-Pay,Business Operations,Revenue Assurance Management,"Monitor, analyze, and enforce revenue assurance controls and compliance.",RA Monitoring & Reporting,Monitor and report revenue assurance metrics.
-Pay,Business Operations,Revenue Assurance Management,"Monitor, analyze, and enforce revenue assurance controls and compliance.",RA Analytics,Analyze data to detect revenue assurance risks.
-Pay,Business Operations,Revenue Assurance Management,"Monitor, analyze, and enforce revenue assurance controls and compliance.",RA Correction & Recovery,Correct errors and recover lost revenue.
-Pay,Business Operations,Revenue Assurance Management,"Monitor, analyze, and enforce revenue assurance controls and compliance.",Contract Compliance,Ensure compliance with contract terms for billing and payments.
-Pay,Business Operations,Revenue Assurance Management,"Monitor, analyze, and enforce revenue assurance controls and compliance.",Cost to Serve Analytics,Analyze costs to serve customers and impact on revenue.
-Pay,Business Operations,A&BR Management,Conduct account and billing reviews to ensure accuracy and transparency.,A&BR Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Pay,Business Operations,A&BR Management,Conduct account and billing reviews to ensure accuracy and transparency.,Billing Accuracy Review,Review bills to ensure accuracy against contracts and usage.
-Pay,Business Operations,A&BR Management,Conduct account and billing reviews to ensure accuracy and transparency.,Account Spend & Usage Analysis,Analyze account spend and usage to identify trends and insights.
-Support,Business Operations,Ticket Management,"Capture, categorize, assign, and track support tickets through closure.",Ticket Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,Ticket Management,"Capture, categorize, assign, and track support tickets through closure.",Ticket Creation & Categorization,Create support tickets and categorize them for routing.
-Support,Business Operations,Ticket Management,"Capture, categorize, assign, and track support tickets through closure.",Ticket Assignment & Tracking,Assign tickets to owners and track progress to closure.
-Support,Business Operations,Incident Management,"Manage, prioritize, and resolve service incidents to restore operations quickly.",Incident Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,Incident Management,"Manage, prioritize, and resolve service incidents to restore operations quickly.",Incident Tracking and Management,Track and manage incidents from start to resolution.
-Support,Business Operations,Incident Management,"Manage, prioritize, and resolve service incidents to restore operations quickly.",Incident Orchestration Mgmt,Coordinate resources and systems to handle incidents.
-Support,Business Operations,Incident Management,"Manage, prioritize, and resolve service incidents to restore operations quickly.",Incident Prioritization,Rank incidents by severity and business impact.
-Support,Business Operations,Incident Management,"Manage, prioritize, and resolve service incidents to restore operations quickly.",Resource Engagement,Engage the right teams and experts to resolve incidents.
-Support,Business Operations,Incident Management,"Manage, prioritize, and resolve service incidents to restore operations quickly.",Incident Resolution,Resolve incidents and restore normal service quickly.
-Support,Business Operations,Incident Management,"Manage, prioritize, and resolve service incidents to restore operations quickly.",Problem Analysis (RCA),Perform root cause analysis to prevent recurring incidents.
-Support,Business Operations,Event Management,"Monitor and manage events to detect, correlate, and address service impacts.",Event Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,Event Management,"Monitor and manage events to detect, correlate, and address service impacts.",Asset Identification,Identify assets impacted by events.
-Support,Business Operations,Event Management,"Monitor and manage events to detect, correlate, and address service impacts.",Access Mgmt,Manage access rights related to event responses.
-Support,Business Operations,Event Management,"Monitor and manage events to detect, correlate, and address service impacts.",Event Monitoring,Monitor systems and networks to detect events.
-Support,Business Operations,Event Management,"Monitor and manage events to detect, correlate, and address service impacts.",Event Smoothing,Filter and normalize event data to reduce noise.
-Support,Business Operations,Event Management,"Monitor and manage events to detect, correlate, and address service impacts.",Event Correlation,Correlate related events to identify root issues.
-Support,Business Operations,Change Management,"Initiate, plan, and execute service changes with minimal disruption.",Change Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,Change Management,"Initiate, plan, and execute service changes with minimal disruption.",Initiate Change Request,Create and log change requests for review.
-Support,Business Operations,Change Management,"Initiate, plan, and execute service changes with minimal disruption.",Change Activity Customer Identification,Identify customers impacted by change activities.
-Support,Business Operations,Change Management,"Initiate, plan, and execute service changes with minimal disruption.",Execute Change Activity,Carry out approved change activities in systems or services.
-Support,Business Operations,Change Management,"Initiate, plan, and execute service changes with minimal disruption.",Scheduled Maintenance,Manage planned maintenance activities with minimal disruption.
-Support,Business Operations,Diagnose Management,"Diagnose, analyze, and resolve technical issues affecting service.",Diagnose Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,Diagnose Management,"Diagnose, analyze, and resolve technical issues affecting service.",Diagnose Initiation,Initiate diagnostic checks for customer issues.
-Support,Business Operations,Diagnose Management,"Diagnose, analyze, and resolve technical issues affecting service.",Diagnose Execution,Perform diagnostic steps to identify problems.
-Support,Business Operations,Diagnose Management,"Diagnose, analyze, and resolve technical issues affecting service.",Diagnose Access,Provide access to tools and systems for diagnostics.
-Support,Business Operations,Customer SLA Management,"Define, monitor, and enforce customer service level agreements.",Customer SLA Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,Customer SLA Management,"Define, monitor, and enforce customer service level agreements.",Solution SLA Mgmt,Define and monitor service level agreements for solutions.
-Support,Business Operations,Customer SLA Management,"Define, monitor, and enforce customer service level agreements.",SLA Financial Risk Analysis,Analyze financial risks associated with SLA breaches.
-Support,Business Operations,Customer SLA Management,"Define, monitor, and enforce customer service level agreements.",SLA RFP Response (Pre-Sale),Respond to RFPs with SLA terms during pre-sales.
-Support,Business Operations,Customer SLA Management,"Define, monitor, and enforce customer service level agreements.",SLA Approval,Review and approve SLA commitments with customers.
-Support,Business Operations,Customer SLA Management,"Define, monitor, and enforce customer service level agreements.",SLA Credit Processing,Process customer credits for SLA violations.
-Support,Business Operations,Customer SLA Management,"Define, monitor, and enforce customer service level agreements.",Product SLA Mgmt,Define and manage SLAs for specific products.
-Support,Business Operations,Customer SLA Management,"Define, monitor, and enforce customer service level agreements.",SLA Credit Tracking & Reporting,Track and report SLA credit applications.
-Support,Business Operations,MACD,"Handle customer requests for moves, adds, changes, and disconnects.",MACD Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,MACD,"Handle customer requests for moves, adds, changes, and disconnects.",Solution Migration,Manage migration of existing customer solutions.
-Support,Business Operations,MACD,"Handle customer requests for moves, adds, changes, and disconnects.",Solution Addition,Add new solutions or services for customers.
-Support,Business Operations,MACD,"Handle customer requests for moves, adds, changes, and disconnects.",Solution Change,Modify or update existing customer solutions.
-Support,Business Operations,MACD,"Handle customer requests for moves, adds, changes, and disconnects.",Solution Disconnect,Remove or disconnect solutions when required.
-Support,Business Operations,Contact Center,"Provide customer support through sales, assisted care, and workforce enablement.",Contact Center Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,Contact Center,"Provide customer support through sales, assisted care, and workforce enablement.",Inside-sales / Cross-sell,Use contact center interactions to drive sales and cross-sell opportunities.
-Support,Business Operations,Contact Center,"Provide customer support through sales, assisted care, and workforce enablement.",Assisted Care Operations,Provide assisted customer care through service agents.
-Support,Business Operations,Contact Center,"Provide customer support through sales, assisted care, and workforce enablement.",Workforce Assist,Support agents with tools and insights to improve efficiency.
-Support,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Customer Retention Management,"Gather feedback, measure satisfaction, and strengthen customer relationships.",Customer Retention Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Customer Retention Management,"Gather feedback, measure satisfaction, and strengthen customer relationships.",Customer Survey,Conduct surveys to gather customer satisfaction data.
-Support,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Customer Retention Management,"Gather feedback, measure satisfaction, and strengthen customer relationships.",Customer Feedback Analysis (Active),Analyze active customer feedback for improvement.
-Support,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Customer Retention Management,"Gather feedback, measure satisfaction, and strengthen customer relationships.",Customer Satisfaction Validation,Validate customer satisfaction levels against expectations.
-Support,"Sales Teams (Enterprise, Mid-Market, & Partner Solutions/Indirect)",Customer Retention Management,"Gather feedback, measure satisfaction, and strengthen customer relationships.",Customer Relationship Analysis,Analyze customer relationships to identify risks or opportunities.
-Support,Business Operations,Compliance Management,"Ensure adherence to policies, regulations, audits, and risk controls.",Compliance Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Support,Business Operations,Compliance Management,"Ensure adherence to policies, regulations, audits, and risk controls.",Risk Management,Identify and manage risks related to compliance.
-Support,Business Operations,Compliance Management,"Ensure adherence to policies, regulations, audits, and risk controls.",Policy and Compliance Mgmt,"Define, enforce, and monitor compliance policies."
-Support,Business Operations,Compliance Management,"Ensure adherence to policies, regulations, audits, and risk controls.",Audit Mgmt,Plan and execute compliance audits across systems.
-Support,Business Operations,Compliance Management,"Ensure adherence to policies, regulations, audits, and risk controls.",Seller & Channel Enablement,Ensure sellers and channels meet compliance requirements.
-Support,Business Operations,Compliance Management,"Ensure adherence to policies, regulations, audits, and risk controls.",Vendor Risk Mgmt,Assess and manage compliance risks for vendors.
-Support,Business Operations,Compliance Management,"Ensure adherence to policies, regulations, audits, and risk controls.",FCC Compliance,"Manage compliance with FCC regulations like service reporting, tariff requirements, and customer data protections."
-Support,Business Operations,Compliance Management,"Ensure adherence to policies, regulations, audits, and risk controls.",Device Vulnerability Mgmt,Track and mitigate vulnerabilities in customer devices.
-Network,Business Operations,New Network Build Planning,"Plan, design, and prepare business cases for new network builds.",New Network Build Planning Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Network,Business Operations,New Network Build Planning,"Plan, design, and prepare business cases for new network builds.",Business Case & Modeling,Build business cases and models to justify new network builds.
-Network,Business Operations,New Network Build Planning,"Plan, design, and prepare business cases for new network builds.",High-Level Design (HLD),Create high-level designs for planned network builds.
-Network,Business Operations,New Network Build Planning,"Plan, design, and prepare business cases for new network builds.",Survey and Low-level Design (LLD),Conduct site surveys and develop detailed low-level designs.
-Network,Business Operations,New Network Build Planning,"Plan, design, and prepare business cases for new network builds.",Construction Packages,Prepare construction packages with detailed build instructions.
-Network,Business Operations,Network Maintenance,"Manage service assurance, asset upkeep, and ongoing network operations.",Network Maintenance Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Network,Business Operations,Network Maintenance,"Manage service assurance, asset upkeep, and ongoing network operations.",Service Assurance,Monitor and maintain network performance and service quality.
-Network,Business Operations,Network Maintenance,"Manage service assurance, asset upkeep, and ongoing network operations.",Asset Service Management,Manage lifecycle and serviceability of network assets.
-Network,Business Operations,Network Maintenance,"Manage service assurance, asset upkeep, and ongoing network operations.",Network Management,Oversee network operations and maintenance activities.
-Network,Business Operations,Network Maintenance,"Manage service assurance, asset upkeep, and ongoing network operations.",Last Mile & Customer Location Maintenance,"Deliver, install, and maintain last-mile connectivity and customer-premises equipment through on-going service and support"
-Network,Business Operations,Network Performance Management,"Monitor, analyze, and report on network performance and capacity.",Network Performance Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Network,Business Operations,Network Performance Management,"Monitor, analyze, and report on network performance and capacity.",Network Performance Monitoring,Continuously monitor network health and performance metrics.
-Network,Business Operations,Network Performance Management,"Monitor, analyze, and report on network performance and capacity.",Network Performance Analysis,Analyze network data to identify issues and trends.
-Network,Business Operations,Network Performance Management,"Monitor, analyze, and report on network performance and capacity.",Network Performance Reporting,Generate reports on network performance and service quality.
-Network,Business Operations,Network Performance Management,"Monitor, analyze, and report on network performance and capacity.",Network Performance Planning,Plan improvements and capacity based on performance analysis.
-Network,Business Operations,Network Performance Management,"Monitor, analyze, and report on network performance and capacity.",Network & Field Data Lake,Manage a centralized data lake for network and field data.
-Network,Business Operations,Network Performance Management,"Monitor, analyze, and report on network performance and capacity.",Threat Analysis & Intelligence Gathering,Identify and assess emerging threats through continuous intelligence gathering and analysis
-Product,Product & Pricing,Catalog Management,"Manage solution catalogs, including product details, pricing, promotions, and user roles.",Catalog Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Product,Product & Pricing,Catalog Management,"Manage solution catalogs, including product details, pricing, promotions, and user roles.",Solution Catalog Product & Offer Mgmt,Manage products and offers within the solution catalog.
-Product,Product & Pricing,Catalog Management,"Manage solution catalogs, including product details, pricing, promotions, and user roles.",Solution Catalog Content Mgmt,Maintain catalog content including descriptions and attributes.
-Product,Product & Pricing,Catalog Management,"Manage solution catalogs, including product details, pricing, promotions, and user roles.",Solution Catalog Pricing Mgmt,Define and manage product pricing in the catalog.
-Product,Product & Pricing,Catalog Management,"Manage solution catalogs, including product details, pricing, promotions, and user roles.",Solution Catalog Promotions & Discount Mgmt,Configure promotions and discounts for catalog products.
-Product,Product & Pricing,Catalog Management,"Manage solution catalogs, including product details, pricing, promotions, and user roles.",Solution Catalog User Role Management,Control user roles and access within the catalog system.
-Product,Product & Pricing,ELE Product Lifecycle Management,"Define, configure, monitor, and retire products across their lifecycle.",ELE Product Lifecycle Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Product,Product & Pricing,ELE Product Lifecycle Management,"Define, configure, monitor, and retire products across their lifecycle.",Product Capability Reqs Definition,Define capability requirements for new products.
-Product,Product & Pricing,ELE Product Lifecycle Management,"Define, configure, monitor, and retire products across their lifecycle.",Solution Configuration Mgmt,Configure and manage solution features and options.
-Product,Product & Pricing,ELE Product Lifecycle Management,"Define, configure, monitor, and retire products across their lifecycle.",Monetization Models Management,Define and manage product monetization and pricing models.
-Product,Product & Pricing,ELE Product Lifecycle Management,"Define, configure, monitor, and retire products across their lifecycle.",Product Catalog Lifecycle Mgmt,Manage catalog updates across the product lifecycle.
-Product,Product & Pricing,ELE Product Lifecycle Management,"Define, configure, monitor, and retire products across their lifecycle.",Product Performance Mgmt,Monitor and report on product performance in market.
-Product,Product & Pricing,ELE Product Lifecycle Management,"Define, configure, monitor, and retire products across their lifecycle.",Product Retirement & Rationalization,Retire outdated products and rationalize the portfolio.
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.",Pricing / Deals Decision Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.",Product Rating & Rate Assignment,Assign rates and ratings for products and services.
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.","Discounts, Rebates, and Adjustments","Manage discounts, rebates, and price adjustments."
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.",Pricing Rules & Promotions Mgmt,Define and enforce pricing rules and promotions.
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.",Pricing Publication & Distribution Mgmt,Publish and distribute pricing information to channels.
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.",Revenue Recognition Rules Management,Apply revenue recognition rules for products and deals.
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.",Deal Desk Governance & Approval,Govern deal approvals through structured deal desk processes.
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.",Complex Deal Modeling & Margin Analysis,Model complex deals and analyze margin impacts.
-Product,Product & Pricing,Pricing / Deals Decision,"Manage product pricing, discounts, deal structures, and revenue rules.",Deal Performance Tracking & Compliance,Track deal performance and ensure compliance with rules.
-Product,Product & Pricing,Capital Planning,"Plan, budget, allocate, and track capital investments and financing.",Capital Planning Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Product,Product & Pricing,Capital Planning,"Plan, budget, allocate, and track capital investments and financing.",Capital Investment Mgmt,Plan and manage capital investments for products.
-Product,Product & Pricing,Capital Planning,"Plan, budget, allocate, and track capital investments and financing.",Capital Financing Mgmt,Arrange and oversee financing for capital projects.
-Product,Product & Pricing,Capital Planning,"Plan, budget, allocate, and track capital investments and financing.",Capital Budgeting & Forecasting Mgmt,Budget and forecast capital spending needs.
-Product,Product & Pricing,Capital Planning,"Plan, budget, allocate, and track capital investments and financing.",Capital Allocation & Prioritization Mgmt,Allocate and prioritize capital across initiatives.
-Product,Product & Pricing,Capital Planning,"Plan, budget, allocate, and track capital investments and financing.",Capital Performance Tracking & Reporting Mgmt,Track and report performance of capital investments.
-Product,Product & Pricing,Product Experience,"Oversee product adoption, quality, feedback, and experience optimization.",Product Experience Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Product,Product & Pricing,Product Experience,"Oversee product adoption, quality, feedback, and experience optimization.",Product Adoption & Usage Management,Monitor adoption and usage of products by customers.
-Product,Product & Pricing,Product Experience,"Oversee product adoption, quality, feedback, and experience optimization.",Product Quality & Issue Analytics Management,Track product quality and analyze customer issues.
-Product,Product & Pricing,Product Experience,"Oversee product adoption, quality, feedback, and experience optimization.",Product Feedback Integration Management,Gather and integrate customer feedback into product improvements.
-Product,Product & Pricing,Product Experience,"Oversee product adoption, quality, feedback, and experience optimization.",Product Personalization & Feature Enablement,Enable personalization and feature configuration for products.
-Product,Product & Pricing,Product Experience,"Oversee product adoption, quality, feedback, and experience optimization.",Product Experience Optimization,Continuously optimize product experience for customers.
-Product,Business Commercialization,GTM Enablement / Offers,"Manage offer design, launch, channel enablement, and performance tracking.",GTM Enablement / Offers Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Product,Business Commercialization,GTM Enablement / Offers,"Manage offer design, launch, channel enablement, and performance tracking.",Market Research & Competitive Intelligence,Conduct research and gather intelligence for offers.
-Product,Business Commercialization,GTM Enablement / Offers,"Manage offer design, launch, channel enablement, and performance tracking.",Offer Definition & Packaging,Define offers and package solutions for go-to-market.
-Product,Business Commercialization,GTM Enablement / Offers,"Manage offer design, launch, channel enablement, and performance tracking.",Campaign & Launch Planning,Plan campaigns and launches for new offers.
-Product,Business Commercialization,GTM Enablement / Offers,"Manage offer design, launch, channel enablement, and performance tracking.",Seller & Channel Enablement,Enable sellers and channels with tools and training for offers.
-Product,Business Commercialization,GTM Enablement / Offers,"Manage offer design, launch, channel enablement, and performance tracking.",Offer Performance Monitoring & Iteration (Post-Launch),Monitor offer performance and iterate based on results.
-Product,Business Commercialization,GTM Enablement / Offers,"Manage offer design, launch, channel enablement, and performance tracking.",Offer Sunset & Rationalization,Retire or rationalize offers based on performance and strategy.
-Product,Business Commercialization,Product Strategy & Innovation,Define and evolve product strategy through continuous innovation and portfolio planning.,Product Strategy Leader / Management,Management level 2 and above that touch all parts of the L1 capability
-Product,Business Commercialization,Product Strategy & Innovation,Define and evolve product strategy through continuous innovation and portfolio planning.,Portfolio Optimization & Simplification,Optimize and streamline product portfolios to align with business priorities and reduce complexity.
-Product,Business Commercialization,Product Strategy & Innovation,Define and evolve product strategy through continuous innovation and portfolio planning.,Product Strategy Development,"Develop and refine product strategies to support growth, competitiveness, and differentiation."
-Product,Business Commercialization,Product Strategy & Innovation,Define and evolve product strategy through continuous innovation and portfolio planning.,"Innovation - Idea Harvest, Product Ideation & Strategic Fit",Capture and evaluate new product ideas to ensure alignment with strategic goals.
-Product,Business Commercialization,Product Strategy & Innovation,Define and evolve product strategy through continuous innovation and portfolio planning.,Innovation - Product Design & Development,Design and develop innovative product solutions from concept to commercialization.
-Product,Business Commercialization,Product Strategy & Innovation,Define and evolve product strategy through continuous innovation and portfolio planning.,"Innovation - GTM, Launch & Product Evolution",Plan and execute go-to-market strategies and drive continuous product improvement.
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Customer Data Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Customer Hierarchy Mgmt,Manage customer hierarchy structures and relationships.
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Customer Profile Mgmt,Maintain customer profile details and attributes.
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Customer Interaction Mgmt,Track and manage customer interactions across channels.
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Customer Contact Mgmt,Manage customer contact information and preferences.
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Customer Competitive Analysis,Analyze customer data to assess competitive positioning.
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Customer Activity Analysis (Passive),Capture and analyze passive customer activity data.
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Company Identity Mgmt,Manage company identity and associated attributes.
-Reporting & Data Platforms,Business Operations,Customer Data Management,"Manage customer data including hierarchy, profiles, interactions, and identity.",Customer 360 Mgmt,Provide a unified 360-degree view of customer data.
-Reporting & Data Platforms,Business Operations,Customer Inventory Management,"Create, update, and manage customer inventory records and access.",Customer Inventory Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Reporting & Data Platforms,Business Operations,Customer Inventory Management,"Create, update, and manage customer inventory records and access.",Inventory Creation,Create and register customer inventory records.
-Reporting & Data Platforms,Business Operations,Customer Inventory Management,"Create, update, and manage customer inventory records and access.",Inventory Modification,Update and modify existing customer inventory records.
-Reporting & Data Platforms,Business Operations,Customer Inventory Management,"Create, update, and manage customer inventory records and access.",Inventory Access,Provide access to view and manage inventory records.
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status View,Display customer or service status in real time.
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status Persona Profile Mgmt,Manage persona-specific profiles for status reporting.
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status Subscriptions,Allow users to subscribe to status updates.
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status Actions,Enable actions based on service or customer status.
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status Search,Search for customer or service status across systems.
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status Reporting,Generate reports based on status information.
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status Derivation,Derive status from related data sources and inputs.
-Reporting & Data Platforms,Business Operations,Status Management,"Track, report, and manage service or customer status across profiles and logs.",Status Logs & History,Maintain logs and history of status changes.
-Reporting & Data Platforms,Business Operations,Service Performance Management,"Monitor, analyze, report, and plan for service performance.",Service Performance Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Reporting & Data Platforms,Business Operations,Service Performance Management,"Monitor, analyze, report, and plan for service performance.",Service Performance Monitoring,Monitor service performance metrics continuously.
-Reporting & Data Platforms,Business Operations,Service Performance Management,"Monitor, analyze, report, and plan for service performance.",Service Performance Analysis,Analyze service performance data for issues and trends.
-Reporting & Data Platforms,Business Operations,Service Performance Management,"Monitor, analyze, report, and plan for service performance.",Reporting and Analytics Operations Performance Reporting,Report service performance to stakeholders.
-Reporting & Data Platforms,Business Operations,Service Performance Management,"Monitor, analyze, report, and plan for service performance.",Service Performance Planning,Plan improvements based on service performance insights.
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Commercial Insights & Analytics Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Market & Usage Data Collection,Collect and manage market and usage data for analysis.
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Customer & Segment Insights,Generate insights into customer segments and behaviors.
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Offer & Pricing Effectiveness Insights (Pre-launch),Analyze offer and pricing effectiveness before launch.
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Promotion & Campaign Impact Analytics,Measure and analyze the impact of promotions and campaigns.
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Growth & Retention Opportunity Identification,Identify opportunities for customer growth and retention.
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Insights Integration into GTM,Integrate insights into go-to-market strategies.
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Data Science & Advanced Analytics,"Apply data science and advanced analytics to generate predictive, prescriptive, and casual insights that inform business strategy & commercialization"
-Reporting & Data Platforms,Business Commercialization,Commercial Insights & Analytics,"Generate market, customer, and campaign insights to support growth and GTM.",Experiential Design & Engagement,Create and enhance customer experiences through immersive design and engagement strategies
-Reporting & Data Platforms,All Bus,Enterprise Reporting & Analytics,"Generate, manage, and govern business reporting and analytics across data, finance, compliance, IT, and HR domains",Enterprise Reporting  & Analytics Leader / Mgmt,Management level 2 and above that touch all parts of the L1 capability
-Reporting & Data Platforms,All Bus,Enterprise Reporting & Analytics,"Generate, manage, and govern business reporting and analytics across data, finance, compliance, IT, and HR domains",Reporting and Analytics Data Management,"Manage data collection, storage, and preparation for reporting"
-Reporting & Data Platforms,All Bus,Enterprise Reporting & Analytics,"Generate, manage, and govern business reporting and analytics across data, finance, compliance, IT, and HR domains",Reporting and Analytics Financial Reporting,"Create and manage financial statements, forecasts, and analysis"
-Reporting & Data Platforms,All Bus,Enterprise Reporting & Analytics,"Generate, manage, and govern business reporting and analytics across data, finance, compliance, IT, and HR domains",Reporting and Analytics Compliance & Risk Reporting,"Monitor and report on compliance, risk, and regulatory adherence"
-Reporting & Data Platforms,All Bus,Enterprise Reporting & Analytics,"Generate, manage, and govern business reporting and analytics across data, finance, compliance, IT, and HR domains",Reporting and Analytics IT & Systems,"Track IT performance, uptime, usage, and system health"
-Reporting & Data Platforms,All Bus,Enterprise Reporting & Analytics,"Generate, manage, and govern business reporting and analytics across data, finance, compliance, IT, and HR domains",Reporting and Analytics Payroll & HR,"Report on workforce, payroll, benefits, and HR metrics"
-Reporting & Data Platforms,All Bus,"Sensitive Data Management, Reporting, & Analytics","Manage secure collection, reporting, and analysis of sensitive and regulated data","Sensitive Data Management, Reporting & Analytics Leader / Mgmt",Management level 2 and above that touch all parts of the L1 capability
-Reporting & Data Platforms,All Bus,"Sensitive Data Management, Reporting, & Analytics","Manage secure collection, reporting, and analysis of sensitive and regulated data","Sensitive Data Management, Reporting & Analytics","Manage secure data collection, reporting, and analytics for sensitive or regulated information"
-Commercialization,Business Commercialization,Sales Planning,"Plan sales activities, demand forecasts, and budgeting to guide revenue growth.",Sales Planning Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Commercialization,Business Commercialization,Sales Planning,"Plan sales activities, demand forecasts, and budgeting to guide revenue growth.",Budgeting & Forecasting,Plan sales budgets and forecast future performance.
-Commercialization,Business Commercialization,Sales Planning,"Plan sales activities, demand forecasts, and budgeting to guide revenue growth.",Demand Forecasting,Predict customer demand to align sales capacity and planning.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Distribution / Channel Strategy Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Channel Segmentation & Strategy,Define strategies based on channel segmentation.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Partner Onboarding and Enablement,Onboard new partners and provide enablement resources.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Partner Accreditation & Training,Certify and train partners for channel readiness.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Channel Engagement & Incentives,Engage partners with incentives and engagement programs.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Channel Performance Monitoring,Track and report on channel and partner performance.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Partner Deactivation / Termination,Manage termination and deactivation of channel partners.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Channel Compliance & Governance,Enforce compliance and governance standards across channels.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Channel ROI & Optimization,Measure ROI and optimize channel strategies and spend.
-Commercialization,Business Commercialization,Distribution / Channel Strategy,"Define, onboard, and manage partner and channel strategies for market coverage.",Compliance & Regulatory Alignment,Ensure channels comply with industry regulations and policies.
-Commercialization,Business Commercialization,Wholesale Strategy,"Develop and manage wholesale offerings, pricing, access, and partner engagement.",Wholesale Strategy Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Commercialization,Business Commercialization,Wholesale Strategy,"Develop and manage wholesale offerings, pricing, access, and partner engagement.",Wholesale Offer & Portfolio Strategy,Define and manage wholesale product and offer portfolio.
-Commercialization,Business Commercialization,Wholesale Strategy,"Develop and manage wholesale offerings, pricing, access, and partner engagement.",Pricing & Margin Management,Set wholesale pricing models and manage margins.
-Commercialization,Business Commercialization,Wholesale Strategy,"Develop and manage wholesale offerings, pricing, access, and partner engagement.",Interconnect & Access Strategy,Plan carrier interconnects and access sourcing strategies.
-Commercialization,Business Commercialization,Wholesale Strategy,"Develop and manage wholesale offerings, pricing, access, and partner engagement.",Partner/Carrier Engagement Model,Define engagement approaches with wholesale carriers and partners.
-Commercialization,Business Commercialization,Wholesale Strategy,"Develop and manage wholesale offerings, pricing, access, and partner engagement.",Compliance & Regulatory Alignment,Align wholesale operations with telecom regulations.
-Commercialization,Business Commercialization,Compensation,"Plan, define, calculate, and reconcile seller and partner compensation.",Compensation Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Commercialization,Business Commercialization,Compensation,"Plan, define, calculate, and reconcile seller and partner compensation.",Compensation Planning & Design,Plan and design compensation structures and models.
-Commercialization,Business Commercialization,Compensation,"Plan, define, calculate, and reconcile seller and partner compensation.",Compensation Definition & Build,Define and build detailed compensation programs.
-Commercialization,Business Commercialization,Compensation,"Plan, define, calculate, and reconcile seller and partner compensation.",Compensation Credit & Data Submission,Submit and manage compensation credits and supporting data.
-Commercialization,Business Commercialization,Compensation,"Plan, define, calculate, and reconcile seller and partner compensation.",Compensation Calculation & Payment,Calculate compensation and process timely payments.
-Commercialization,Business Commercialization,Compensation,"Plan, define, calculate, and reconcile seller and partner compensation.",Compensation Governance & Dispute Resolution,Govern compensation processes and resolve disputes.
-Commercialization,Business Commercialization,Compensation,"Plan, define, calculate, and reconcile seller and partner compensation.",Compensation Reconciliation,Reconcile compensation records with payments and credits.
-Commercialization,Business Commercialization,Compensation,"Plan, define, calculate, and reconcile seller and partner compensation.",Strategic Incentive Alignment,Align compensation incentives with business strategy.
-Commercialization,Business Commercialization,Partner & Channel Management,"Manage partner readiness, enablement, governance, and SLA monitoring.",Partner & Channel Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Commercialization,Business Commercialization,Partner & Channel Management,"Manage partner readiness, enablement, governance, and SLA monitoring.",Partner Accreditation Criteria & Training Readiness,Define partner accreditation criteria and training requirements.
-Commercialization,Business Commercialization,Partner & Channel Management,"Manage partner readiness, enablement, governance, and SLA monitoring.",Channel Scripting & Guidance,Provide scripting and guidance to support channel activities.
-Commercialization,Business Commercialization,Partner & Channel Management,"Manage partner readiness, enablement, governance, and SLA monitoring.",Channel Knowledge Base & Script Readiness,Maintain a knowledge base and scripts for partner use.
-Commercialization,Business Commercialization,Partner & Channel Management,"Manage partner readiness, enablement, governance, and SLA monitoring.",Partner SLA Templates & Monitoring Setup,Define SLA templates and establish partner monitoring.
-Commercialization,Business Commercialization,Partner & Channel Management,"Manage partner readiness, enablement, governance, and SLA monitoring.",Public Sector Partner Mgmt,Manage and govern relationships with public sector partners.
-Commercialization,Business Commercialization,Forecasting,"Forecast sales demand, revenue, and alignment with business plans.",Forecasting Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Commercialization,Business Commercialization,Forecasting,"Forecast sales demand, revenue, and alignment with business plans.",Sales Demand Forecasting,Forecast sales demand across products and markets.
-Commercialization,Business Commercialization,Forecasting,"Forecast sales demand, revenue, and alignment with business plans.",Revenue Forecasting,Forecast revenues to align with business objectives.
-Commercialization,Business Commercialization,Forecasting,"Forecast sales demand, revenue, and alignment with business plans.",Forecast-to-Plan Alignment,Align forecasts with business plans and targets.
-Commercialization,Business Commercialization,Knowledge Management,Create and manage knowledge assets to support sellers and partners.,Knowledge Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Commercialization,Business Commercialization,Knowledge Management,Create and manage knowledge assets to support sellers and partners.,Knowledge Authoring,Create and manage knowledge assets for sellers and partners.
-Vendor Management,All BUs,Vendor Strategy & Governance,"Defining vendor strategy, sourcing, onboarding, contracts, and compliance.",Vendor Strategy & Governance Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Vendor Management,All BUs,Vendor Strategy & Governance,"Defining vendor strategy, sourcing, onboarding, contracts, and compliance.",Supplier/Vendor Management Ecosystem Strategy ,Classify vendors and define sourcing approaches
-Vendor Management,All BUs,Vendor Strategy & Governance,"Defining vendor strategy, sourcing, onboarding, contracts, and compliance.",Vendor Selection & Qualification,Run RFPs and evaluate technical/commercial fit
-Vendor Management,All BUs,Vendor Strategy & Governance,"Defining vendor strategy, sourcing, onboarding, contracts, and compliance.",Due Diligence & Onboarding,"Vet vendor stability, compliance, and onboard"
-Vendor Management,All BUs,Vendor Strategy & Governance,"Defining vendor strategy, sourcing, onboarding, contracts, and compliance.",Contracting & Commercials,"Set MSAs, SLAs, pricing, and change governance"
-Vendor Management,All BUs,Vendor Strategy & Governance,"Defining vendor strategy, sourcing, onboarding, contracts, and compliance.",Compliance & Risk Mgmt,"Monitor regulatory, ethical, and supply-chain risks"
-Vendor Management,All BUs,Vendor Performance & Relationship Management,"Managing vendor delivery, spend, SLAs, and strategic partnerships.",Vendor Performance & Relationship Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Vendor Management,All BUs,Vendor Performance & Relationship Management,"Managing vendor delivery, spend, SLAs, and strategic partnerships.",Delivery & Milestone Mgmt,Track delivery commitments and quality metrics
-Vendor Management,All BUs,Vendor Performance & Relationship Management,"Managing vendor delivery, spend, SLAs, and strategic partnerships.",Supplier/Vendor Management Supplier Performance Mgmt ,Monitor SLA adherence and enforce remedies
-Vendor Management,All BUs,Vendor Performance & Relationship Management,"Managing vendor delivery, spend, SLAs, and strategic partnerships.",Supplier/Vendor Management PR/PO Creation ,Raise and manage purchase requisitions and purchase orders for vendor engagements
-Vendor Management,All BUs,Vendor Performance & Relationship Management,"Managing vendor delivery, spend, SLAs, and strategic partnerships.",Supplier/Vendor Management Invoice Receipt & Payment ,"Process vendor invoices and ensure accurate, timely payments"
-Vendor Management,All BUs,Vendor Performance & Relationship Management,"Managing vendor delivery, spend, SLAs, and strategic partnerships.",Supplier/Vendor Management Expense Management ,"Track, control, and report vendor-related expenses against budgets"
-Vendor Management,All BUs,Vendor Performance & Relationship Management,"Managing vendor delivery, spend, SLAs, and strategic partnerships.",Relationship & Governance Forums,Run QBRs/JBRs and manage escalations
-Vendor Management,All BUs,Vendor Performance & Relationship Management,"Managing vendor delivery, spend, SLAs, and strategic partnerships.",Innovation & Co-Development,Drive joint pilots and roadmap alignment
-Vendor Management,All BUs,Vendor Lifecycle & Exit,"Overseeing certification, tooling vendors, renewals, and transitions.",Vendor Lifecycle & Exit Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Vendor Management,All BUs,Vendor Lifecycle & Exit,"Overseeing certification, tooling vendors, renewals, and transitions.",Certification & Interoperability Mgmt,Certify standards compliance and interoperability
-Vendor Management,All BUs,Vendor Lifecycle & Exit,"Overseeing certification, tooling vendors, renewals, and transitions.",Tooling & Technology Vendor Mgmt,Govern OSS/BSS and critical tooling vendors
-Vendor Management,All BUs,Vendor Lifecycle & Exit,"Overseeing certification, tooling vendors, renewals, and transitions.",Renewal & Continuity Planning,Plan renewals to ensure continuity
-Vendor Management,All BUs,Vendor Lifecycle & Exit,"Overseeing certification, tooling vendors, renewals, and transitions.",Transition & Exit Mgmt,Manage offboarding and successor transitions
-Vendor Management,All BUs,Vendor Lifecycle & Exit,"Overseeing certification, tooling vendors, renewals, and transitions.","Logistics, Spares & Reverse Supply Mgmt","Oversee spares, repairs, and recycling"
-Tooling / Tech Support ,All BUs,Tool Adoption & Training,"Drive adoption of tools by providing onboarding, training, and enablement.",Tool Adoption & Training Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Tooling / Tech Support ,All BUs,Tool Adoption & Training,"Drive adoption of tools by providing onboarding, training, and enablement.",Systems/Tooling Training,Provide onboarding and training for business users on tools.
-Tooling / Tech Support ,All BUs,Tool Adoption & Training,"Drive adoption of tools by providing onboarding, training, and enablement.",Tool Usage Guides & Playbooks,Create simple guides and playbooks for tool usage.
-Tooling / Tech Support ,All BUs,Tool Adoption & Training,"Drive adoption of tools by providing onboarding, training, and enablement.",Systems/Tooling Change Mgmt/Adoption ,Conduct refresher and advanced enablement workshops.
-Tooling / Tech Support ,All BUs,Tool Usage & Configuration Support,"Provide support for day-to-day tool usage, configuration, and troubleshooting.",Tool Usage & Configuration Support Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Tooling / Tech Support ,All BUs,Tool Usage & Configuration Support,"Provide support for day-to-day tool usage, configuration, and troubleshooting.",Dashboard & Report Configuration,Help configure dashboards and reports for business needs.
-Tooling / Tech Support ,All BUs,Tool Usage & Configuration Support,"Provide support for day-to-day tool usage, configuration, and troubleshooting.",Systems/Tooling Requirement Building,Support workflow and rule adjustments based on business needs.
-Tooling / Tech Support ,All BUs,Tool Usage & Configuration Support,"Provide support for day-to-day tool usage, configuration, and troubleshooting.",Systems/Tooling Development,Resolve simple tool usage issues and queries.
-Tooling / Tech Support ,All BUs,Tool Access & Governance,"Manage access, permissions, and governance to ensure compliant tool usage.",Tool Access & Governance Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Tooling / Tech Support ,All BUs,Tool Access & Governance,"Manage access, permissions, and governance to ensure compliant tool usage.",Access Provisioning & Deactivation,Manage access requests and timely deactivation of users.
-Tooling / Tech Support ,All BUs,Tool Access & Governance,"Manage access, permissions, and governance to ensure compliant tool usage.",Role & Permission Mgmt,Assign and manage user roles and entitlements.
-Tooling / Tech Support ,All BUs,Tool Access & Governance,"Manage access, permissions, and governance to ensure compliant tool usage.",Compliance & Audit Readiness,Ensure compliance with governance and audit requirements.
-Tooling / Tech Support ,All BUs,Tool Performance & Feedback Management,Capture feedback and monitor performance to improve tool effectiveness.,Tool Performance & Feedback Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Tooling / Tech Support ,All BUs,Tool Performance & Feedback Management,Capture feedback and monitor performance to improve tool effectiveness.,User Feedback Capture,Collect feedback from business users on tool usage.
-Tooling / Tech Support ,All BUs,Tool Performance & Feedback Management,Capture feedback and monitor performance to improve tool effectiveness.,Enhancement Request Mgmt,Track and prioritize business-driven enhancement requests.
-Tooling / Tech Support ,All BUs,Tool Performance & Feedback Management,Capture feedback and monitor performance to improve tool effectiveness.,Systems/Tooling Support (Post-Release) ,"Monitor adoption, performance, and user satisfaction of tools."
-Tooling / Tech Support ,All BUs,Tool Performance & Feedback Management,Capture feedback and monitor performance to improve tool effectiveness.,Systems/Tooling Change Mgmt/Adoption ,Drive adoption of new systems and tools through structured change management practices
-Tooling / Tech Support ,All BUs,Tooling Capital & Portfolio Management,"Manage financial planning, prioritization, and portfolio of tooling investments.",Tooling Capital & Portfolio Leader / Management,Management level 2 and above that touch all parts of the L1 capability
-Tooling / Tech Support ,All BUs,Tooling Capital & Portfolio Management,"Manage financial planning, prioritization, and portfolio of tooling investments.",Systems/Tooling Capital Planning,Plan capital investments for tooling and technology initiatives.
-Tooling / Tech Support ,All BUs,Tooling Capital & Portfolio Management,"Manage financial planning, prioritization, and portfolio of tooling investments.",Systems/Tooling Capital Prioritization,Prioritize capital projects based on business value and urgency.
-Tooling / Tech Support ,All BUs,Tooling Capital & Portfolio Management,"Manage financial planning, prioritization, and portfolio of tooling investments.",Systems/Tooling Capital Benefit Modeling,Model expected benefits and ROI for tooling investments.
-Tooling / Tech Support ,All BUs,Tooling Capital & Portfolio Management,"Manage financial planning, prioritization, and portfolio of tooling investments.",Systems/Tooling Project Portfolio Management,Manage the overall portfolio of tooling-related projects.
-Tooling / Tech Support ,All BUs,Tooling Capital & Portfolio Management,"Manage financial planning, prioritization, and portfolio of tooling investments.",Systems/Tooling Dev Cash Budget Management,Manage development cash budgets for tooling and technology.
-Tooling / Tech Support ,All BUs,Tooling Program & Project Management,Oversee execution of tooling programs and projects across the lifecycle.,Tooling Program & Project Leader / Mgmt,Management level 2 and above that touch all parts of the L1 capability
-Tooling / Tech Support ,All BUs,Tooling Program & Project Management,Oversee execution of tooling programs and projects across the lifecycle.,Systems/Tooling Development Cycle Project Management ,Manage tooling project activities across development cycles.
-Tooling / Tech Support ,All BUs,Tooling Program & Project Management,Oversee execution of tooling programs and projects across the lifecycle.,Systems/Tooling E2E Program Management,Manage end-to-end programs covering multiple tooling initiatives.
-Tooling / Tech Support ,All BUs,Tooling Program & Project Management,Oversee execution of tooling programs and projects across the lifecycle.,Systems/Tooling Implementation Project Management,Manage the implementation of tooling projects into operations.
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Innovation & Transformation Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Business Pain Point Discovery,Identify and document critical business challenges and process inefficiencies
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Workflow Analysis & Business Process Re-engineering,Analyze and redesign workflows to improve efficiency and operational performance
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Opportunity Sizing,Estimate and prioritize opportunities based on business value and impact potential
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Ideation with Partners,Collaborate with internal and external partners to generate and refine new ideas
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Automation Opportunity Identification,Identify business processes suitable for automation to drive efficiency and scalability
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Data Readiness & Compliance,"Assess data quality, accessibility, and compliance to support innovation and automation"
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Proof of Concept,Develop and validate proof of concept solutions to test feasibility and business value
-Innovation & Transformation,All BUs,Innovation & Transformation,Drive enterprise-wide innovation and transformation to improve business performance,Technology Development (Coding),Develop and configure technology solutions through coding and system integration
-Personnel,All BUs,Onboarding / Talent Management,"Manage employee onboarding and intgeration, inclusing provisioning, access, interviews, and requisition support",Onboarding/Talent Leader/Management,Management level 2 and above that touch all parts of the L1 capability
-Personnel,All BUs,Onboarding / Talent Management,"Manage employee onboarding and intgeration, inclusing provisioning, access, interviews, and requisition support",Onboarding/Talent Acquisition,"Oversee employee onboarding by managing equipment provisioning, system access, interviews, and requisition support for seamless new-hire integration"
-Personnel,All BUs,Personnel Management,"Manage workforce planning, performance, and engagement to support organizational goals",Personnel Mgmt Leader / Mgmt,Management level 2 and above that touch all parts of the L1 capability
-Personnel,All BUs,Personnel Management,"Manage workforce planning, performance, and engagement to support organizational goals",Chief of Staff,Coordinate strategic and operational activities to support executive decision-making
-Personnel,All BUs,Personnel Management,"Manage workforce planning, performance, and engagement to support organizational goals",Executive Assistant,Provide administrative and scheduling support to executive leadership teams
+editor,action,Line Of Business  Component,Channel Component,Product Component,L0 Component,domain_sequence Qualifier,L1 Component,sub_domain_sequence Qualifier,Business Flow Component,business_flow_sequence Qualifier,sequence_uml Qualifier,Task Component,Task_sequence Qualifier,Application Component,correlation_id Qualifier,FK_Data[Application].CORRELATION_ID
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,ASOC ->> ROME: Connect to Opportunity ,Connect to Opportunity,1,ASOC,13540,13540
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,OVALS GIS ->> ROME: Connect to Opportunity ,Connect to Opportunity,1,OVALS GIS,19375,19375
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"CPC ->> Sales Express: Connect for Standard Pricing
+CPC ->> ASAP: Solution Creation & Qualification 
+CPC ->> Salesforce: Solution Creation & Qualification ",Pricing and Create Solution,2,CPC,17765,17765
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"IGLOO ->> Sales Express: Connect for Standard Access Pricing 
+IGLOO ->> ASAP: Solution Creation & Qualification 
+IGLOO ->> Salesforce: Solution Creation & Qualification",Pricing and Create Solution,2,(FED) - IGLOO,27567,27567
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"UB - >>  CPC: Solution Creaton & Qualification
+UB ->> IGLOO: Solution Creaton & Qualification",Pricing and Create Solution,2,UB,13792,13792
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"ASF ->> BGW: Biller Setup for Contract
+ASF ->> OVALS: Solution Creaton & Qualification
+ASF ->> APS: Signature & Countersignature
+ASF ->> APS: Generate Contract",Pricing and Create Solution,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"MYPRICE ->>  CPC: Custom Pricer Engagement
+MYPRICE ->> IGLOO: Custom Pricer Engagement
+MYPRICE ->> ASAP_ADOPT: Custom Pricing",Create Custom Pricing,3,MyPrice,27226,27226
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,NEXXUS ->> ASAP_ADOPT: Custom Pricing,Create Custom Pricing,3,NEXXUS,30359,30359
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"ROME ->> BGW/UB: Biller Setup for Contract
+ROME ->> Sales Express : Link to Opportunity/Solution
+ROME ->> ASAP_ADOPT:Link to Opportunity/Solution
+ROME ->> ASF: Link to Opportunity/Solution
+ROME ->> SSDF: signature & Countersignature
+ROME ->> CPC: Custom Pricing
+ROME ->> IGLOO: Custom Pricing",Setup Billing,4,ROME,14269,14269
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"BGW ->> CADM: Biller Setup for Contract
+BGW - >>  CPC: Solution Creaton & Qualification
+BGW ->> IGLOO: Solution Creaton & Qualification",Setup Billing,4,BGW,14106,14106
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,CADM ->> UB: Biller Setup for Contract,Setup Billing,4,CADM,12997,12997
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"ADOPT ->> BGW: Biller Setup for Contract
+ADOPT ->> ROME: Signature & Countersignature
+ADOPT ->> SSDF: Generate Contract",Generate Contract,5,ADOPT,14377,14377
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"SSDF ->> ESIGN: Signature & Countersignature 
+SSDF ->> CPC: Generate Contract
+SSDF ->> IGLOO: Generate Contract",Generate Contract,5,SSDF,23007,23007
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"APS ->> ESIGN: Signature & Countersignature
+APS ->>  CPC: Generate Contract 
+APS ->> IGLOO: Generate Contract",Generate Contract,5,APS,31170,31170
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"Sales Express ->> BGW: Biller Setup for Contract
+Sales Express ->> CSI-Qual: Solution Creation & Qualification
+Sales Express ->>ASOC: Solution Creation & Qualification
+Sales Express ->> ROME: Signature & Countersignature
+Sales Express ->> SSDF: Generate Contract",Finalize Solution & Contract ,6,Sales Express,22787,22787
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,,Finalize Solution & Contract ,6,DATARTR,22597,22597
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,,Finalize Solution & Contract ,6,C-BUS,12654,12654
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,,Finalize Solution & Contract ,6,AT&T-Power BI,28605,28605
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,,Finalize Solution & Contract ,6,EIS,26683,26683
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"ASAP ->> CSI-Qual: Solution Creation & Qualification
+ASAP ->> ASOC: Solution Creation & Qualification
+ASAP ->> EDF: Write Solution to EDF
+ASAP ->> ROME: Engage Custom Group",Qualify & Record Solution,6,ASAP,12987,12987
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"DOCVIEWER ->> Sales Express: Load Signed Contract to Repository
+DOCVIEWER ->> ADOPT: Load Signed Contract to Repository",Save Contract,7,DOCVIEWER,13662,13662
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"ESIGN ->> CPC: Link to Solution
+ESIGN ->> IGLOO: Link to Solution ",Link to Solution,8,ESIGN,14038,14038
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Contract Management,2,Contract Complete,2,"EDF ->> CPC: Custom Pricing
+EDF ->> IGLOO: Custom Pricing
+EDF ->> Sales Express: Generate Contract
+EDF ->> ADOPT: Generate Contract
+EDF ->> ASF: Generate Contract",Create Custom Pricing,3,EDF,23718,23718
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Contract Management,2,Contract Complete,1,,Generate contract PDF,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Contract Management,2,Contract Complete,1,,Navigate to contract page,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Contract Management,2,Contract Complete,2,,Generate Contract & Signature,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Contract Management,2,Contract Complete,2,,Order Sales request,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Contract Management,2,Contract Complete,2,,Capture Customer initiated Order,3,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Contract Management,2,Contract Complete,2,,Create E-Sales Order,4,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Contract Management,2,Contract Complete,2,,Submit E-Sales Order,5,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Contract Management,2,Contract Complete,2,,Manage DD & Order Details,6,ASF,29572,29572
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,ACMS - SPECIALS,12672,12672
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,"ACMS ->> PED 
+ACMS ->> TIRKS
+ACMS ->> EXACT
+ACMS ->> TSNOW",Access Order,1,ACMS,25938,25938
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,BPP-ADT/ATW,13346,13346
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,BPP - FACILITY,13003,13003
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,DCS,13804,13804
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,EFMS ->> ACMS: Access Order,Access Order,1,EFMS,13537,13537
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,EXMGR,9325,9325
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,MARS,351,351
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,MDLRS,12765,12765
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,NISE-CORE,12653,12653
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,NISE-WFM,19835,19835
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,OCS-SS,13758,13758
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,OMX,22011,22011
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,(FED) - OMX,24233,24233
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,PED,21386,21386
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,POCITS,13811,13811
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,SOTS ->> ACMS: Access Order,Access Order,1,SOTS,13853,13853
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,OCX ->> ACMS: Access Order,Access Order,1,OCX,23326,23326
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,AERO,21607,21607
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Access Order,1,EDF,23718,23718
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,"USRP ->> SOTS: Workflow Mgmt
+USRP ->> OCX: Workflow Mgmt
+USRP ->> EFMS: Workflow Mgmt",Manage Workflow,2,USRP,13703,13703
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Manage Workflow,2,R3:LAPS,26121,26121
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Manage Workflow,2,CS WFBPM,22097,22097
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Manage Workflow,2,GRETA,2027,2027
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Manage Workflow,2,ICORE,18276,18276
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Manage Workflow,2,NC3,13200,13200
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,2,Design Management,4,Design Complete,6,,Manage Workflow,2,UTMS,27213,27213
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Design Complete,6,,Design,21,AERO,21607,21607
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Design Complete,5,,Validate Service Availabilit,1,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Design Complete,5,,Return Avaliability Validation Results,2,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Design Complete,5,,Create Order,3,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Design Complete,5,,Route Design Fallouts for Remediation,4,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Design Complete,5,,Route Order Fallouts for Remediation,5,AERO,21607,21607
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Design Complete,5,,Return Remediated Fallout Results,6,CANOPI,16994,16994
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,EDF,23718,23718
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,AERO,21607,21607
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,EXMGR,9325,9325
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,EDGE,19062,19062
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,EFMS,13537,13537
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,GRID-AC,22510,22510
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,INSTAR,13672,13672
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,OCX,23326,23326
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,(FED) - OCX,24336,24336
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,(FED) - OMX,24233,24233
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,USRP,13703,13703
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,R3:SG,22448,22448
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,ACMS,25938,25938
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,,Order Dispatch,1,SOTS,13853,13853
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,Dispatch Task Handler,Handle Dispatch Tasks,2,FORCE-DCOE,19705,19705
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,Dispatch Task Handler,Handle Dispatch Tasks,2,GRETA,2027,2027
+em114j,Add,AT&T Business,Business Field Services,ADI,Get,3,Provisioning Management,2,Dispatch,1,Dispatch Task Handler,Handle Dispatch Tasks,2,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Initiate Dispatch Request from Service Delivery Provisioning,1,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Route Dispatch Request for Workforce Handling,2,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Dispatch Work Order to Field Systems,3,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Provide Network & Service Context for Dispatch Execution,4,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Reference Network Inventory for Dispatch Alignment,5,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Trigger Provisioning Fallout Handling if Dispatch Fails,6,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Escalate provisioning fallout ,7,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Handle fallout through guided process flows ,8,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Log fallout resolution activity ,9,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Dispatch,8,,Close fallout actions and exceptions ,10,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Order Management ,1,Manage Service Order,4,,Initiate Service Order Creation,1,ROME,14269,14269
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Order Management ,1,Manage Service Order,4,,Issue Service Order,2,ARIS/EXACT,224,224
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Order Management ,1,Manage Service Order,4,,Create ASR/PSR,3,ARIS/EXACT,224,224
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Order Management ,1,Manage Service Order,4,,Generate Service Order Record (SOR),4,ARIS/EXACT,224,224
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Order Management ,1,Manage Service Order,4,,Submit Service Order to TIRKS,5,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Order Management ,1,Manage Service Order,4,,Submit Service Order to WFA,6,CANOPI,16994,16994
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Browse ATTCOM,1,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Sign in,2,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Sign up,3,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Verify Business Info,4,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Check Service Availability,5,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Select Fiber Speed,6,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Select Add-Ons,7,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Explore Pricing,8,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,"Review, Share and Save Cart Selections",9,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Initiate Credit Check,10,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Credit and Bill Preferences,11,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Create Passcode,12,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Review Order,13,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Accept Terms,14,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Receive Confirmation,15,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Setup payment and communication preferences,16,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,View monthly bill,17,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Update Payment method,18,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Schedule Install,19,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Provide Installation Contact,20,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Confirm Install,21,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Complete appointment checklist,22,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,myATT Registration,23,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,ABF,Learn,1,Sales Activity Management ,4,New Customer Order,1,,Answer site readiness questions,24,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Learn,1,Sales Opportunity Management,7,Opportunity Create,1,,Initiate Opportunity,1,ROME,14269,14269
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Learn,1,Sales Opportunity Management,7,Opportunity Create,1,Sales Express ->> ROME: Integrated DPPCO,Initiate Opportunity,1,Sales Express,22787,22787
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Learn,1,Sales Opportunity Management,7,Opportunity Create,1,"CPC ->> Presales_SFDC
+CPC ->> SalesExpress
+CPC ->> ASF_Salesforce",Initiate Opportunity,1,CPC,17765,17765
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Learn,1,Sales Opportunity Management,7,Opportunity Create,1,ASF - >> ROME: Integrated DPPCO,Intake and Opportunity Validation,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Learn,1,Sales Opportunity Management,7,Opportunity Create,1,ARIS/EXACT ->> CPC: Exchange Access Control and Tracking Review,Intake and Opportunity Validation,2,ARIS/EXACT,224,224
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Learn,1,Sales Opportunity Management,7,Opportunity Create,1,FRVT ->> CPC: Fiber Routing and Virtualization Check,Intake and Opportunity Validation,2,FRVT,24444,24444
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Learn,1,Sales Opportunity Management,7,Opportunity Create,1,,Intake and Opportunity Validation,2,EIS,26683,26683
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Initiate Opportunity Creatioin and Launch Pricer-D,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Validate Product Selection,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Learn,1,Sales Opportunity Management ,7,Opportunity Create,1,,Select Oppty Type,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Learn,1,Discovery Management ,8,Opportunity Create,1,,Create ABF Sales Opportunity,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Learn,1,Discovery Management ,8,Opportunity Create,1,,Qualify and Validate,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Learn,1,Discovery Management ,8,Opportunity Create,1,,Collect pricing feed daily ,3,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Learn,1,Discovery Management ,8,Opportunity Create,1,,Add HSIA Opportunity,4,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Validate Service Address,3,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Engage NSS for Access Evaluation,4,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Request Contracting Support,5,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Initiate Contract Generation and Signature,6,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Send Contract for Electronic Signature,7,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Learn,1,Lead Management ,6,Opportunity Create,1,,Return Executed Contract,8,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Pricing Management ,5,Opportunity Create,1,,Pricing and Contracting,5,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Pricing Management ,5,Opportunity Create,1,,Pre-Qualify,6,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Quotation & Proposal / RFP Management ,6,Opportunity Create,1,,Qualify and Validate,7,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Sales Order Management ,3,Order Complete,5,,Create suborder,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Quotation & Proposal / RFP Management,6,Proposal Create,3,,Select proposal type,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Quotation & Proposal / RFP Management,6,Proposal Create,3,,Email proposal,2,ASF,29572,29572
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Pull Sales Order Data ,1,EFMS,13537,13537
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Pull Sales Order Data ,1,GRETA,2027,2027
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Pull Sales Order Data ,1,ICORE,18276,18276
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Pull Sales Order Data ,1,OCS-SS,13758,13758
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,EDF ->> OCX: Pull Sales Order Data,Pull Sales Order Data ,1,EDF,23718,23718
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,OCX ->>USRP: Service Order Submitted,Submit Service Order,1,OCX,23326,23326
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Initiate Service Order Provisioning,2,ARIS/EXACT,224,224
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Initiate Service Order Provisioning,2,BPP-ADT/ATW,13346,13346
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Initiate Service Order Provisioning,2,BPP - FACILITY,13003,13003
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Initiate Service Order Provisioning,2,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Initiate Service Order Provisioning,2,CNI CPT,13333,13333
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,"USRP->>SOTS: Service Order Subitted
+USRP->>EFMS-A: Port Assignment, USO, Ckt ID
+USRP->>EFMS-W: Order Provisioning workflow management
+USRP->>OMX: Digital Notifications
+USRP->>OMX: OMX Scheduler
+USRP->>OMX-UTH: Order Provisioning Workflow Management
+USRP->>CANOPI: Order Provisioning Workflow Management
+USRP->>TIRKS: Order Provisioning Workflow Management
+USRP->>POCITS: Order Provisioning Workflow Management
+USRP->>GRETA: Order Provisioning Workflow Management
+USRP->>PED: Order Provisioning Workflow Management",Initiate Service Order Provisioning,2,USRP,13703,13703
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Initiate Service Order Provisioning,2,DCS,13804,13804
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,"BGW ->> UB
+BGW ->> OMX-UTH: Order Provisioning Workflow Management
+BGW ->> CANOPI: Order Provisioning Workflow Management
+BGW ->> TIRKS: Order Provisioning Workflow Management
+BGW ->> POCITS: Order Provisioning Workflow Management
+BGW ->> GRETA: Order Provisioning Workflow Management
+BGW ->> PED: Order Provisioning Workflow Management",Manage Order Provisioining,3,BGW,14106,14106
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,"OMX ->> OMX-UTH: Order Provisioning Workflow Management
+OMX ->> CANOPI: Order Provisioning Workflow Management
+OMX ->> TIRKS: Order Provisioning Workflow Management
+OMX ->> POCITS: Order Provisioning Workflow Management
+OMX ->> GRETA: Order Provisioning Workflow Management
+OMX ->> PED: Order Provisioning Workflow Management",Manage Order Provisioining ,3,OMX,22011,22011
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,(FED) - OMX,24233,24233
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,PED,21386,21386
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,SOTS,13853,13853
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,TSNOW-GUI,12555,12555
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,TSNOW-OSDSI,19840,19840
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,CS WFBPM,22097,22097
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,UTMS,27213,27213
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,NC3,13200,13200
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,R3:SG,22448,22448
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Provisioning Complete,7,,Manage Order Provisioining ,3,FORCE-DCOE,19705,19705
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Provisioning Complete ,6,,Initiate Build and Completion Workflow Order Orchestration,1,PED,21386,21386
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Provisioning Complete ,6,,Initiate Build and Completion Workflow Order Network Design,2,PED,21386,21386
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Provisioning Complete ,6,,Manage Order Workflow (Design Driven),3,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Provisioning Complete ,6,,Manage Order Workflow (Order-Flow Driven),4,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Provisioning Complete ,6,,Manage Order Workflow (Network Driven),5,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Provisioning Complete ,6,,Execute Provisioning Management,6,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Provisioning Complete ,6,,Update Circuit Info in Network Sys Legacy Inventory,7,EFMS,13537,13537
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Provisioning Complete ,6,,Update Circuit Info in Network Sys Core Inventory,8,EFMS,13537,13537
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Convert Sales Order to Service Delivery,1,BBW,29333,29333
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Capture Customer Direct Service Order,2,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Capture Mobility Customer Direct Service Order,3,OPUS - C,18257,18257
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Submit Sellers Direct Service Order,4,LS CRM,10056,10056
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Assign Ordering and CPE Assignment/ DD Details,5,LS CRM,10056,10056
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Pass Order Notification,6,LS-OMS,10038,10038
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,"Notify E911, Directory, and CID Updates",7,LS-OMS,10038,10038
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Provision Service Resources,8,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Update Network Inventory,9,EDF,23718,23718
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Update Network Inventory,10,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Update Service Inventory,11,G2,10417,10417
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Trigger Provisioning Fallout Handling,12,BBNMS-LS,16188,16188
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Load Billing Data after Contract Signature,13,Pricer-D,22015,22015
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Pass Order Notification for Billing Setup,14,LS-OMS,10038,10038
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Create Billing Account & Setup Records,15,TIRKS,595,595
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Trigger Billing Activation,16,UB,13792,13792
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Distribute Inventory Data to Service Delievery Ordering,17,BBNMS-LS,16188,16188
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Provisioning Management ,2,Provisioning Complete ,7,,Distribute Inventory Data to Service Delievery Provisioning,18,BBNMS-LS,16188,16188
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Click quick link tab,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Create quote,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Select OH product,3,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Select contract term,4,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Enter quantity,5,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Configure equipment and shipping,6,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Select edition,7,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Select equipment brand,8,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Select equipment type,9,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Enter equipment quantity,10,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,OAH,Buy,2,Pricing Management ,5,Quote,2,,Add items to cart summary,11,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,EDF ->>OCX: Inform OMX of Order,Validate Contract & Data ,1,EDF,23718,23718
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,"ADOPT->>SSDF:Search Contract 
+ADOPT ->> EDF: Enter and Validate Additional Data
+ADOPT ->> EDF: Load Solution to EDF
+ADOPT ->> IGLOO: Enter and Validate Additional Data",Validate Contract & Data ,1,ADOPT,14377,14377
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,SSDF,23007,23007
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,"SalesExpress ->> SSDF:Search Contract 
+SalesExpress ->> EDF: Enter and Validate Additional Data  
+SalesExpress ->> IGLOO: Enter and Validate Additional Data",Validate Contract & Data ,1,Sales Express,22787,22787
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,OCX,23326,23326
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,(FED) - IGLOO,27567,27567
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,"ASF ->> APS: Validate Contract
+ASF ->> EDF: Enter and Validate Additional Data
+ASF ->> IGLOO: Enter and Validate Additional Data
+ASF ->> ATTCOMM: Flow to ServiceNow",Validate Contract & Data ,1,(FED) - OCX,24336,24336
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,ROME,14269,14269
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,ASOC,13540,13540
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,DATARTR,22597,22597
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,CPC,17765,17765
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,ESIGN,14038,14038
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,BGW,14106,14106
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,CADM,12997,12997
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,C-BUS,12654,12654
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,DOCVIEWER,13662,13662
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,MyPrice,27226,27226
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,NEXXUS,30359,30359
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,UB,13792,13792
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,AT&T-Power BI,28605,28605
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,EFMS,13537,13537
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,(FED) - OCX,24336,24336
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,CAFE,15242,15242
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,B2BIGW,13541,13541
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,EIS,26683,26683
+em114j,Add,AT&T Business,Global Enterprise Sales,ADI,Buy,2,Sales Order Management,2,Sales Order Create,3,,Validate Contract & Data ,1,OVALS GIS,19375,19375
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Qualify & Validate Sales Order Data,1,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Send ASR and ASR/LEASR Validaton Feed,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Qualify & Validate Sales Order Details,2,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Submit Address Validation Request SOAP XML,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Qualify & Validiate Service Configuration,3,OPUS - C,18257,18257
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Route Address Validation Message,3,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Generate  Pricing Feed & Transmit Daily Pricing batch,4,ROME,14269,14269
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Validate Address,4,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ABF,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Submit Sales order to Service Delivery,5,BBW,29333,29333
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Submit ASR Inquiry & Updates,5,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Validate Service Address,1,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Submit ASR/DLR Inquiry,6,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Submit Service Order Inquiry,7,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Retrieve Service Order Details,8,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Create HSIA-E Sales Order,4,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Request Fiber Fast Info,9,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Order HSIA-E  to Service Delivery,5,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Request Circuit Inquiry & Status,10,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Submit HSIA-E  for Service Delivery,6,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Request Bill View & CSR Inquiry,11,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Request Service Availability,12,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Launch Solution Config,13,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Retrive Oppty Details & Service Availability,14,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Return Completed Solution Details,15,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Load Rate Letter & SSSF Data,16,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Search & Update Inventory Indentifiers,17,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Write Order to EFD for Service Order Creation,18,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Notify NSS and Load AIS Data,19,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,ASE,Buy,2,Sales Order Management ,3,Sales Order Create,3,,Update Solution Design,20,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Pricing Management ,5,Sales Order Create,3,,Pre-qualify Customer & Service Eligibility,2,ASF,29572,29572
+em114j,Add,AT&T Business,Global Enterprise Sales,HSIA,Buy,2,Pricing Management ,5,Sales Order Create,3,,Price HSIA-E service,3,ASF,29572,29572
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Sign up,1,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Verify Business Info,2,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Choose between plans,3,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Select Device,4,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Choose between plans,5,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Add ons,6,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,"Review, Share and Save Cart Selections",7,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Initiate Credit Check,8,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Credit and Bill Preferences,9,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,review and Accept Mobile Business Agreement,10,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Review and submit order,11,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Receive Confirmation and Estimated Delivery Date,12,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,Perform onboarding se4tup,13,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Digital Experience,CRU,Buy,2,Sales Order Management ,3,Sales Order CRU,1,,MDM transfer/Set-up,14,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,(FED) - AOTS,23223,23223
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,"BGW ->> CADM: Service Activation System
+BGW ->> UBAM: Service Activation System",Service Activation Complete,1,BGW,14106,14106
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,BMP,13830,13830
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,CADM,12997,12997
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,CS WFBPM,22097,22097
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,Service Activation System,Service Activation Complete,1,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,Service Activation System,Service Activation Complete,1,EFMS,13537,13537
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,UBAM,27435,27435
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,FORCE-DCOE,19705,19705
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,ICT,13740,13740
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,INSTAR,13672,13672
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,NC3,13200,13200
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,Service Activation System,Service Activation Complete,1,NISE-WFM,19835,19835
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,OCS-SS,13758,13758
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,UB,13792,13792
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,Provisioning system,Service Activation Complete,1,WMS-NT,19808,19808
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,Provisioning system,Service Activation Complete,1,WMS - FDC/PDC - FedEx,25376,25376
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,Provisioning system,Service Activation Complete,1,EIS,26683,26683
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,(FED) - OCX,24336,24336
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,OCX,23326,23326
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,OMX,22011,22011
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,(FED) - OMX,24233,24233
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,NISE-WFM,19835,19835
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,AERO,21607,21607
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Provisioning Management,2,Service Activation Complete,9,,Service Activation Complete,1,ICORE,18276,18276
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Submit New Orders,1,ARIS/EXACT,224,224
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Prepare Orders for Provisioning & Inventory,2,ARIS/EXACT,224,224
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Provision Circuit,3,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Update Inventory Records,4,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Manage Activation Workflow,5,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Trigger Billling to Regional Billers,6,SORDS,20353,20353
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Process Billing Records,7,SORDS,20353,20353
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Post Billings Records,8,SORDS,20353,20353
+em114j,Add,AT&T Business,Service Delivery,ASE,Get,3,Provisioning Management ,2,Service Activation Complete,7,,Route Activation Fallouts,9,AERO,21607,21607
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,4,Provisioning Management ,2,Service Activation Complete,9,,Send field completion and billing activity details ,1,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,4,Provisioning Management ,2,Service Activation Complete,9,,Provide service activation updates,2,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,4,Provisioning Management ,2,Service Activation Complete,9,,Provide billing account activation inputs ,3,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,4,Provisioning Management ,2,Service Activation Complete,9,,Aggregate activation and billing readiness data ,4,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,4,Provisioning Management ,2,Service Activation Complete,9,,Notify billing system of service activation ,5,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,4,Provisioning Management ,2,Service Activation Complete,9,,Pass order activation notification ,6,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,4,Provisioning Management ,2,Service Activation Complete,9,,Notify dispatch activity completion ,7,WFA/C,641,641
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,4,Provisioning Management ,2,Service Activation Complete,9,,Trigger billing enablement for activated service ,8,WFA/C,641,641
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,INSTAR,13672,13672
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,UTG,20215,20215
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,WFA/C,641,641
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,EDGE,19062,19062
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,RUBY,17052,17052
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,BMP,13830,13830
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,BSET,29001,29001
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,ECOP,14866,14866
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,(FED) - AOTS,23223,23223
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,WMS-NT,19808,19808
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,WMS - FDC/PDC - FedEx,25376,25376
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,GRETA,2027,2027
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,TIRKS,595,595
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,TSNOW-GUI,12555,12555
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,TSNOW-OSDSI,19840,19840
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,NISE-WFM,19835,19835
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,CANOPI,16994,16994
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,(FED) - OCX,24336,24336
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,OCX,23326,23326
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,OMX,22011,22011
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,(FED) - OMX,24233,24233
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,Ciena ESM,19402,19402
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,Radview,32406,32406
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,Tarantella,18737,18737
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,NMA,4615,4615
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,SOTS,13853,13853
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,GoSET,28875,28875
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,GDUI,30230,30230
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,NetDB,18881,18881
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,UNAD,18833,18833
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,SARTS,13001,13001
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,REACT,481,481
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,INC,16688,16688
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,DACS-OSS,13760,13760
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,TMAS,12833,12833
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,FORCE-DCOE,19705,19705
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,STCL,19982,19982
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,GTAC,17443,17443
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,1641SX,12543,12543
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,CTP-CTC,16995,16995
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,DACS-EMS,20051,20051
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,CISCO-CTM-METRO,10438,10438
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,EIS,26683,26683
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,GICECAP-CNIAM,31842,31842
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,GTAC - S,29640,29640
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,CTP,12470,12470
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,DEMS/DARICS,14131,14131
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,CART-DIAGNOSE,32438,32438
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,GCSBPO,26280,26280
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,BERT,16172,16172
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,C3,27489,27489
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,PIXI,30186,30186
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,3i,30928,30928
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,AET,22470,22470
+em114j,Add,AT&T Business,Service Assurance,ADI,Support,6,Incident Management,1,Service Assurance,10,,Service Assurance,10,Athena,26197,26197
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,"EDF ->> OMX: Retrieve Sales Order
+EDF ->> ATTCOMM: Retrieve Sales Order",Retrieve Sales Order,1,EDF,23718,23718
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,ROME ->> Service Order,Service Order Create ,2,ROME,14269,14269
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,ASF ->> EDF,Service Order Create ,2,ASF,29572,29572
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,"OMX ->> ASCI_GCP: Get Circuit ID assignment
+OMX ->> AERO: Create fallout tasks
+OMX ->> AERO: Write fallouts to CTH
+OMX ->> UTMS: Create fallout tasks
+OMX ->> ASOC: MLDB address validation
+OMX ->> OMS: Trigger Order Create Field level validation etc.
+OMX ->> OMS: Create Order IDs and Write orders
+",Service Order Create ,2,OMX,22011,22011
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,ASOC,13540,13540
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,"OMS ->>ASOC: Get ACDD and other dates and checks
+OMS ->> OCX: IOD pulls LAN info and other order info
+OMS ->> OMX: Notifies OMX of new orders",Service Order Create ,2,BGW,14106,14106
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,CPC,17765,17765
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,CSI - Network Management,20188,20188
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,UTMS,27213,27213
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,EFMS,13537,13537
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,IOS,20741,20741
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,(FED) - OCX,24336,24336
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,(FED) - OMX,24233,24233
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,OVALS GIS,19375,19375
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,USRP,13703,13703
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,GRID-AC,22510,22510
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,,Service Order Create ,2,ATTCOMM,31502,31502
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,4,"OCX ->> USRP: Informs downstream systems to retrieve order
+OCX ->> OCSS: Informs downstream systems to retrieve order
+OCX ->> ACMS: Informs downstream systems to retrieve order
+OCX ->> BGW: Informs downstream systems to retrieve order
+OCX ->> BGW: Billing Data Pushed
+OCX ->> CAMO: Informs downstream systems to retrieve order
+OCX ->> EFMS: Informs downstream systems to retrieve order
+OCX ->> GRID-AC: Writes Data into Data reposities for Extraction and reporting
+OCX ->> SXP: Writes Data into Data reposities for Extraction and reporting
+OCX ->> IOS: Writes Data into Data reposities for Extraction and reporting",Distribute Orders and Record Data,3,OCX,23326,23326
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,"USRP ->> OCSS: ATX Order
+USRP ->> ACMS: Access Order
+USRP ->> INSTAR: Network Order
+USRP ->> CAMO: Router Order
+USRP ->> NC3: Router Order",Service Order Submit,4,USRP,13703,13703
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,AERO,21607,21607
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,BGW,14106,14106
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,CS WFBPM,22097,22097
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,EFMS,13537,13537
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,EXMGR,9325,9325
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,GRID-AC,22510,22510
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,INSTAR,13672,13672
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,NC3,13200,13200
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,NISE-WFM,19835,19835
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,OCS-SS,13758,13758
+em114j,Add,AT&T Business,Service Delivery,ADI,Get,3,Order Management,1,Service Order ,5,,Service Order Submit,4,OMX,22011,22011
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Convert Sales Order to Service Delivery  ,1,BBW,29333,29333
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Capture Customer Direct Service Order,2,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Capture Mobility Customer Direct Service Order,3,OPUS - C,18257,18257
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Submit Sellers Direct Service Order,4,BBW,29333,29333
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Assign Ordering and CPE Assignment/ DD Details,5,LS CRM,10056,10056
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,"Notify E911, Directory, & Caller ID Updates",6,LS-OMS,10038,10038
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Provision Service Resources,7,BBNMS-LS,16188,16188
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Update Service Inventory,8,GRANITE,9723,9723
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Update Network Inventory,9,GRANITE,9723,9723
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Create,4,,Update Network Inventory,10,GRANITE,9723,9723
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Convert Sales Order to Service Delivery  ,11,BBW,29333,29333
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Capture Customer Direct Service Order,12,ATTeBiz,23015,23015
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Capture Mobility Customer Direct Service Order,13,OPUS - C,18257,18257
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Submit Sellers Direct Service Order,14,BBW,29333,29333
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Assign Ordering and CPE Assignment/ DD Details,15,LS CRM,10056,10056
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,"Notify E911, Directory, & Caller ID Updates",16,LS-OMS,10038,10038
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Provision Service Resources,17,BBNMS-LS,16188,16188
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Update Service Inventory,18,GRANITE,9723,9723
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Update Network Inventory,19,GRANITE,9723,9723
+em114j,Add,AT&T Business,Service Delivery,ABF,Get,3,Order Management ,1,Service Order Submit,4,,Update Network Inventory,20,GRANITE,9723,9723
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,, , 

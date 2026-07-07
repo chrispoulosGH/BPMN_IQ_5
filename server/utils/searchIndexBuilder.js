@@ -6,14 +6,19 @@ const CanonicalComponent = require('../models/CanonicalComponent');
  * Rebuild the search index for all components in a neighborhood
  * This should be called after component uploads or updates
  */
-async function rebuildSearchIndex(neighborhoodName) {
-  console.log(`[INDEX] Starting rebuild for neighborhood: ${neighborhoodName}`);
+async function rebuildSearchIndex(neighborhoodName, options = {}) {
+  const CanonicalModel = options.CanonicalModel || CanonicalComponent;
+  const SearchIndexModel = options.SearchIndexModel || ComponentSearchIndex;
+  const indexLabel = options.indexLabel || 'ComponentSearchIndex';
+  const dataType = options.dataType || '';
+
+  console.log(`[INDEX] Starting ${indexLabel} rebuild for neighborhood: ${neighborhoodName}`);
 
   try {
     // Get canonical rows and group into synthesized "components" by componentType
-    const canonicalRows = await CanonicalComponent.find({ neighborhoodName }).lean();
+    const canonicalRows = await CanonicalModel.find({ neighborhoodName }).lean();
     if (!canonicalRows.length) {
-      console.log(`[INDEX] No canonicalcomponents found for neighborhood: ${neighborhoodName}`);
+      console.log(`[INDEX] No canonical rows found for ${indexLabel} neighborhood: ${neighborhoodName}`);
       return;
     }
 
@@ -219,6 +224,7 @@ async function rebuildSearchIndex(neighborhoodName) {
             rowName: node.rowName,
             rowId: mongoose.isValidObjectId(node.rowId) ? node.rowId : null,
           }))), // Structured hierarchy data with component names
+          dataType: rowValues.dataType || row.dataType || dataType,
           updatedAt: new Date(),
         });
 
@@ -227,18 +233,18 @@ async function rebuildSearchIndex(neighborhoodName) {
     }
 
     // Clear old index for this neighborhood
-    await ComponentSearchIndex.deleteMany({ neighborhoodName });
+    await SearchIndexModel.deleteMany({ neighborhoodName });
 
     // Bulk insert new index
     if (indexEntries.length > 0) {
-      await ComponentSearchIndex.insertMany(indexEntries);
-      console.log(`[INDEX] Successfully indexed ${indexEntries.length} entries`);
+      await SearchIndexModel.insertMany(indexEntries);
+      console.log(`[INDEX] Successfully indexed ${indexEntries.length} entries into ${indexLabel}`);
     }
 
-    console.log(`[INDEX] Rebuild complete: ${neighborhoodName}`);
+    console.log(`[INDEX] ${indexLabel} rebuild complete: ${neighborhoodName}`);
     return { success: true, entriesCount: indexEntries.length };
   } catch (error) {
-    console.error(`[INDEX] Error rebuilding index for ${neighborhoodName}:`, error);
+    console.error(`[INDEX] Error rebuilding ${indexLabel} for ${neighborhoodName}:`, error);
     throw error;
   }
 }

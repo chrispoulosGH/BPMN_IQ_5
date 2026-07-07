@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 const CanonicalComponent = require('../models/CanonicalComponent');
+const CanonicalData = require('../models/CanonicalData');
+const Data = require('../models/Data');
+const DataSearchIndex = require('../models/DataSearchIndex');
 const { populateComponentsFromBatches } = require('./populateComponentsFromBatches');
 const { resolveParentRefs } = require('./resolveParentRefs');
 const { rebuildSearchIndex } = require('../utils/searchIndexBuilder');
@@ -27,45 +30,77 @@ function componentTypeFromRow(row, batch) {
   return 'unknown';
 }
 
-async function materializeFromBatches({ neighborhoodName, batchIds = null, batchSize = 500 } = {}) {
+function getMaterializationConfig(domain = 'component') {
+  if (domain === 'data') {
+    return {
+      domain,
+      batchCollectionName: 'dataBatches',
+      batchCollectionNames: ['dataBatches'],
+      CanonicalModel: CanonicalData,
+      ComponentModel: Data,
+      SearchIndexModel: DataSearchIndex,
+      indexLabel: 'DataSearchIndex',
+      legacyLabel: 'POPULATE_DATA',
+    };
+  }
+
+  return {
+    domain: 'component',
+    batchCollectionName: 'dataComponentBatches',
+    CanonicalModel: CanonicalComponent,
+    ComponentModel: require('../models/Component'),
+    SearchIndexModel: undefined,
+    indexLabel: 'ComponentSearchIndex',
+    legacyLabel: 'POPULATE_COMPONENTS',
+  };
+}
+
+async function materializeFromBatches({ neighborhoodName, batchIds = null, batchSize = 500, domain = 'component' } = {}) {
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
   }
 
   const db = mongoose.connection.db;
+  const config = getMaterializationConfig(domain);
   const query = {};
   if (neighborhoodName) query.neighborhoodName = neighborhoodName;
   if (Array.isArray(batchIds) && batchIds.length) query._id = { $in: batchIds.map(id => (typeof id === 'string' ? new mongoose.Types.ObjectId(id) : id)) };
 
-  const cursor = db.collection('dataComponentBatches').find(query).batchSize(batchSize);
   let totalProcessed = 0;
-  while (await cursor.hasNext()) {
-    const batch = await cursor.next();
-    if (!batch || !Array.isArray(batch.rows)) continue;
+  const batchCollectionNames = Array.isArray(config.batchCollectionNames) && config.batchCollectionNames.length
+    ? config.batchCollectionNames
+    : [config.batchCollectionName];
 
-    const ops = [];
-    for (let i = 0; i < batch.rows.length; i++) {
-      const row = batch.rows[i];
-      const primaryKey = primaryKeyFromRow(row);
-      const componentType = componentTypeFromRow(row, batch);
-      if (!primaryKey) continue;
+  for (const batchCollectionName of batchCollectionNames) {
+    const cursor = db.collection(batchCollectionName).find(query).batchSize(batchSize);
+    while (await cursor.hasNext()) {
+      const batch = await cursor.next();
+      if (!batch || !Array.isArray(batch.rows)) continue;
 
-      const filter = { neighborhoodName: batch.neighborhoodName || neighborhoodName || '', componentType, primaryKey };
-      const update = {
-        $set: { values: (row.values && Object.assign({}, row.values)) || row, neighborhoodName: batch.neighborhoodName || neighborhoodName || '', componentType, primaryKey },
-        $addToSet: { sourceBatches: { batchId: String(batch._id), rowIndex: i } },
-      };
-      ops.push({ updateOne: { filter, update, upsert: true } });
-    }
+      const ops = [];
+      for (let i = 0; i < batch.rows.length; i++) {
+        const row = batch.rows[i];
+        const primaryKey = primaryKeyFromRow(row);
+        const componentType = componentTypeFromRow(row, batch);
+        if (!primaryKey) continue;
 
-    if (ops.length) {
-      // execute bulk in chunks to avoid very large ops
-      const chunkSize = 500;
-      for (let i = 0; i < ops.length; i += chunkSize) {
-        const chunk = ops.slice(i, i + chunkSize);
-        await CanonicalComponent.bulkWrite(chunk, { ordered: false });
+        const filter = { neighborhoodName: batch.neighborhoodName || neighborhoodName || '', componentType, primaryKey };
+        const update = {
+          $set: { values: (row.values && Object.assign({}, row.values)) || row, neighborhoodName: batch.neighborhoodName || neighborhoodName || '', componentType, dataType: batch.dataType || '', primaryKey },
+          $addToSet: { sourceBatches: { batchId: String(batch._id), rowIndex: i, batchCollectionName } },
+        };
+        ops.push({ updateOne: { filter, update, upsert: true } });
       }
-      totalProcessed += ops.length;
+
+      if (ops.length) {
+        // execute bulk in chunks to avoid very large ops
+        const chunkSize = 500;
+        for (let i = 0; i < ops.length; i += chunkSize) {
+          const chunk = ops.slice(i, i + chunkSize);
+          await config.CanonicalModel.bulkWrite(chunk, { ordered: false });
+        }
+        totalProcessed += ops.length;
+      }
     }
   }
 
@@ -73,7 +108,7 @@ async function materializeFromBatches({ neighborhoodName, batchIds = null, batch
 
   // Automatically run postProcess (rebuild ComponentSearchIndex) when neighborhoodName provided
   try {
-    await materializeFromBatches.postProcess({ neighborhoodName });
+    await materializeFromBatches.postProcess({ neighborhoodName, domain });
   } catch (err) {
     console.error('[MATERIALIZER] automatic postProcess failed:', err && err.message);
   }
@@ -83,14 +118,25 @@ async function materializeFromBatches({ neighborhoodName, batchIds = null, batch
 
 // After materialization, if neighborhoodName provided, rebuild the ComponentSearchIndex
 // so the Component Model search index is ready when load completes.
-materializeFromBatches.postProcess = async function({ neighborhoodName } = {}) {
+materializeFromBatches.postProcess = async function({ neighborhoodName, domain = 'component' } = {}) {
   if (!neighborhoodName) return;
+  const config = getMaterializationConfig(domain);
+  const batchCollectionNames = Array.isArray(config.batchCollectionNames) && config.batchCollectionNames.length
+    ? config.batchCollectionNames
+    : [config.batchCollectionName];
   try {
-    console.log('[MATERIALIZER] Post-process: populating legacy Component docs for', neighborhoodName);
+    console.log(`[MATERIALIZER] Post-process: populating legacy ${config.domain} docs for`, neighborhoodName);
     // Populate legacy `components` collection from canonical so the search index builder has source data
     try {
-      await populateComponentsFromBatches({ neighborhoodName });
-      console.log('[MATERIALIZER] Post-process: legacy Component docs populated for', neighborhoodName);
+      for (const batchCollectionName of batchCollectionNames) {
+        await populateComponentsFromBatches({
+          neighborhoodName,
+          batchCollectionName,
+          ComponentModel: config.ComponentModel,
+          logPrefix: config.legacyLabel,
+        });
+      }
+      console.log(`[MATERIALIZER] Post-process: legacy ${config.domain} docs populated for`, neighborhoodName);
     } catch (err) {
       console.error('[MATERIALIZER] Post-process populateComponentsFromBatches failed:', err && err.message);
     }
@@ -99,15 +145,28 @@ materializeFromBatches.postProcess = async function({ neighborhoodName } = {}) {
     // so the index builder can walk parentRefs to produce full lineage paths.
     try {
       console.log('[MATERIALIZER] Post-process: resolving parentRefs on canonical docs for', neighborhoodName);
-      const refResult = await resolveParentRefs({ neighborhoodName });
+      let refResult = null;
+      for (const batchCollectionName of batchCollectionNames) {
+        // Merge parent refs from every batch source for the same domain.
+        // Later sources can augment earlier ones without needing a separate migration step.
+        refResult = await resolveParentRefs({
+          neighborhoodName,
+          batchCollectionName,
+          CanonicalModel: config.CanonicalModel,
+        });
+      }
       console.log('[MATERIALIZER] Post-process: parentRefs resolved for', neighborhoodName, refResult);
     } catch (err) {
       console.error('[MATERIALIZER] Post-process resolveParentRefs failed:', err && err.message);
     }
 
-    console.log('[MATERIALIZER] Post-process: rebuilding ComponentSearchIndex for', neighborhoodName);
-    await rebuildSearchIndex(neighborhoodName);
-    console.log('[MATERIALIZER] Post-process: ComponentSearchIndex rebuilt for', neighborhoodName);
+    console.log(`[MATERIALIZER] Post-process: rebuilding ${config.indexLabel} for`, neighborhoodName);
+    await rebuildSearchIndex(neighborhoodName, {
+      CanonicalModel: config.CanonicalModel,
+      SearchIndexModel: config.SearchIndexModel,
+      indexLabel: config.indexLabel,
+    });
+    console.log(`[MATERIALIZER] Post-process: ${config.indexLabel} rebuilt for`, neighborhoodName);
   } catch (err) {
     console.error('[MATERIALIZER] Post-process rebuildSearchIndex failed:', err && err.message);
   }
@@ -121,7 +180,13 @@ module.exports = { materializeFromBatches };
 materializeFromBatches.populateLegacyComponents = async function(opts) {
   try {
     const neighborhoodName = opts && opts.neighborhoodName;
-    const r = await populateComponentsFromBatches({ neighborhoodName });
+    const config = getMaterializationConfig(opts && opts.domain);
+    const r = await populateComponentsFromBatches({
+      neighborhoodName,
+      batchCollectionName: config.batchCollectionName,
+      ComponentModel: config.ComponentModel,
+      logPrefix: config.legacyLabel,
+    });
     return r;
   } catch (err) {
     console.error('[MATERIALIZER] populateLegacyComponents failed', err && err.message);
