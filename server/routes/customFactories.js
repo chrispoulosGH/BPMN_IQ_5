@@ -24,6 +24,7 @@ const { DEFAULT_NEIGHBORHOOD_NAME } = require('../utils/neighborhoodScope');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 250 * 1024 * 1024 } });
+const DATA_NEIGHBORHOOD_NAME = 'System Components';
 const handleSpreadsheetUpload = (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
@@ -1024,6 +1025,26 @@ function normalizeDataTypeKey(value) {
   return getDataComponentType(value) || '';
 }
 
+function getDataTypeSearchCandidates(value) {
+  const requested = getRequestedLoadTypeName(value);
+  if (!requested) return [];
+
+  const canonical = normalizeDataTypeKey(requested) || requested.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const aliases = new Map([
+    ['application', ['application', 'applications', 'app', 'apps']],
+    ['server', ['server', 'servers', 'servercomponent', 'serverscomponent']],
+    ['product', ['product', 'products']],
+    ['actor', ['actor', 'actors']],
+    ['databaseinstance', ['database', 'databases', 'databaseinstance', 'databaseinstances', 'db', 'dbs', 'dbinstance', 'dbinstances']],
+  ]);
+
+  return Array.from(new Set([
+    requested,
+    canonical,
+    ...(aliases.get(canonical) || []),
+  ].filter(Boolean)));
+}
+
 function columnMatchesRequestedLoadType(columnName, requestedTypeName) {
   const requested = normalizeDataTypeKey(requestedTypeName);
   if (!requested) return true;
@@ -1813,7 +1834,38 @@ router.get('/', async (req, res) => {
 
     if (loadDomain === 'data') {
       const dataQuery = (neighborhoodName && neighborhoodName !== '__all__') ? { neighborhoodName } : {};
+      const requestedDataType = String(req.query.dataType || '').trim();
+      const summaryMode = String(req.query.summary || '').trim().toLowerCase() === 'types';
       const db = mongoose.connection.db;
+
+      if (summaryMode) {
+        const summaries = await db.collection('dataBatches').aggregate([
+          { $match: dataQuery },
+          { $match: { rows: { $ne: [] } } },
+          { $addFields: { resolvedDataType: { $ifNull: ['$dataType', '$componentType'] } } },
+          { $match: { resolvedDataType: { $nin: ['', null] } } },
+          { $group: { _id: '$resolvedDataType', batchCount: { $sum: 1 }, updatedAt: { $max: '$updatedAt' } } },
+          { $project: { _id: 0, dataType: '$_id', batchCount: 1, updatedAt: 1 } },
+          { $sort: { dataType: 1 } },
+        ]).toArray().catch(() => []);
+
+        return res.json({ neighborhood: neighborhoodName || null, types: summaries });
+      }
+
+      const dataTypeCandidates = getDataTypeSearchCandidates(requestedDataType);
+      const dataTypeMatch = dataTypeCandidates.length
+        ? {
+            $or: dataTypeCandidates.flatMap((candidate) => ([
+              { dataType: { $regex: `^${escapeRegExp(candidate)}$`, $options: 'i' } },
+              { componentType: { $regex: `^${escapeRegExp(candidate)}$`, $options: 'i' } },
+              { name: { $regex: `^${escapeRegExp(candidate)}$`, $options: 'i' } },
+            ])),
+          }
+        : {};
+      const typedDataQuery = Object.keys(dataTypeMatch).length
+        ? { ...dataQuery, rows: { $ne: [] }, ...dataTypeMatch }
+        : { ...dataQuery, rows: { $ne: [] } };
+
       const batchProjection = {
         neighborhoodName: 1,
         modelName: 1,
@@ -1836,7 +1888,7 @@ router.get('/', async (req, res) => {
         rows: 1,
       };
       const dataBatchFactories = await db.collection('dataBatches')
-        .find(dataQuery, { projection: batchProjection })
+        .find(typedDataQuery, { projection: batchProjection })
         .sort({ neighborhoodName: 1, dataType: 1, name: 1, uploadedAt: 1 })
         .toArray()
         .catch(() => []);
@@ -1846,7 +1898,7 @@ router.get('/', async (req, res) => {
       }
 
       const dataFactories = await Data.find({
-        ...dataQuery,
+        ...typedDataQuery,
         $or: [
           { loadDomain: 'data' },
           { modelName: '' },
@@ -2386,12 +2438,13 @@ router.delete('/data/:dataType', requireAdminWrite, async (req, res) => {
 });
 
 router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, res) => {
-  const neighborhoodName = String(req.body?.neighborhoodName || '').trim();
+  const requestedNeighborhoodName = String(req.body?.neighborhoodName || '').trim();
   const componentName = String(req.body?.componentName || '').trim();
   const dataType = getRequestedLoadTypeName(req.body?.dataType || req.body?.loadType || componentName);
   const loadDomainRaw = String(req.body?.loadDomain || req.body?.collectionType || '').trim().toLowerCase();
   const loadDomain = loadDomainRaw === 'data' ? 'data' : 'component';
   const batchCollectionName = loadDomain === 'data' ? 'dataBatches' : 'dataComponentBatches';
+  const neighborhoodName = loadDomain === 'data' ? DATA_NEIGHBORHOOD_NAME : requestedNeighborhoodName;
   if (!neighborhoodName) return res.status(400).json({ error: 'Model name is required' });
   if (!req.file?.buffer) return res.status(400).json({ error: 'Spreadsheet file is required' });
   if (loadDomain === 'data' && !dataType) return res.status(400).json({ error: 'Data type is required' });
@@ -2463,19 +2516,11 @@ router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, r
     // Step 1: Process component columns for schema factories
     const { componentColumns } = splitUploadColumns(uploadColumns);
     
-    // Step 2: Filter component columns by specified component type (if provided)
-    let filteredComponentColumns = componentColumns;
+    // Step 2: Filter component columns by the requested type when one is provided.
     const requestedTypeName = loadDomain === 'data' ? dataType : componentName;
-    if (requestedTypeName) {
-      filteredComponentColumns = componentColumns.filter((col) => {
-        return columnMatchesRequestedLoadType(col.name, requestedTypeName);
-      });
-      if (!filteredComponentColumns.length) {
-        return res.status(400).json({
-          error: `No columns found for ${loadDomain === 'data' ? 'data type' : 'component type'} "${requestedTypeName}" in the uploaded file.`,
-        });
-      }
-    }
+    const filteredComponentColumns = requestedTypeName
+      ? componentColumns.filter((col) => columnMatchesRequestedLoadType(col.name, requestedTypeName))
+      : componentColumns;
 
 
     const owner = req.currentUser?.displayName || req.currentUser?.userId || '';
@@ -2641,10 +2686,10 @@ router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, r
       stack: err?.stack?.substring(0, 500),
       type: err?.constructor?.name,
     });
-    res.status(err?.status || 500).json({ 
-      error: getValidationMessage(err),
-      details: err?.message,
-      code: err?.code,
+    const errorMessage = String(getValidationMessage(err) || 'Upload failed');
+    res.status(err?.status || 500).json({
+      error: errorMessage.slice(0, 1000),
+      code: err?.code ? String(err.code).slice(0, 100) : undefined,
     });
   }
 });

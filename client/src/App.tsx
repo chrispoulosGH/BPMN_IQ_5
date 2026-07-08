@@ -12,8 +12,8 @@ import {
   Select,
   App as AntApp,
   Spin,
+  Empty,
   Tag,
-  Upload,
   Form,
 } from 'antd';
 import {
@@ -44,13 +44,13 @@ import {
   FileTextOutlined,
   CheckCircleOutlined,
   PlusOutlined,
-  InboxOutlined,
   RightOutlined,
   LeftOutlined,
   LogoutOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 import BpmnEditor, { EMPTY_DIAGRAM, type BpmnEditorHandle } from './components/BpmnEditor';
+import SystemComponentsImportButton from './components/SystemComponentsImportButton';
 import DiagramList from './components/DiagramList';
 import SaveModal from './components/SaveModal';
 import AppMatchModal, { computeAppMatches, type AppMatchResult } from './components/AppMatchModal';
@@ -74,7 +74,7 @@ import AdminPanel from './components/AdminPanel';
 import GlobalComponentSearch from './components/GlobalComponentSearch';
 import ComponentSearch from './components/ComponentSearch';
 import { encodeExactFactorySearch } from './utils/factorySearch';
-import { api, getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, batchImportDiagrams, getTaskReferenceForNeighborhood, getTaskNames, getTaskNamesForNeighborhood, getActorsForNeighborhood, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, getDataFactories, getCanonicalFactories, setApiNeighborhoodScope, validateDiagramReport, uploadCustomFactory, deleteCustomFactory, deleteDataComponentType } from './api';
+import { api, getDiagram, getDiagrams, searchDiagrams, createDiagram, updateDiagram, deleteDiagram, saveFile, matchCapabilities, batchImportDiagrams, getTaskReferenceForNeighborhood, getTaskNames, getTaskNamesForNeighborhood, getActorsForNeighborhood, checkSession, logout, setSessionExpiredHandler, getBusinessFlowMap, getFactoryNeighborhoods, getCustomFactories, getDataFactoryTypes, getDataFactories, getCanonicalFactories, setApiNeighborhoodScope, validateDiagramReport, deleteCustomFactory, deleteDataComponentType } from './api';
 import type { CapabilityMatch, TaskAddData, DiagramMetadata, ApplicationItem, CustomFactory, FactoryNeighborhoodSummary } from './types';
 
 const { Header, Sider, Content } = Layout;
@@ -262,6 +262,7 @@ export default function App() {
 function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: string; displayName: string; role?: string | null; capabilities?: { function: string; permission: string }[] }; onLogout: () => void }) {
   const { message, modal } = AntApp.useApp();
   const DEFAULT_NEIGHBORHOOD_NAME = 'ATT Journey Model';
+  const REFERENCE_DATA_NEIGHBORHOOD_NAME = 'System Components';
   const ALL_NEIGHBORHOODS_TOKEN = '__all__';
   const DEFAULT_NEIGHBORHOOD_FACTORY_COUNT = 13;
   const GLOBAL_MODEL_FACTORY_COUNT = 3;
@@ -276,7 +277,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [activeNeighborhoodTab, setActiveNeighborhoodTab] = useState<string>(DEFAULT_NEIGHBORHOOD_NAME);
   const [loadingNeighborhoodTabs, setLoadingNeighborhoodTabs] = useState(false);
   const [neighborhoodFactories, setNeighborhoodFactories] = useState<Record<string, CustomFactory[]>>({});
-  const [dataFactories, setDataFactories] = useState<Record<string, CustomFactory[]>>({});
+  const [dataTypeSummaries, setDataTypeSummaries] = useState<Array<{ key: string; dataType: string; batchCount: number }>>([]);
+  const [dataFactoriesByType, setDataFactoriesByType] = useState<Record<string, CustomFactory[]>>({});
+  const [loadingDataFactoriesByType, setLoadingDataFactoriesByType] = useState<Record<string, boolean>>({});
   const [loadingNeighborhoodFactories, setLoadingNeighborhoodFactories] = useState<Record<string, boolean>>({});
 
   const renderScrollablePane = (child: React.ReactNode) => (
@@ -292,16 +295,32 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [activeAnalyticsTabsByModel, setActiveAnalyticsTabsByModel] = useState<Record<string, string>>({ [DEFAULT_NEIGHBORHOOD_NAME]: 'dashboard' });
   const [activeDiagramNeighborhoodName, setActiveDiagramNeighborhoodName] = useState<string | null>(null);
   const [activeDataTab, setActiveDataTab] = useState<string>('applications');
-  const [showDataComponentUploadModal, setShowDataComponentUploadModal] = useState(false);
-  const [dataComponentUploadName, setDataComponentUploadName] = useState('');
-  const [dataComponentUploadFile, setDataComponentUploadFile] = useState<File | null>(null);
-  const [dataComponentUploading, setDataComponentUploading] = useState(false);
   const [deleteAllComponentsLoading, setDeleteAllComponentsLoading] = useState(false);
   const [deleteComponentTypeLoading, setDeleteComponentTypeLoading] = useState<string | null>(null);
   const getModelCatalogTabKey = useCallback((modelName: string) => `modelCatalog:${modelName}`, []);
   const getModelComponentsTabKey = useCallback((modelName: string) => `modelComponents:${modelName}`, []);
   const getModelBpmnComponentTabKey = useCallback((modelName: string) => `modelBpmnComponent:${modelName}`, []);
   const getComponentSearchTabKey = useCallback((modelName: string) => `componentSearch:${modelName}`, []);
+  const getDataTypeTabKey = useCallback((dataType: string) => {
+    const candidate = String(dataType || '').trim().toLowerCase();
+    if (!candidate) return '';
+    const reservedTabEntries: Array<[string, string]> = [
+      ['application', 'applications'],
+      ['applications', 'applications'],
+      ['actor', 'actors'],
+      ['actors', 'actors'],
+      ['product', 'products'],
+      ['products', 'products'],
+      ['server', 'servers'],
+      ['servers', 'servers'],
+      ['db', 'databases'],
+      ['database', 'databases'],
+      ['databaseinstance', 'databases'],
+      ['databaseinstances', 'databases'],
+      ['databases', 'databases'],
+    ];
+    return reservedTabEntries.find(([label]) => label === candidate)?.[1] || candidate;
+  }, []);
   const [activeFactoryTabs, setActiveFactoryTabs] = useState<Record<string, string>>({ [DEFAULT_NEIGHBORHOOD_NAME]: getModelCatalogTabKey(DEFAULT_NEIGHBORHOOD_NAME) });
   const [activeModelComponentTabs, setActiveModelComponentTabs] = useState<Record<string, string>>({});
   const activeTab = activeFactoryTabs[activeNeighborhoodTab]
@@ -357,12 +376,33 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       products: 'Products',
       servers: 'Servers',
       databases: 'Databases',
+      databaseinstance: 'Databases',
+      databaseinstances: 'Databases',
     };
     if (reserved[key]) return reserved[key];
     return String(key || '')
       .replace(/[_-]+/g, ' ')
       .replace(/(^|\s)\S/g, (m) => m.toUpperCase())
       .trim();
+  }, []);
+
+  const getDataTypeQueryName = useCallback((key: string) => {
+    const reserved: Record<string, string> = {
+      applications: 'Application',
+      actors: 'Actor',
+      products: 'Product',
+      servers: 'Server',
+      databases: 'Database',
+      databaseinstance: 'Database',
+      databaseinstances: 'Database',
+      application: 'Application',
+      actor: 'Actor',
+      product: 'Product',
+      server: 'Server',
+      database: 'Database',
+    };
+    const normalized = String(key || '').trim().toLowerCase();
+    return reserved[normalized] || String(key || '').trim();
   }, []);
 
   const getDisplayedFactoryCount = useCallback((neighborhood: FactoryNeighborhoodSummary) => {
@@ -621,20 +661,12 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     });
   }, [neighborhoodTabs]);
 
-  // Build the list of Data subtabs, grouped by data type. Only types that
-  // actually contain data rows are shown; empty types are hidden.
+  // Build the list of Data subtabs from the summary list, then lazily load rows per active type.
   const visibleDataTabs = useMemo(() => {
-    const factories = dataFactories[ALL_NEIGHBORHOODS_TOKEN] || [];
-    const groups = new Map<string, CustomFactory[]>();
-    for (const factory of factories) {
-      const key = getDataFactoryTabKey(factory);
-      if (!key) continue;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(factory);
-    }
-
-    const entries = Array.from(groups.entries())
-      .map(([key, groupFactories]) => {
+    const entries = dataTypeSummaries
+      .map((summary) => {
+        const key = summary.key;
+        const groupFactories = dataFactoriesByType[key] || [];
         const dataRows = groupFactories.flatMap((f) => f.rows || []);
         const dataColumns = Array.from(new Set(groupFactories.flatMap((f) => f.columns || []))).filter(Boolean);
         const foreignKeyColumns = groupFactories.flatMap((f) => f.foreignKeyColumns || []);
@@ -645,9 +677,9 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               .filter(Boolean),
           ),
         );
-        return { key, dataRows, dataColumns, foreignKeyColumns, dataTypeValues };
+        return { key, label: summary.dataType, dataType: summary.dataType, batchCount: summary.batchCount, dataRows, dataColumns, foreignKeyColumns, dataTypeValues };
       })
-      .filter((entry) => entry.dataRows.length > 0);
+      .filter((entry) => entry.batchCount > 0);
 
     entries.sort((a, b) => {
       const ia = dataTabOrder.indexOf(a.key);
@@ -658,7 +690,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       return ia - ib;
     });
     return entries;
-  }, [dataFactories, ALL_NEIGHBORHOODS_TOKEN, getDataFactoryTabKey, dataTabOrder]);
+  }, [dataFactoriesByType, dataTypeSummaries, dataTabOrder]);
 
   // Validate activeDataTab when the set of visible data tabs changes
   useEffect(() => {
@@ -670,7 +702,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   }, [visibleDataTabs, activeDataTab]);
 
   const scopedNeighborhoodName = activeOuterTab === 'data'
-    ? ALL_NEIGHBORHOODS_TOKEN
+    ? REFERENCE_DATA_NEIGHBORHOOD_NAME
     : activeOuterTab === 'analytics'
       ? (activeAnalyticsModel || DEFAULT_NEIGHBORHOOD_NAME)
       : activeOuterTab === 'bpmn'
@@ -687,7 +719,10 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     setLoadingNeighborhoodFactories((current) => ({ ...current, [neighborhoodName]: true }));
     try {
       // Use canonical-backed factories for large datasets (migrated source)
-      const factories = await getCanonicalFactories(neighborhoodName, true, 100);
+      let factories = await getCanonicalFactories(neighborhoodName, true, 100).catch(() => [] as CustomFactory[]);
+      if (!factories.length) {
+        factories = await getCustomFactories(neighborhoodName).catch(() => [] as CustomFactory[]);
+      }
       const visibleFactories = factories;
       setNeighborhoodFactories((current) => ({ ...current, [neighborhoodName]: visibleFactories }));
       const firstComponentTabKey = getModelBpmnComponentTabKey(neighborhoodName);
@@ -752,28 +787,74 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     loadNeighborhoodFactoriesFor(activeNeighborhoodTab);
   }, [activeNeighborhoodTab, loadNeighborhoodFactoriesFor]);
 
-  const loadDataFactoriesFor = useCallback(async (neighborhoodName: string) => {
+  const loadDataTypeSummaries = useCallback(async () => {
     try {
-      const factories = await getDataFactories(neighborhoodName);
-      setDataFactories((current) => ({ ...current, [neighborhoodName]: factories }));
+      const summarySources = [REFERENCE_DATA_NEIGHBORHOOD_NAME, DEFAULT_NEIGHBORHOOD_NAME].filter((value, index, all) => all.indexOf(value) === index);
+      let types: Array<{ dataType: string; batchCount: number; updatedAt?: string }> = [];
+      for (const neighborhoodName of summarySources) {
+        types = await getDataFactoryTypes(neighborhoodName);
+        if (types.length) break;
+      }
+      const merged = new Map<string, { key: string; dataType: string; batchCount: number }>();
+      for (const entry of types) {
+        const rawType = String(entry?.dataType || '').trim();
+        if (!rawType) continue;
+        const key = getDataTypeTabKey(rawType);
+        const existing = merged.get(key);
+        merged.set(key, {
+          key,
+          dataType: existing?.dataType || rawType,
+          batchCount: (existing?.batchCount || 0) + Number(entry?.batchCount || 0),
+        });
+      }
+      setDataTypeSummaries(Array.from(merged.values()));
     } catch {
-      setDataFactories((current) => ({ ...current, [neighborhoodName]: [] }));
+      setDataTypeSummaries([]);
     }
-  }, []);
+  }, [getDataTypeTabKey]);
+
+  const loadDataFactoriesForType = useCallback(async (dataType: string) => {
+    const typeKey = getDataTypeTabKey(dataType);
+    if (!typeKey) return;
+    if (dataFactoriesByType[typeKey] !== undefined) return;
+    setLoadingDataFactoriesByType((current) => ({ ...current, [typeKey]: true }));
+    try {
+      const queryDataType = getDataTypeQueryName(dataType);
+      const dataSources = [REFERENCE_DATA_NEIGHBORHOOD_NAME, DEFAULT_NEIGHBORHOOD_NAME].filter((value, index, all) => all.indexOf(value) === index);
+      let factories: CustomFactory[] = [];
+      for (const neighborhoodName of dataSources) {
+        factories = await getDataFactories(neighborhoodName, queryDataType);
+        if (factories.length) break;
+      }
+      setDataFactoriesByType((current) => ({ ...current, [typeKey]: factories }));
+    } catch {
+      setDataFactoriesByType((current) => ({ ...current, [typeKey]: [] }));
+    } finally {
+      setLoadingDataFactoriesByType((current) => ({ ...current, [typeKey]: false }));
+    }
+  }, [dataFactoriesByType, getDataTypeQueryName, getDataTypeTabKey]);
 
   useEffect(() => {
-    loadDataFactoriesFor(ALL_NEIGHBORHOODS_TOKEN);
-  }, [loadDataFactoriesFor]);
+    void loadDataTypeSummaries();
+  }, [loadDataTypeSummaries]);
+
+  useEffect(() => {
+    if (!visibleDataTabs.length) return;
+    const activeTabEntry = visibleDataTabs.find((tab) => tab.key === activeDataTab) || visibleDataTabs[0];
+    if (!activeTabEntry) return;
+    if (dataFactoriesByType[activeTabEntry.key] === undefined && !loadingDataFactoriesByType[activeTabEntry.key]) {
+      void loadDataFactoriesForType(activeTabEntry.dataType || activeTabEntry.key);
+    }
+  }, [activeDataTab, dataFactoriesByType, loadingDataFactoriesByType, loadDataFactoriesForType, visibleDataTabs]);
 
   const refreshNeighborhoodModelData = useCallback(async (neighborhoodName: string) => {
     await loadNeighborhoodTabs();
     await loadNeighborhoodFactoriesFor(neighborhoodName);
-    await loadDataFactoriesFor(ALL_NEIGHBORHOODS_TOKEN);
     const taskNames = await getTaskNamesForNeighborhood(undefined, neighborhoodName).catch(() => [] as string[]);
     const actors = await getActorsForNeighborhood(neighborhoodName).catch(() => [] as Array<{ name: string }>);
     setAllTaskNames(taskNames);
     setAllActorNames(actors.map((actor) => actor.name));
-  }, [loadDataFactoriesFor, loadNeighborhoodFactoriesFor, loadNeighborhoodTabs]);
+  }, [loadNeighborhoodFactoriesFor, loadNeighborhoodTabs]);
 
   const fTabLabel = useCallback((key: string, content: React.ReactNode): React.ReactNode => (
     <div
@@ -870,7 +951,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       };
       const next = [
         { s: span('bpmn', 'bpmn'),                 keys: ['bpmn'],          label: 'Canvas',    color: '#0891b2' },
-        { s: span('data', 'data'),                 keys: ['data'],          label: 'Data',      color: '#0f766e' },
+        { s: span('data', 'data'),                 keys: ['data'],          label: 'System Components', color: '#0f766e' },
         { s: span('neighborhoods', 'neighborhoods'), keys: ['neighborhoods'], label: 'Models', color: '#4f46e5' },
         { s: span('analytics', 'analytics'),       keys: ['analytics'],     label: 'Analytics', color: '#d97706' },
       ].filter(g => g.s).map(g => ({ ...g.s!, label: g.label, color: g.color, keys: g.keys }));
@@ -1717,7 +1798,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
             deletedBatches += res?.deletedBatchCount || 0;
           }
           message.success(`Deleted Data[${displayName}]`);
-          await loadDataFactoriesFor(ALL_NEIGHBORHOODS_TOKEN);
+          await loadDataTypeSummaries();
+          await loadDataFactoriesForType(tabKey);
         } catch (error: any) {
           message.error(error.response?.data?.error || error.message);
         } finally {
@@ -1725,7 +1807,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         }
       },
     });
-  }, [message, loadDataFactoriesFor, ALL_NEIGHBORHOODS_TOKEN]);
+  }, [loadDataFactoriesForType, loadDataTypeSummaries, message]);
 
   const handleSaveDb = useCallback(
     async ({ name, description, tags, changeNote }: { name: string; description: string; tags: string[]; changeNote?: string }) => {
@@ -2116,68 +2198,73 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
               },
               {
                 key: 'data',
-                label: outerTabLabel('data', <span><DatabaseOutlined /> Data</span>),
+                label: outerTabLabel('data', <span><DatabaseOutlined /> System Components</span>),
                 children: (
                   <div className="flex h-full min-h-0 flex-col">
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
                       {!readOnly && (
-                        <Button
-                          size="small"
-                          type="primary"
-                          icon={<PlusOutlined />}
-                          onClick={() => {
-                            setDataComponentUploadName('');
-                            setDataComponentUploadFile(null);
-                            setShowDataComponentUploadModal(true);
+                        <SystemComponentsImportButton
+                          neighborhoodName={REFERENCE_DATA_NEIGHBORHOOD_NAME}
+                          onUploaded={async (dataType) => {
+                            await loadNeighborhoodTabs();
+                            await loadDataTypeSummaries();
+                            await loadDataFactoriesForType(dataType);
                           }}
-                        >
-                          Load Data
-                        </Button>
+                        />
                       )}
                     </div>
-                    <Tabs
-                      className="factory-tabs"
-                      activeKey={activeDataTab}
-                      onChange={setActiveDataTab}
-                      items={visibleDataTabs.map((tab) => {
-                        const componentType = tab.key;
-                        const effectiveDataColumns = tab.dataColumns.length ? tab.dataColumns : ['name', 'correlation_id'];
+                    {visibleDataTabs.length ? (
+                      <Tabs
+                        className="factory-tabs"
+                        activeKey={activeDataTab}
+                        onChange={(key) => {
+                          setActiveDataTab(key);
+                          void loadDataFactoriesForType(key);
+                        }}
+                        items={visibleDataTabs.map((tab) => {
+                          const componentType = tab.key;
+                          const effectiveDataColumns = tab.dataColumns.length ? tab.dataColumns : ['name', 'correlation_id'];
+                          const isLoaded = dataFactoriesByType[componentType] !== undefined;
+                          const loadedFactories = dataFactoriesByType[componentType] || [];
 
-                        return {
-                          key: componentType,
-                          label: dataTabLabel(componentType, <span>{getDataTypeDisplayName(componentType)}</span>),
-                          children: renderScrollablePane(
-                            <ApplicationFactory
-                              defaultSearch={factorySearch[componentType]}
-                              defaultAdd={typeof factoryAdd[componentType] === 'string' ? factoryAdd[componentType] : ''}
-                              userRole={user.role}
-                              readOnly={readOnly}
-                              dataColumns={effectiveDataColumns}
-                              dataRows={tab.dataRows}
-                              foreignKeyColumns={tab.foreignKeyColumns}
-                              requestedDetailRequest={componentType === 'applications' ? requestedApplicationDetail : undefined}
-                              onNavigateToFactory={(navTab: string, search: string) => {
-                                setFactorySearch((prev) => ({ ...prev, [navTab]: search }));
-                                setActiveDataTab(navTab);
-                              }}
-                              onDeleteAllComponents={() => handleDeleteDataComponentType(componentType, tab.dataTypeValues)}
-                              deleteLoading={deleteComponentTypeLoading === componentType}
-                            />,
-                          ),
-                        };
-                      })}
-                    />
+                          return {
+                            key: componentType,
+                            label: dataTabLabel(componentType, <span>{getDataTypeDisplayName(componentType)}</span>),
+                            children: renderScrollablePane(
+                              isLoaded ? (
+                                <ApplicationFactory
+                                  defaultSearch={factorySearch[componentType]}
+                                  defaultAdd={typeof factoryAdd[componentType] === 'string' ? factoryAdd[componentType] : ''}
+                                  userRole={user.role}
+                                  readOnly={readOnly}
+                                  dataColumns={effectiveDataColumns}
+                                  dataRows={loadedFactories.flatMap((factory) => factory.rows || [])}
+                                  foreignKeyColumns={loadedFactories.flatMap((factory) => factory.foreignKeyColumns || [])}
+                                  requestedDetailRequest={componentType === 'applications' ? requestedApplicationDetail : undefined}
+                                  onNavigateToFactory={(navTab: string, search: string) => {
+                                    setFactorySearch((prev) => ({ ...prev, [navTab]: search }));
+                                    setActiveDataTab(navTab);
+                                  }}
+                                  onDeleteAllComponents={() => handleDeleteDataComponentType(componentType, Array.from(new Set(loadedFactories.map((factory) => String(factory.dataType || factory.componentType || factory.name || '').trim()).filter(Boolean))))}
+                                  deleteLoading={deleteComponentTypeLoading === componentType}
+                                />
+                              ) : (
+                                <div className="flex min-h-[240px] items-center justify-center">
+                                  <Spin size="large" tip={`Loading ${getDataTypeDisplayName(componentType)}...`} />
+                                </div>
+                              ),
+                            ),
+                          };
+                        })}
+                      />
+                    ) : (
+                      <div className="flex min-h-[240px] items-center justify-center px-4">
+                        <Empty description="No System Components data found" />
+                      </div>
+                    )}
                   </div>
                 ),
               },
-              ...((() => {
-                const currentModel = activeNeighborhoodTab || DEFAULT_NEIGHBORHOOD_NAME;
-                const factories = dataFactories[currentModel] || [];
-                const hasDataWithRows = factories.some((f) => f.rows && f.rows.length > 0);
-                if (!hasDataWithRows) return [];
-                
-                return [];
-              })()),
               {
                 key: 'neighborhoods',
                 label: outerTabLabel('neighborhoods', <span><ShoppingOutlined /> Frameworks</span>),
@@ -2213,149 +2300,149 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                           return safeLeft - safeRight;
                         })
                         .map((neighborhood) => ({
-                        key: neighborhood.name,
-                        label: neighborhoodTabLabel(neighborhood.name, neighborhood.name),
-                        children: (
-                          <div className="flex h-full min-h-0 flex-col">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
-                              <div>
-                                <Space size="small">
-                                  <NeighborhoodFactory
-                                    canManageFactories={canEditFactories}
-                                    fixedNeighborhoodName={neighborhood.name}
-                                    onNeighborhoodsChanged={() => refreshNeighborhoodModelData(neighborhood.name)}
-                                    onNeighborhoodCreated={(name) => {
-                                      setActiveOuterTab('neighborhoods');
-                                      setActiveNeighborhoodTab(name);
-                                    }}
-                                    onNeighborhoodDeleted={(name) => {
-                                      setNeighborhoodFactories((current) => {
-                                        if (!current[name]) return current;
-                                        const next = { ...current };
-                                        delete next[name];
-                                        return next;
-                                      });
-                                      setActiveModelComponentTabs((current) => {
-                                        if (!current[name]) return current;
-                                        const next = { ...current };
-                                        delete next[name];
-                                        return next;
-                                      });
-                                      setActiveFactoryTabs((current) => {
-                                        if (!current[name]) return current;
-                                        const next = { ...current };
-                                        delete next[name];
-                                        return next;
-                                      });
-                                      setActiveNeighborhoodTab((current) => {
-                                        if (current !== name) return current;
-                                        const remaining = neighborhoodTabs
-                                          .map((tab) => tab.name)
-                                          .filter((tabName) => tabName !== name);
-                                        if (remaining.includes(DEFAULT_NEIGHBORHOOD_NAME)) return DEFAULT_NEIGHBORHOOD_NAME;
-                                        return remaining[0] || '';
-                                      });
-                                      setActiveOuterTab('neighborhoods');
-                                    }}
-                                    showCreateNeighborhood={false}
-                                    mode="action"
-                                  />
-                                </Space>
+                          key: neighborhood.name,
+                          label: neighborhoodTabLabel(neighborhood.name, neighborhood.name),
+                          children: (
+                            <div className="flex h-full min-h-0 flex-col">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
+                                <div>
+                                  <Space size="small">
+                                    <NeighborhoodFactory
+                                      canManageFactories={canEditFactories}
+                                      fixedNeighborhoodName={neighborhood.name}
+                                      onNeighborhoodsChanged={() => refreshNeighborhoodModelData(neighborhood.name)}
+                                      onNeighborhoodCreated={(name) => {
+                                        setActiveOuterTab('neighborhoods');
+                                        setActiveNeighborhoodTab(name);
+                                      }}
+                                      onNeighborhoodDeleted={(name) => {
+                                        setNeighborhoodFactories((current) => {
+                                          if (!current[name]) return current;
+                                          const next = { ...current };
+                                          delete next[name];
+                                          return next;
+                                        });
+                                        setActiveModelComponentTabs((current) => {
+                                          if (!current[name]) return current;
+                                          const next = { ...current };
+                                          delete next[name];
+                                          return next;
+                                        });
+                                        setActiveFactoryTabs((current) => {
+                                          if (!current[name]) return current;
+                                          const next = { ...current };
+                                          delete next[name];
+                                          return next;
+                                        });
+                                        setActiveNeighborhoodTab((current) => {
+                                          if (current !== name) return current;
+                                          const remaining = neighborhoodTabs
+                                            .map((tab) => tab.name)
+                                            .filter((tabName) => tabName !== name);
+                                          if (remaining.includes(DEFAULT_NEIGHBORHOOD_NAME)) return DEFAULT_NEIGHBORHOOD_NAME;
+                                          return remaining[0] || '';
+                                        });
+                                        setActiveOuterTab('neighborhoods');
+                                      }}
+                                      showCreateNeighborhood={false}
+                                      mode="action"
+                                    />
+                                  </Space>
+                                </div>
+                                <div style={{ marginLeft: 'auto' }}>
+                                  <Button
+                                    size="small"
+                                    icon={<UploadOutlined />}
+                                    onClick={() => handleImportModelBpmn(neighborhood.name)}
+                                    className="btn-bulk-import"
+                                  >
+                                    Bulk Import BPMN 2.0 XML
+                                  </Button>
+                                </div>
                               </div>
-                              <div style={{ marginLeft: 'auto' }}>
-                                <Button
-                                  size="small"
-                                  icon={<UploadOutlined />}
-                                  onClick={() => handleImportModelBpmn(neighborhood.name)}
-                                  className="btn-bulk-import"
-                                >
-                                  Bulk Import BPMN 2.0 XML
-                                </Button>
-                              </div>
+                              <Tabs
+                                className="factory-tabs model-factory-tabs"
+                                defaultActiveKey={getModelCatalogTabKey(neighborhood.name)}
+                                activeKey={(() => {
+                                  const modelCatalogTabKey = getModelCatalogTabKey(neighborhood.name);
+                                  const modelComponentsTabKey = getModelComponentsTabKey(neighborhood.name);
+                                  const currentModelTab = activeFactoryTabs[neighborhood.name];
+                                  if (currentModelTab === modelCatalogTabKey || currentModelTab === modelComponentsTabKey) {
+                                    return currentModelTab;
+                                  }
+                                  return modelCatalogTabKey;
+                                })()}
+                                onChange={(key) => {
+                                  setActiveFactoryTabs((current) => ({ ...current, [neighborhood.name]: key }));
+                                }}
+                                items={[
+                                  {
+                                    key: getModelCatalogTabKey(neighborhood.name),
+                                    label: fTabLabel(getModelCatalogTabKey(neighborhood.name), <><DatabaseOutlined /> Model</>),
+                                    children: renderScrollablePane(
+                                      <ModelCatalog
+                                        modelName={neighborhood.name}
+                                        requestedSearch={modelCatalogSearchRequest[neighborhood.name] || null}
+                                      />,
+                                    ),
+                                  },
+                                  {
+                                    key: getModelComponentsTabKey(neighborhood.name),
+                                    label: fTabLabel(getModelComponentsTabKey(neighborhood.name), <><AppstoreOutlined /> Model Components</>),
+                                    children: renderScrollablePane(
+                                      <ComponentsViewer
+                                        neighborhoodName={neighborhood.name}
+                                        availableComponentIds={(neighborhoodFactories[neighborhood.name] || []).map((f) => f._id)}
+                                        onComponentTabSelect={(componentId, componentName) => {
+                                          setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
+                                        }}
+                                        onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
+                                          if (!correlationId) return;
+                                          const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
+                                          setFactorySearch((current) => ({
+                                            ...current,
+                                            applications: applicationSearch,
+                                          }));
+                                          setActiveOuterTab('data');
+                                          setActiveDataTab('applications');
+                                          setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
+                                        }}
+                                        renderComponentContent={(componentId, componentName, highlightedRowName) => {
+                                          const factoryComponent = (neighborhoodFactories[neighborhood.name] || []).find((f) => f._id === componentId);
+                                          if (!factoryComponent) return <div>Component not found</div>;
+
+                                          return (
+                                            <NeighborhoodFactory
+                                              canManageFactories={canEditFactories}
+                                              fixedNeighborhoodName={neighborhood.name}
+                                              fixedFactoryId={componentId}
+                                              defaultRowSearch={highlightedRowName || factorySearch[componentId]}
+                                              defaultRowSearchColumn="name"
+                                              hideFactoryList
+                                              onNeighborhoodsChanged={loadNeighborhoodTabs}
+                                              onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
+                                              onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
+                                                if (!correlationId) return;
+                                                const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
+                                                setFactorySearch((current) => ({
+                                                  ...current,
+                                                  applications: applicationSearch,
+                                                }));
+                                                setActiveOuterTab('data');
+                                                setActiveDataTab('applications');
+                                                setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
+                                              }}
+                                            />
+                                          );
+                                        }}
+                                      />,
+                                    ),
+                                  },
+                                ]}
+                              />
                             </div>
-                            <Tabs
-                            className="factory-tabs model-factory-tabs"
-                            defaultActiveKey={getModelCatalogTabKey(neighborhood.name)}
-                            activeKey={(() => {
-                              const modelCatalogTabKey = getModelCatalogTabKey(neighborhood.name);
-                              const modelComponentsTabKey = getModelComponentsTabKey(neighborhood.name);
-                              const currentModelTab = activeFactoryTabs[neighborhood.name];
-                              if (currentModelTab === modelCatalogTabKey || currentModelTab === modelComponentsTabKey) {
-                                return currentModelTab;
-                              }
-                              return modelCatalogTabKey;
-                            })()}
-                            onChange={(key) => {
-                              setActiveFactoryTabs((current) => ({ ...current, [neighborhood.name]: key }));
-                            }}
-                            items={[
-                              {
-                                key: getModelCatalogTabKey(neighborhood.name),
-                                label: fTabLabel(getModelCatalogTabKey(neighborhood.name), <><DatabaseOutlined /> Model</>),
-                                children: renderScrollablePane(
-                                  <ModelCatalog
-                                    modelName={neighborhood.name}
-                                    requestedSearch={modelCatalogSearchRequest[neighborhood.name] || null}
-                                  />,
-                                ),
-                              },
-                              {
-                                key: getModelComponentsTabKey(neighborhood.name),
-                                label: fTabLabel(getModelComponentsTabKey(neighborhood.name), <><AppstoreOutlined /> Model Components</>),
-                                children: renderScrollablePane(
-                                  <ComponentsViewer
-                                    neighborhoodName={neighborhood.name}
-                                    availableComponentIds={(neighborhoodFactories[neighborhood.name] || []).map((f) => f._id)}
-                                    onComponentTabSelect={(componentId, componentName) => {
-                                      setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
-                                    }}
-                                    onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
-                                      if (!correlationId) return;
-                                      const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
-                                      setFactorySearch((current) => ({
-                                        ...current,
-                                        applications: applicationSearch,
-                                      }));
-                                      setActiveOuterTab('data');
-                                      setActiveDataTab('applications');
-                                      setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
-                                    }}
-                                    renderComponentContent={(componentId, componentName, highlightedRowName) => {
-                                      const factoryComponent = (neighborhoodFactories[neighborhood.name] || []).find((f) => f._id === componentId);
-                                      if (!factoryComponent) return <div>Component not found</div>;
-                                      
-                                      return (
-                                        <NeighborhoodFactory
-                                          canManageFactories={canEditFactories}
-                                          fixedNeighborhoodName={neighborhood.name}
-                                          fixedFactoryId={componentId}
-                                          defaultRowSearch={highlightedRowName || factorySearch[componentId]}
-                                          defaultRowSearchColumn="name"
-                                          hideFactoryList
-                                          onNeighborhoodsChanged={loadNeighborhoodTabs}
-                                          onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
-                                          onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
-                                            if (!correlationId) return;
-                                            const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
-                                            setFactorySearch((current) => ({
-                                              ...current,
-                                              applications: applicationSearch,
-                                            }));
-                                            setActiveOuterTab('data');
-                                            setActiveDataTab('applications');
-                                            setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
-                                          }}
-                                        />
-                                      );
-                                    }}
-                                  />,
-                                ),
-                              },
-                            ]}
-                          />
-                        </div>
-                      ),
-                    }))}
+                          ),
+                        }))}
                     />
                   </div>
                 ),
@@ -2570,90 +2657,6 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         }}
       />
 
-      {/* Data Upload Modal */}
-      <Modal
-        title="Load Data"
-        open={showDataComponentUploadModal}
-        onCancel={() => {
-          setShowDataComponentUploadModal(false);
-          setDataComponentUploadName('');
-          setDataComponentUploadFile(null);
-        }}
-        onOk={async () => {
-          if (!dataComponentUploadName.trim()) {
-            message.error('Data type is required');
-            return;
-          }
-          if (!dataComponentUploadFile) {
-            message.error('CSV file is required');
-            return;
-          }
-          
-          setDataComponentUploading(true);
-          try {
-            const result = await uploadCustomFactory({
-              neighborhoodName: activeNeighborhoodTab || DEFAULT_NEIGHBORHOOD_NAME,
-              file: dataComponentUploadFile,
-              dataType: dataComponentUploadName.trim(),
-              loadDomain: 'data',
-            });
-            const uploadedFactories = result.factories || [];
-            message.success(uploadedFactories.length === 1
-              ? `Data uploaded: ${uploadedFactories[0].name}`
-              : `Data uploaded: ${uploadedFactories.length}`);
-            setShowDataComponentUploadModal(false);
-            setDataComponentUploadName('');
-            setDataComponentUploadFile(null);
-            // Reload neighborhoods to update component counts
-            await loadNeighborhoodTabs();
-            await loadDataFactoriesFor(ALL_NEIGHBORHOODS_TOKEN);
-          } catch (error: any) {
-            message.error(error.response?.data?.error || error.message);
-          } finally {
-            setDataComponentUploading(false);
-          }
-        }}
-        okText={dataComponentUploading ? 'Uploading…' : 'Upload'}
-        confirmLoading={dataComponentUploading}
-      >
-        <div className="mt-4">
-          <div style={{ marginBottom: 12, fontWeight: 500 }}>Data Type</div>
-          <Input
-            placeholder="e.g., Applications, Server"
-            value={dataComponentUploadName}
-            onChange={(e) => setDataComponentUploadName(e.target.value)}
-            disabled={dataComponentUploading}
-          />
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 16, marginTop: 6 }}>
-            Enter the type of data being loaded (e.g., Applications or Server).
-          </div>
-          
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>CSV File</div>
-          <div style={{ marginBottom: 12 }}>
-            <Upload.Dragger
-              accept=".csv"
-              maxCount={1}
-              beforeUpload={(file) => {
-                setDataComponentUploadFile(file);
-                return false;
-              }}
-              onRemove={() => {
-                setDataComponentUploadFile(null);
-              }}
-              fileList={dataComponentUploadFile ? [dataComponentUploadFile as any] : []}
-              disabled={dataComponentUploading}
-            >
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Upload a CSV file with data rows</p>
-              <p className="ant-upload-hint">CSV should contain Component, Qualifier, and FK_ columns where applicable</p>
-            </Upload.Dragger>
-          </div>
-          
-          <div style={{ color: '#64748b', fontSize: 12 }}>
-            The CSV file follows the same load rules as components, with Component columns for hierarchy, Qualifier columns, and FK_ columns.
-          </div>
-        </div>
-      </Modal>
     </Layout>
   );
 }

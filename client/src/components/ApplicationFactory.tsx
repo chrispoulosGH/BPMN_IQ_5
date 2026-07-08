@@ -142,7 +142,7 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
 export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, dataColumns = [], dataRows, foreignKeyColumns = [], onNavigateToFactory, requestedDetailRequest, onDeleteAllComponents, deleteLoading }: ApplicationFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [exactSearch, setExactSearch] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
@@ -333,46 +333,47 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
   }, [detail, isDataBacked]);
 
   const searchToken = exactSearch ? encodeExactFactorySearch(search) : search;
-  const filtered = search
-    ? items.filter((i) => {
-        // Support field-specific searches like "Correlation_ID:value"
-        if (search.includes(':')) {
-          const [field, value] = search.split(':', 2);
-          const fieldLower = field.toLowerCase().trim().replace(/[\s_]+/g, '_'); // Normalize spaces/underscores to single underscore
-          console.log(`[FK_SEARCH_EXECUTE]`, {
-            rawSearch: search,
-            rawField: field,
-            normalizedField: fieldLower,
-            parsedValue: value,
-            itemsToSearch: items.length
+  const filtered = useMemo(() => {
+    if (!search) return items;
+    return items.filter((i) => {
+      // Support field-specific searches like "Correlation_ID:value"
+      if (search.includes(':')) {
+        const [field, value] = search.split(':', 2);
+        const fieldLower = field.toLowerCase().trim().replace(/[\s_]+/g, '_'); // Normalize spaces/underscores to single underscore
+        console.log(`[FK_SEARCH_EXECUTE]`, {
+          rawSearch: search,
+          rawField: field,
+          normalizedField: fieldLower,
+          parsedValue: value,
+          itemsToSearch: items.length
+        });
+
+        const fieldValue = isDataBacked
+          ? Object.entries(i).find(([key]) => matchesDataFieldName(key, fieldLower))?.[1]
+          : fieldLower === 'correlation_id' || fieldLower === 'correlationid' ? i.correlationId :
+             fieldLower === 'name' ? i.name :
+             fieldLower === 'acronym' ? i.acronym :
+             fieldLower === 'description' || fieldLower === 'short_description' || fieldLower === 'shortdescription' ? i.shortDescription :
+             '';
+
+        const matched = matchesFactorySearch([fieldValue], value);
+        if (matched) {
+          console.log(`[FK_SEARCH_MATCH]`, {
+            field: fieldLower,
+            searchValue: value,
+            applicationProperty: fieldLower === 'correlation_id' ? 'correlationId' : fieldLower,
+            applicationValue: fieldValue,
+            applicationName: i.name
           });
-          
-          const fieldValue = isDataBacked
-            ? Object.entries(i).find(([key]) => matchesDataFieldName(key, fieldLower))?.[1]
-            : fieldLower === 'correlation_id' || fieldLower === 'correlationid' ? i.correlationId :
-               fieldLower === 'name' ? i.name :
-               fieldLower === 'acronym' ? i.acronym :
-               fieldLower === 'description' || fieldLower === 'short_description' || fieldLower === 'shortdescription' ? i.shortDescription :
-               '';
-          
-          const matched = matchesFactorySearch([fieldValue], value);
-          if (matched) {
-            console.log(`[FK_SEARCH_MATCH]`, {
-              field: fieldLower,
-              searchValue: value,
-              applicationProperty: fieldLower === 'correlation_id' ? 'correlationId' : fieldLower,
-              applicationValue: fieldValue,
-              applicationName: i.name
-            });
-          }
-          return matched;
         }
-        // Default: search all fields
-        console.log(`[FK_SEARCH_FALLBACK] Search does not contain ":", using default multi-field search`);
-        const searchableValues = isDataBacked ? Object.values(i).map(formatDataCell) : [i.name, i.acronym, i.correlationId, i.shortDescription];
-        return matchesFactorySearch(searchableValues, searchToken);
-      })
-    : items;
+        return matched;
+      }
+      // Default: search all fields
+      console.log(`[FK_SEARCH_FALLBACK] Search does not contain ":", using default multi-field search`);
+      const searchableValues = isDataBacked ? Object.values(i).map(formatDataCell) : [i.name, i.acronym, i.correlationId, i.shortDescription];
+      return matchesFactorySearch(searchableValues, searchToken);
+    });
+  }, [items, isDataBacked, search, searchToken]);
   
   if (search && search.includes(':')) {
     console.log(`[FK_SEARCH_RESULTS]`, {
@@ -455,6 +456,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
 
   const showAll = () => setVisibleKeys(new Set(availableColumnChoices.map(c => c.key)));
   const showDefaults = () => setVisibleKeys(new Set(availableColumnChoices.filter(c => c.defaultVisible).map(c => c.key)));
+  const showNone = () => setVisibleKeys(new Set());
 
   /** Build a filterable column config helper */
   const filterCol = (dataIndex: string): Pick<any, 'filters' | 'onFilter'> => ({
@@ -572,18 +574,20 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
 
   const allColumnDefs = isDataBacked ? dataColumnDefs : applicationColumnDefs;
 
-  const columns = [
+  const columns = useMemo(() => [
     ...allColumnDefs.filter(c => c.key !== 'actions' && visibleKeys.has(c.key as string)),
     ...(preventRowMutations ? [] : [allColumnDefs.find(c => c.key === 'actions')!]),
-  ];
+  ], [allColumnDefs, preventRowMutations, visibleKeys]);
 
-  const scrollX = columns.reduce((sum, c) => sum + ((c.width as number) || 150), 0);
+  const scrollX = useMemo(() => columns.reduce((sum, c) => sum + ((c.width as number) || 150), 0), [columns]);
+  const enhancedColumns = useMemo(() => enhanceColumnsWithSortAndFilters(columns as any, filtered), [columns, filtered]);
 
   const columnToggleContent = (
     <div style={{ maxHeight: 360, overflowY: 'auto', width: 200 }}>
       <div className="flex gap-2 mb-2 border-b pb-2">
         <Button size="small" type="link" onClick={showAll}>All</Button>
         <Button size="small" type="link" onClick={showDefaults}>Defaults</Button>
+        <Button size="small" type="link" onClick={showNone}>Deselect All</Button>
       </div>
       {availableColumnChoices.map(col => (
         <div key={col.key} className="py-0.5">
@@ -600,27 +604,31 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
 
   return (
     <div className="flex flex-col h-full p-3 gap-3">
-      <div className="flex items-center gap-2">
-        <Input
-          placeholder="Search by name, acronym, or ID…"
-          size="small"
-          prefix={<SearchOutlined />}
-          style={{ width: 300 }}
-          allowClear
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setExactSearch(false);
-          }}
-        />
-        <Popover content={columnToggleContent} title="Toggle Columns" trigger="click" placement="bottomRight">
-          <Button size="small" icon={<SettingOutlined />}>Columns</Button>
-        </Popover>
+      <div className="flex items-start gap-2">
+        <div className="flex flex-col items-start gap-2">
+          {!readOnly && onDeleteAllComponents && <Button danger size="small" style={{ fontSize: 14 }} onClick={onDeleteAllComponents} loading={deleteLoading}>
+            {isDataBacked ? 'Delete System Component Type' : 'Delete All'}
+          </Button>}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder="Search by name, acronym, or ID…"
+              size="small"
+              prefix={<SearchOutlined />}
+              style={{ width: 300 }}
+              allowClear
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setExactSearch(false);
+              }}
+            />
+            <Popover content={columnToggleContent} title="Toggle Columns" trigger="click" placement="bottomRight">
+              <Button size="small" icon={<SettingOutlined />}>Columns</Button>
+            </Popover>
+          </div>
+        </div>
         <div className="flex-1" />
         <span className="text-xs text-gray-500">{filtered.length} of {items.length} applications</span>
-        {!readOnly && onDeleteAllComponents && <Button danger size="small" onClick={onDeleteAllComponents} loading={deleteLoading}>
-          {isDataBacked ? 'Delete Data Type' : 'Delete All'}
-        </Button>}
         {!preventRowMutations && <Button danger size="small" icon={<DeleteOutlined />} disabled={!selectedRowKeys.length} onClick={handleBulkDelete}>
           Delete Selected ({selectedRowKeys.length})
         </Button>}
@@ -631,7 +639,7 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
 
       <Table
         dataSource={filtered}
-        columns={enhanceColumnsWithSortAndFilters(columns as any, filtered)}
+        columns={enhancedColumns}
         rowKey="_id"
         size="small"
         loading={loading}

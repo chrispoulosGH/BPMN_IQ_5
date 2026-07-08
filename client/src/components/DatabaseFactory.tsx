@@ -166,6 +166,7 @@ export default function DatabaseFactory({ defaultSearch, onNavigateToFactory, re
 
   const showAll = () => setVisibleKeys(new Set(ALL_COLUMNS.map((column) => column.key)));
   const showDefaults = () => setVisibleKeys(new Set(ALL_COLUMNS.filter((column) => column.defaultVisible).map((column) => column.key)));
+  const showNone = () => setVisibleKeys(new Set());
 
   const renderNoteHover = (note: NonNullable<DatabaseItem['healthNotes']>[number]) => (
     <div style={{ maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -384,6 +385,7 @@ export default function DatabaseFactory({ defaultSearch, onNavigateToFactory, re
       <div className="flex gap-2 mb-2 border-b pb-2">
         <Button size="small" type="link" onClick={showAll}>All</Button>
         <Button size="small" type="link" onClick={showDefaults}>Defaults</Button>
+        <Button size="small" type="link" onClick={showNone}>Deselect All</Button>
       </div>
       {ALL_COLUMNS.map((column) => (
         <div key={column.key} className="py-0.5">

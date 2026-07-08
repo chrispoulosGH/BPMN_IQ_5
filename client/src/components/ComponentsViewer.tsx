@@ -137,8 +137,11 @@ export default function ComponentsViewer({
     const loadComponents = async () => {
       try {
         console.log(`[ComponentsViewer] API CALL: Loading canonical factories for ${neighborhoodName}/${activeModelName}`);
-        // Use canonical-backed factories for large datasets
-        const allComponents = await getCanonicalFactories(neighborhoodName, true, 100).catch(() => [] as CustomFactory[]);
+        // Use canonical-backed factories for large datasets, but fall back to legacy factories if canonical is empty.
+        let allComponents = await getCanonicalFactories(neighborhoodName, true, 100).catch(() => [] as CustomFactory[]);
+        if (!allComponents.length) {
+          allComponents = await getCustomFactories(neighborhoodName).catch(() => [] as CustomFactory[]);
+        }
         
         // TRACE: Log all component names
         console.log(`[ComponentsViewer] API RESPONSE: Received ${allComponents.length} components:`, 

@@ -236,11 +236,21 @@ export const getCustomFactories = (neighborhoodName?: string, modelName?: string
   return api.get('/custom-factories').then((r) => r.data as CustomFactory[]);
 };
 
-export const getDataFactories = (neighborhoodName?: string): Promise<CustomFactory[]> =>
+export const getDataFactoryTypes = (neighborhoodName?: string): Promise<Array<{ dataType: string; batchCount: number; updatedAt?: string }>> =>
+  api.get('/custom-factories', {
+    params: {
+      loadDomain: 'data',
+      summary: 'types',
+      ...(neighborhoodName ? { neighborhoodName } : {}),
+    },
+  }).then((r) => r.data.types || []);
+
+export const getDataFactories = (neighborhoodName?: string, dataType?: string): Promise<CustomFactory[]> =>
   api.get('/custom-factories', {
     params: {
       loadDomain: 'data',
       ...(neighborhoodName ? { neighborhoodName } : {}),
+      ...(dataType ? { dataType } : {}),
     },
   }).then((r) => r.data as CustomFactory[]);
 
