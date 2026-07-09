@@ -1839,16 +1839,29 @@ router.get('/', async (req, res) => {
       const db = mongoose.connection.db;
 
       if (summaryMode) {
-        const summaries = await db.collection('dataBatches').aggregate([
-          { $match: dataQuery },
-          { $match: { rows: { $ne: [] } } },
-          { $addFields: { resolvedDataType: { $ifNull: ['$dataType', '$componentType'] } } },
-          { $match: { resolvedDataType: { $nin: ['', null] } } },
-          { $group: { _id: '$resolvedDataType', batchCount: { $sum: 1 }, updatedAt: { $max: '$updatedAt' } } },
-          { $project: { _id: 0, dataType: '$_id', batchCount: 1, updatedAt: 1 } },
-          { $sort: { dataType: 1 } },
-        ]).toArray().catch(() => []);
+        const summarySources = ['dataBatches', 'dataComponentBatches'];
+        const merged = new Map();
+        for (const collectionName of summarySources) {
+          const docs = await db.collection(collectionName)
+            .find({ ...dataQuery, rows: { $ne: [] } }, { projection: { dataType: 1, componentType: 1, name: 1, updatedAt: 1 } })
+            .toArray()
+            .catch(() => []);
 
+          for (const doc of docs) {
+            const resolvedDataType = String(doc?.dataType || '').trim()
+              || String(doc?.componentType || '').trim()
+              || String(doc?.name || '').trim();
+            if (!resolvedDataType) continue;
+            const existing = merged.get(resolvedDataType);
+            merged.set(resolvedDataType, {
+              dataType: resolvedDataType,
+              batchCount: (existing?.batchCount || 0) + 1,
+              updatedAt: existing?.updatedAt || doc?.updatedAt,
+            });
+          }
+        }
+
+        const summaries = Array.from(merged.values()).sort((left, right) => left.dataType.localeCompare(right.dataType));
         return res.json({ neighborhood: neighborhoodName || null, types: summaries });
       }
 
@@ -1895,6 +1908,16 @@ router.get('/', async (req, res) => {
 
       if (dataBatchFactories.length) {
         return res.json(dataBatchFactories.map((factory) => serializeFactory(factory)));
+      }
+
+      const dataComponentBatchFactories = await db.collection('dataComponentBatches')
+        .find(typedDataQuery, { projection: batchProjection })
+        .sort({ neighborhoodName: 1, dataType: 1, name: 1, uploadedAt: 1 })
+        .toArray()
+        .catch(() => []);
+
+      if (dataComponentBatchFactories.length) {
+        return res.json(dataComponentBatchFactories.map((factory) => serializeFactory(factory)));
       }
 
       const dataFactories = await Data.find({
@@ -2154,6 +2177,7 @@ router.get('/neighborhoods/:name/catalog/tree', async (req, res) => {
   try {
     const name = String(req.params?.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Model name is required' });
+    const requestedMode = String(req.query.mode || '').trim().toLowerCase();
 
     const data = await loadCatalogForTree(name);
     if (!data) return res.status(404).json({ error: 'Model not found' });
@@ -2161,6 +2185,11 @@ router.get('/neighborhoods/:name/catalog/tree', async (req, res) => {
 
     if (!tupleColumns.length) {
       return res.json({ mode: 'full', tupleColumns: [], nodeCount: 0, roots: [] });
+    }
+
+    if (requestedMode === 'lazy') {
+      const roots = getCatalogTreeChildren(allRows, tupleColumns, []);
+      return res.json({ mode: 'lazy', tupleColumns, nodeCount: roots.length, roots });
     }
 
     const built = buildFullCatalogTree(allRows, tupleColumns);
@@ -2399,6 +2428,29 @@ router.delete('/neighborhoods/:name/components', requireAdminWrite, async (req, 
 
 // DELETE /api/custom-factories/data/:dataType — delete a single Data type (e.g. Data[Applications])
 // without affecting other Data types (e.g. Data[Servers]).
+router.get('/data/:dataType/distributions', async (req, res) => {
+  const rawType = String(req.params?.dataType || '').trim();
+  if (!rawType) return res.status(400).json({ error: 'Data type is required' });
+  const neighborhoodName = String(req.query?.neighborhoodName || '').trim();
+  try {
+    const db = mongoose.connection.db;
+    const filter = { dataType: rawType };
+    if (neighborhoodName) filter.neighborhoodName = neighborhoodName;
+    const doc = await db.collection('dataTypeDistributions').findOne(filter);
+    if (!doc) return res.json({ distributions: [], recordCount: 0, computedAt: null });
+    return res.json({
+      distributions: doc.distributions || [],
+      recordCount: doc.recordCount || 0,
+      computedAt: doc.computedAt || null,
+      aggregateColumns: doc.aggregateColumns || [],
+      locationSummary: doc.locationSummary || null,
+    });
+  } catch (err) {
+    console.error('[DISTRIBUTIONS] GET error:', err && err.message);
+    return res.status(500).json({ error: 'Failed to load distributions' });
+  }
+});
+
 router.delete('/data/:dataType', requireAdminWrite, async (req, res) => {
   const rawType = String(req.params?.dataType || '').trim();
   if (!rawType) return res.status(400).json({ error: 'Data type is required' });
@@ -2406,21 +2458,47 @@ router.delete('/data/:dataType', requireAdminWrite, async (req, res) => {
   const neighborhoodName = String(req.query?.neighborhoodName || '').trim();
   try {
     const db = mongoose.connection.db;
-    const typeRegex = new RegExp(`^${escapeRegExp(rawType)}$`, 'i');
     const scope = (neighborhoodName && neighborhoodName !== '__all__') ? { neighborhoodName } : {};
+    const typeCandidates = getDataTypeSearchCandidates(rawType);
+    const typeTerms = typeCandidates.length ? typeCandidates : [rawType];
+    const makeExactRegex = (value) => new RegExp(`^${escapeRegExp(value)}$`, 'i');
 
-    const typeMatch = { $or: [{ dataType: typeRegex }, { componentType: typeRegex }, { name: typeRegex }] };
+    const typeMatch = {
+      $or: typeTerms.flatMap((candidate) => {
+        const typeRegex = makeExactRegex(candidate);
+        return ([
+          { dataType: typeRegex },
+          { componentType: typeRegex },
+          { name: typeRegex },
+        ]);
+      }),
+    };
     const batchFilter = { ...scope, ...typeMatch };
     const dataFilter = { ...scope, ...typeMatch };
-    const canonicalFilter = { ...scope, componentType: typeRegex };
-    const indexFilter = { ...scope, $or: [{ componentName: typeRegex }, { dataType: typeRegex }] };
+    const canonicalFilter = { ...scope, $or: typeTerms.map((candidate) => ({ componentType: makeExactRegex(candidate) })) };
+    const indexFilter = { ...scope, $or: typeTerms.flatMap((candidate) => {
+      const typeRegex = makeExactRegex(candidate);
+      return ([{ componentName: typeRegex }, { dataType: typeRegex }]);
+    }) };
 
-    const [deletedBatches, deletedData, deletedCanonicalData, deletedDataIndex] = await Promise.all([
+    const distTypeMatch = { $or: typeTerms.map((t) => ({ dataType: new RegExp(`^${escapeRegExp(t)}$`, 'i') })) };
+    const [deletedBatches, , deletedData, deletedCanonicalData, deletedDataIndex] = await Promise.all([
       db.collection('dataBatches').deleteMany(batchFilter).catch(() => ({ deletedCount: 0 })),
+      db.collection('dataTypeDistributions').deleteMany({ ...scope, ...distTypeMatch }).catch(() => null),
       Data.deleteMany(dataFilter).catch(() => ({ deletedCount: 0 })),
       CanonicalData.deleteMany(canonicalFilter).catch(() => ({ deletedCount: 0 })),
       DataSearchIndex.deleteMany(indexFilter).catch(() => ({ deletedCount: 0 })),
     ]);
+
+    if (neighborhoodName && neighborhoodName !== '__all__') {
+      await rebuildSearchIndex(neighborhoodName, {
+        CanonicalModel: CanonicalData,
+        SearchIndexModel: DataSearchIndex,
+        indexLabel: 'DataSearchIndex',
+      }).catch((err) => {
+        console.error('[DELETE DATA TYPE] search index rebuild failed', err && err.message);
+      });
+    }
 
     return res.json({
       success: true,
@@ -2513,21 +2591,10 @@ router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, r
     }
     uploadRows = uniqueUploadRows;
     
-    // Step 1: Process component columns for schema factories
-    const { componentColumns } = splitUploadColumns(uploadColumns);
-    
-    // Step 2: Filter component columns by the requested type when one is provided.
-    const requestedTypeName = loadDomain === 'data' ? dataType : componentName;
-    const filteredComponentColumns = requestedTypeName
-      ? componentColumns.filter((col) => columnMatchesRequestedLoadType(col.name, requestedTypeName))
-      : componentColumns;
-
-
     const owner = req.currentUser?.displayName || req.currentUser?.userId || '';
     const createdBy = req.currentUser?.userId || '';
 
     // Split large uploads into batches to avoid BSON serialization limits
-    // Use smaller batch size (100 rows) to safely stay under 16MB BSON limit with 231 columns
     const BATCH_SIZE = 100;
     const rowBatches = [];
     for (let i = 0; i < uploadRows.length; i += BATCH_SIZE) {
@@ -2535,25 +2602,62 @@ router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, r
     }
     console.log(`[UPLOAD] Split ${uploadRows.length} rows into ${rowBatches.length} batches of ~${BATCH_SIZE} rows`);
 
-    // Process each batch of rows separately - NO MERGING within same upload
-    const allUploadedFactories = [];
-    for (let batchIdx = 0; batchIdx < rowBatches.length; batchIdx++) {
-      const batchRows = rowBatches[batchIdx];
-      console.log(`[UPLOAD] Processing batch ${batchIdx + 1}/${rowBatches.length} with ${batchRows.length} rows`);
-      
-      const batchFactories = await buildComponentUploadFactories({
-        neighborhoodName,
-        rows: batchRows,
-        componentColumns: filteredComponentColumns,
-        sourceFileName: req.file.originalname,
-        owner,
-        createdBy,
-      });
-      
-      allUploadedFactories.push(...batchFactories);
+    let uploadedFactories = [];
+
+    if (loadDomain === 'data') {
+      // Data uploads are flat — no "Component" column hierarchy is required.
+      // Store each batch directly as a factory document keyed by the user's dataType.
+      const factoryName = dataType;
+      for (let batchIdx = 0; batchIdx < rowBatches.length; batchIdx++) {
+        const batchRows = rowBatches[batchIdx];
+        console.log(`[UPLOAD] Processing data batch ${batchIdx + 1}/${rowBatches.length} with ${batchRows.length} rows`);
+        const rowDocs = batchRows.map((row) => ({
+          values: { ...row },
+          owner,
+          state: 'staged',
+          sourcedFrom: req.file.originalname,
+          createdBy,
+          updatedBy: createdBy,
+        }));
+        uploadedFactories.push({
+          neighborhoodName,
+          name: factoryName,
+          sourceColumnName: factoryName,
+          parentFactoryName: '',
+          componentType: factoryName,
+          qualifierColumns: [],
+          foreignKeyColumns: [],
+          columns: uploadColumns,
+          owner,
+          createdBy,
+          sourceFileName: req.file.originalname,
+          rows: rowDocs,
+        });
+      }
+    } else {
+      // Component uploads require "... Component" hierarchy columns.
+      const { componentColumns } = splitUploadColumns(uploadColumns);
+      const requestedTypeName = componentName;
+      const filteredComponentColumns = requestedTypeName
+        ? componentColumns.filter((col) => columnMatchesRequestedLoadType(col.name, requestedTypeName))
+        : componentColumns;
+
+      const allUploadedFactories = [];
+      for (let batchIdx = 0; batchIdx < rowBatches.length; batchIdx++) {
+        const batchRows = rowBatches[batchIdx];
+        console.log(`[UPLOAD] Processing batch ${batchIdx + 1}/${rowBatches.length} with ${batchRows.length} rows`);
+        const batchFactories = await buildComponentUploadFactories({
+          neighborhoodName,
+          rows: batchRows,
+          componentColumns: filteredComponentColumns,
+          sourceFileName: req.file.originalname,
+          owner,
+          createdBy,
+        });
+        allUploadedFactories.push(...batchFactories);
+      }
+      uploadedFactories = allUploadedFactories;
     }
-    
-    const uploadedFactories = allUploadedFactories;
 
     // NOTE: Data components are completely independent from the model
     // No classification, validation, or state checks needed
@@ -2606,23 +2710,164 @@ router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, r
         
         // Add to saved factories
         const savedFactory = { ...uploadedFactory, _id: insertResult.insertedId };
-        savedFactories.push(serializeFactory(savedFactory));
+        if (loadDomain === 'data') {
+          savedFactories.push({
+            _id: String(insertResult.insertedId),
+            neighborhoodName,
+            name: uploadedFactory.name,
+            sourceColumnName: uploadedFactory.sourceColumnName || '',
+            parentFactoryName: uploadedFactory.parentFactoryName || '',
+            componentType: uploadedFactory.componentType || '',
+            dataType: uploadedFactory.dataType || '',
+            loadDomain,
+            rowCount: Array.isArray(uploadedFactory.rows) ? uploadedFactory.rows.length : 0,
+          });
+        } else {
+          savedFactories.push(serializeFactory(savedFactory));
+        }
       }
 
       // Component upload complete
       console.log(`[${loadDomain.toUpperCase()}] Upload complete - created`, createdFactoryIds.length, 'factories');
 
+      // Persist column-level value distributions so the client can fetch them instantly
+      // without re-scanning all batch rows every page load.
+      if (loadDomain === 'data' && uploadedFactories.length > 0) {
+        try {
+          const SUMMARY_COLUMNS = [
+            'APP_BUS_CRTCLTY Qualifier',
+            'APP_BUS_UNIT Qualifier',
+            'APP_DPTMT Qualifier',
+            'APP_INSL_TYPE Qualifier',
+            'APP_LIFECYCLE Qualifier',
+            'APP_LIFECYCLE_STS Qualifier',
+            'APP_BUS_PRPS Qualifier',
+            'SVR_CPU_MNFCTR Qualifier',
+            'SVR_CPU_NM Qualifier',
+            'SVR_CPU_TYPE Qualifier',
+            'SVR_DSCVRY_SRC Qualifier',
+            'SVR_OS Qualifier',
+          ];
+          const SVR_LOC_COLUMN = 'SVR_LOC Qualifier';
+          const aggregateColumns = Array.from(new Set(uploadColumns
+            .map((column) => String(column || '').trim())
+            .filter((column) => /aggregate$/i.test(column))));
+          const STREET_TOKENS = new Set([
+            'ST', 'STREET', 'AVE', 'AV', 'AVENUE', 'RD', 'ROAD', 'DR', 'DRIVE', 'BLVD', 'BOULEVARD',
+            'PKWY', 'PARKWAY', 'HWY', 'HIGHWAY', 'LN', 'LANE', 'CT', 'COURT', 'PL', 'PLACE', 'TER',
+            'TERRACE', 'CIR', 'CIRCLE', 'WAY', 'TRL', 'TRAIL', 'CTR', 'CENTER', 'SQ', 'SQUARE',
+            'LOOP', 'EXPY', 'EXPRESSWAY', 'FWY', 'FREEWAY', 'RTE', 'ROUTE', 'PARK', 'MALL', 'PLZ', 'PLAZA',
+          ]);
+          const US_STATE_ABBREVS = new Set([
+            'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA',
+            'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+            'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT',
+            'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
+          ]);
+          const extractStateCode = (value) => {
+            const normalized = String(value || '').trim().toUpperCase().replace(/\s*-\s*DUPLICATE\s*$/i, '').trim();
+            if (!normalized) return '';
+            if (US_STATE_ABBREVS.has(normalized)) return normalized;
+            const commaState = normalized.match(/,\s*([A-Z]{2})(?:\s+\d{5}(?:-\d{4})?)?(?:\s+.*)?$/);
+            if (commaState && US_STATE_ABBREVS.has(commaState[1])) return commaState[1];
+            const prefixState = normalized.match(/^([A-Z]{2})[-_.\s]/);
+            if (prefixState && US_STATE_ABBREVS.has(prefixState[1])) return prefixState[1];
+            return '';
+          };
+          const extractCityName = (value) => {
+            const normalized = String(value || '').trim().toUpperCase().replace(/\s*-\s*DUPLICATE\s*$/i, '').trim();
+            if (!normalized) return '';
+
+            const base = normalized.split(',')[0].trim();
+            const tokens = base.split(/\s+/).filter(Boolean);
+            if (!tokens.length) return '';
+
+            let cityStartIndex = -1;
+            for (let index = tokens.length - 1; index >= 0; index -= 1) {
+              if (STREET_TOKENS.has(tokens[index].replace(/[^A-Z]/g, ''))) {
+                cityStartIndex = index + 1;
+                break;
+              }
+            }
+
+            let city = cityStartIndex >= 0 ? tokens.slice(cityStartIndex).join(' ') : tokens.slice(-Math.min(3, tokens.length)).join(' ');
+            city = city.replace(/\b(REGION|ZONE|CAMPUS|SITE|CENTER|CENTRE|HUB|DATA CENTER|DATACENTER)\b$/i, '').trim();
+            return city;
+          };
+
+          const summaryColumns = new Set([...SUMMARY_COLUMNS, ...aggregateColumns, SVR_LOC_COLUMN]);
+          const freqMaps = new Map(Array.from(summaryColumns, (column) => [column, new Map()]));
+          const cityMap = new Map();
+          let distRecordCount = 0;
+          for (const factory of uploadedFactories) {
+            for (const row of (factory.rows || [])) {
+              distRecordCount++;
+              const vals = (row.values && typeof row.values === 'object') ? row.values : row;
+
+              for (const col of SUMMARY_COLUMNS) {
+                const rawVal = vals?.[col];
+                const val = rawVal == null ? '' : String(rawVal).trim();
+                if (!val) continue;
+                const freq = freqMaps.get(col);
+                freq.set(val, (freq.get(val) || 0) + 1);
+              }
+
+              for (const col of aggregateColumns) {
+                const rawVal = vals?.[col];
+                const val = rawVal == null ? '' : String(rawVal).trim();
+                if (!val) continue;
+                const freq = freqMaps.get(col);
+                freq.set(val, (freq.get(val) || 0) + 1);
+              }
+
+              const locState = extractStateCode(vals?.[SVR_LOC_COLUMN]);
+              if (locState) {
+                const freq = freqMaps.get(SVR_LOC_COLUMN);
+                freq.set(locState, (freq.get(locState) || 0) + 1);
+              }
+
+              const locCity = extractCityName(vals?.[SVR_LOC_COLUMN]);
+              if (locCity) {
+                cityMap.set(locCity, (cityMap.get(locCity) || 0) + 1);
+              }
+            }
+          }
+          const distributions = Array.from(freqMaps.entries()).map(([column, freq]) => ({
+            column,
+            valueCounts: Array.from(freq.entries())
+              .sort((a, b) => b[1] - a[1])
+              .map(([value, count]) => ({ value, count })),
+          }));
+          const locationSummary = {
+            stateCounts: Array.from((freqMaps.get(SVR_LOC_COLUMN) || new Map()).entries())
+              .sort((a, b) => b[1] - a[1])
+              .map(([state, count]) => ({ state, count })),
+            cityCounts: Array.from(cityMap.entries())
+              .sort((a, b) => b[1] - a[1])
+              .map(([city, count]) => ({ city, count })),
+          };
+          const distDb = mongoose.connection.db;
+          await distDb.collection('dataTypeDistributions').replaceOne(
+            { neighborhoodName, dataType },
+            { neighborhoodName, dataType, computedAt: new Date(), recordCount: distRecordCount, aggregateColumns, distributions, locationSummary },
+            { upsert: true }
+          );
+          console.log(`[DISTRIBUTIONS] Stored ${distributions.length} column distributions for ${dataType} (${distRecordCount} records)`);
+        } catch (distErr) {
+          console.error('[DISTRIBUTIONS] Failed to store distributions:', distErr && distErr.message);
+          // Non-critical — do not fail the upload
+        }
+      }
+
       // Trigger materializer in background to populate canonical components from newly created batches
       try {
         // Run materializer synchronously so canonical components are available
         try {
-          const matRes = await materializeFromBatches({ neighborhoodName, domain: loadDomain });
-          console.log('[MATERIALIZER] processed', matRes.processed);
-          try {
-            await materializeFromBatches.postProcess({ neighborhoodName, domain: loadDomain });
-          } catch (err) {
-            console.error('[MATERIALIZER] postProcess failed', err && err.message);
-          }
+          const batchIds = createdFactoryIds.map((entry) => entry.id);
+          console.log('[TRACE] Starting materializeFromBatches...', { neighborhoodName, domain: loadDomain, batchCount: createdFactoryIds.length, batchIds: batchIds.length });
+          const matStart = Date.now();
+          const matRes = await materializeFromBatches({ neighborhoodName, domain: loadDomain, batchIds });
+          console.log('[TRACE] materializeFromBatches done in', Date.now() - matStart, 'ms — processed:', matRes.processed);
         } catch (err) {
           console.error('[MATERIALIZER] error', err);
           // do not fail the upload; surface a warning
@@ -2630,6 +2875,7 @@ router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, r
       } catch (err) {
         console.error('[MATERIALIZER] trigger failed', err);
       }
+      console.log('[TRACE] Materializer block complete, moving to search index rebuild...');
     } catch (writeError) {
       // Rollback: delete created documents from dynamic collections
       if (createdFactoryIds.length) {
@@ -2673,12 +2919,20 @@ router.post('/upload', requireAdminWrite, handleSpreadsheetUpload, async (req, r
     const rebuildOptions = loadDomain === 'data'
       ? { CanonicalModel: CanonicalData, SearchIndexModel: DataSearchIndex, indexLabel: 'DataSearchIndex' }
       : undefined;
+    console.log('[TRACE] Firing rebuildSearchIndex (non-blocking)...');
     rebuildSearchIndex(neighborhoodName, rebuildOptions).catch((err) => {
       console.error(`[INDEX] Failed to rebuild search index after upload: ${err.message}`);
       // Don't fail the upload if index rebuild fails - it can be rebuilt manually
     });
 
-    res.status(201).json({ factories: savedFactories, parts: savedFactories, components: savedFactories });
+    console.log('[TRACE] Sending 201 response to client...');
+    res.status(201).json({
+      factories: savedFactories,
+      parts: savedFactories,
+      components: savedFactories,
+      count: savedFactories.length,
+      loadDomain,
+    });
   } catch (err) {
     console.error('[UPLOAD ERROR] Full error:', {
       message: err?.message,
@@ -2750,7 +3004,19 @@ router.delete('/:factoryId', requireAdminWrite, async (req, res) => {
     const factory = await Component.findById(req.params.factoryId).lean();
     if (!factory) return res.status(404).json({ error: 'Component not found' });
 
-    await Component.deleteOne({ _id: factory._id });
+    const neighborhoodName = String(factory.neighborhoodName || '').trim();
+    const componentType = String(factory.name || '').trim();
+
+    await Promise.all([
+      Component.deleteOne({ _id: factory._id }),
+      neighborhoodName && componentType
+        ? CanonicalComponent.deleteMany({
+            neighborhoodName,
+            componentType: { $regex: `^${componentType.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, $options: 'i' },
+          })
+        : Promise.resolve({ deletedCount: 0 }),
+    ]);
+
     await Model.updateOne(
       { name: factory.neighborhoodName },
       {
@@ -2764,6 +3030,13 @@ router.delete('/:factoryId', requireAdminWrite, async (req, res) => {
         },
       }
     );
+
+    if (neighborhoodName) {
+      await rebuildSearchIndex(neighborhoodName).catch((err) => {
+        console.error('[DELETE FACTORY] search index rebuild failed after delete', err && err.message);
+        throw err;
+      });
+    }
 
     res.json({ success: true, factoryId: String(factory._id), partId: String(factory._id), componentId: String(factory._id), neighborhoodName: factory.neighborhoodName, name: factory.name });
   } catch (err) {

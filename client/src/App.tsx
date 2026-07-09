@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import { memo, useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   Layout,
   Button,
@@ -58,6 +58,7 @@ import CapabilityMatchPanel from './components/CapabilityMatchPanel';
 import TaskFactory from './components/TaskFactory';
 import ReferenceFactory from './components/ReferenceFactory';
 import ApplicationFactory from './components/ApplicationFactory';
+import SystemComponentSummary from './components/SystemComponentSummary';
 import ServerFactory from './components/ServerFactory';
 import DatabaseFactory from './components/DatabaseFactory';
 import NeighborhoodFactory from './components/NeighborhoodFactory';
@@ -209,6 +210,52 @@ function reorderTabKeys(prev: string[], from: string, to: string, side: 'before'
   return next;
 }
 
+interface SystemComponentsPaneProps {
+  neighborhoodName: string;
+  readOnly: boolean;
+  visibleDataTabsLength: number;
+  activeDataTab: string;
+  dataTabItems: Array<{ key: string; label: React.ReactNode; children: React.ReactNode }>;
+  onActiveDataTabChange: (key: string) => void;
+  onUploaded: (dataType: string) => Promise<void>;
+}
+
+const SystemComponentsPane = memo(function SystemComponentsPane({
+  neighborhoodName,
+  readOnly,
+  visibleDataTabsLength,
+  activeDataTab,
+  dataTabItems,
+  onActiveDataTabChange,
+  onUploaded,
+}: SystemComponentsPaneProps) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
+        {!readOnly && (
+          <SystemComponentsImportButton
+            neighborhoodName={neighborhoodName}
+            onUploaded={onUploaded}
+          />
+        )}
+      </div>
+      {visibleDataTabsLength ? (
+        <Tabs
+          className="factory-tabs"
+          activeKey={activeDataTab}
+          onChange={onActiveDataTabChange}
+          destroyInactiveTabPane
+          items={dataTabItems}
+        />
+      ) : (
+        <div className="flex min-h-[240px] items-center justify-center px-4">
+          <Empty description="No System Components data found" />
+        </div>
+      )}
+    </div>
+  );
+});
+
 export default function App() {
   const { message } = AntApp.useApp();
 
@@ -302,24 +349,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const getModelBpmnComponentTabKey = useCallback((modelName: string) => `modelBpmnComponent:${modelName}`, []);
   const getComponentSearchTabKey = useCallback((modelName: string) => `componentSearch:${modelName}`, []);
   const getDataTypeTabKey = useCallback((dataType: string) => {
-    const candidate = String(dataType || '').trim().toLowerCase();
-    if (!candidate) return '';
-    const reservedTabEntries: Array<[string, string]> = [
-      ['application', 'applications'],
-      ['applications', 'applications'],
-      ['actor', 'actors'],
-      ['actors', 'actors'],
-      ['product', 'products'],
-      ['products', 'products'],
-      ['server', 'servers'],
-      ['servers', 'servers'],
-      ['db', 'databases'],
-      ['database', 'databases'],
-      ['databaseinstance', 'databases'],
-      ['databaseinstances', 'databases'],
-      ['databases', 'databases'],
-    ];
-    return reservedTabEntries.find(([label]) => label === candidate)?.[1] || candidate;
+    return String(dataType || '').trim();
   }, []);
   const [activeFactoryTabs, setActiveFactoryTabs] = useState<Record<string, string>>({ [DEFAULT_NEIGHBORHOOD_NAME]: getModelCatalogTabKey(DEFAULT_NEIGHBORHOOD_NAME) });
   const [activeModelComponentTabs, setActiveModelComponentTabs] = useState<Record<string, string>>({});
@@ -366,8 +396,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
 
   const getDataFactoryTabKey = useCallback((factory: CustomFactory) => {
     const candidate = String(factory.dataType || factory.componentType || factory.name || '').trim();
-    return getReservedModelTabKey(candidate) || candidate.toLowerCase();
-  }, [getReservedModelTabKey]);
+    return candidate;
+  }, []);
 
   const getDataTypeDisplayName = useCallback((key: string) => {
     const reserved: Record<string, string> = {
@@ -387,22 +417,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   }, []);
 
   const getDataTypeQueryName = useCallback((key: string) => {
-    const reserved: Record<string, string> = {
-      applications: 'Application',
-      actors: 'Actor',
-      products: 'Product',
-      servers: 'Server',
-      databases: 'Database',
-      databaseinstance: 'Database',
-      databaseinstances: 'Database',
-      application: 'Application',
-      actor: 'Actor',
-      product: 'Product',
-      server: 'Server',
-      database: 'Database',
-    };
-    const normalized = String(key || '').trim().toLowerCase();
-    return reserved[normalized] || String(key || '').trim();
+    return String(key || '').trim();
   }, []);
 
   const getDisplayedFactoryCount = useCallback((neighborhood: FactoryNeighborhoodSummary) => {
@@ -790,22 +805,20 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const loadDataTypeSummaries = useCallback(async () => {
     try {
       const summarySources = [REFERENCE_DATA_NEIGHBORHOOD_NAME, DEFAULT_NEIGHBORHOOD_NAME].filter((value, index, all) => all.indexOf(value) === index);
-      let types: Array<{ dataType: string; batchCount: number; updatedAt?: string }> = [];
-      for (const neighborhoodName of summarySources) {
-        types = await getDataFactoryTypes(neighborhoodName);
-        if (types.length) break;
-      }
       const merged = new Map<string, { key: string; dataType: string; batchCount: number }>();
-      for (const entry of types) {
-        const rawType = String(entry?.dataType || '').trim();
-        if (!rawType) continue;
-        const key = getDataTypeTabKey(rawType);
-        const existing = merged.get(key);
-        merged.set(key, {
-          key,
-          dataType: existing?.dataType || rawType,
-          batchCount: (existing?.batchCount || 0) + Number(entry?.batchCount || 0),
-        });
+      for (const neighborhoodName of summarySources) {
+        const types = await getDataFactoryTypes(neighborhoodName);
+        for (const entry of types) {
+          const rawType = String(entry?.dataType || '').trim();
+          if (!rawType) continue;
+          const key = getDataTypeTabKey(rawType);
+          const existing = merged.get(key);
+          merged.set(key, {
+            key,
+            dataType: existing?.dataType || rawType,
+            batchCount: (existing?.batchCount || 0) + Number(entry?.batchCount || 0),
+          });
+        }
       }
       setDataTypeSummaries(Array.from(merged.values()));
     } catch {
@@ -833,6 +846,17 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       setLoadingDataFactoriesByType((current) => ({ ...current, [typeKey]: false }));
     }
   }, [dataFactoriesByType, getDataTypeQueryName, getDataTypeTabKey]);
+
+  const handleSystemComponentsUploaded = useCallback(async (dataType: string) => {
+    await loadNeighborhoodTabs();
+    await loadDataTypeSummaries();
+    await loadDataFactoriesForType(dataType);
+  }, [loadDataFactoriesForType, loadDataTypeSummaries, loadNeighborhoodTabs]);
+
+  const handleActiveDataTabChange = useCallback((key: string) => {
+    setActiveDataTab(key);
+    void loadDataFactoriesForType(key);
+  }, [loadDataFactoriesForType]);
 
   useEffect(() => {
     void loadDataTypeSummaries();
@@ -1112,7 +1136,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       const searchField = customEvent.detail?.searchField;
       const sourceColumn = customEvent.detail?.sourceColumn;
       const targetSubtab = customEvent.detail?.targetDataTab || customEvent.detail?.targetSubtab || customEvent.detail?.targetScope || 'applications';
-      const targetDataTab = getReservedModelTabKey(targetSubtab) || String(targetSubtab || '').trim().toLowerCase();
+      const targetDataTab = String(targetSubtab || '').trim() || 'applications';
       
       console.log(`[FK_EVENT_RECEIVED]`, {
         searchValue,
@@ -1159,7 +1183,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       window.removeEventListener('navigateToApplication', handleNavigateToApplication);
       console.log(`[FK_LISTENER_REMOVED] Global navigateToApplication event listener removed`);
     };
-  }, [getReservedModelTabKey]);
+  }, []);
 
   // Navigate from diagram panel to a factory tab
   const resolveModelFactoryTabKey = useCallback(async (modelName: string, tab: string) => {
@@ -1931,6 +1955,296 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     setEditingName(false);
   }, [activeDiagram, message, refresh]);
 
+  const sortedAnalyticsModels = useMemo(() => {
+    const sourceModels = neighborhoodTabs.length
+      ? neighborhoodTabs
+      : [{ name: DEFAULT_NEIGHBORHOOD_NAME, factoryCount: 0 } as FactoryNeighborhoodSummary];
+
+    return [...sourceModels].sort((left, right) => {
+      const leftIndex = neighborhoodTabOrder.indexOf(left.name);
+      const rightIndex = neighborhoodTabOrder.indexOf(right.name);
+      const safeLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+      const safeRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+      return safeLeft - safeRight;
+    });
+  }, [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodTabOrder, neighborhoodTabs]);
+
+  const analyticsModelTabItems = useMemo(() => sortedAnalyticsModels.map((model) => ({
+    key: model.name,
+    label: neighborhoodTabLabel(model.name, model.name),
+    children: (
+      <Tabs
+        className="factory-tabs"
+        activeKey={activeAnalyticsTabsByModel[model.name] || activeAnalyticsTab || 'dashboard'}
+        onChange={(key) => {
+          setActiveAnalyticsTab(key);
+          setActiveAnalyticsTabsByModel((current) => ({ ...current, [model.name]: key }));
+        }}
+        destroyInactiveTabPane
+        items={[
+          {
+            key: 'dashboard',
+            label: analyticsTabLabel('dashboard', <span><DashboardOutlined /> Dashboards</span>),
+            children: <Dashboard key={`dashboard:${model.name}`} />,
+          },
+          {
+            key: 'reports',
+            label: analyticsTabLabel('reports', <span><FileTextOutlined /> Reports</span>),
+            children: <ReportsPanel key={`reports:${model.name}`} />,
+          },
+        ].sort((a, b) => analyticsTabOrder.indexOf(a.key) - analyticsTabOrder.indexOf(b.key))}
+      />
+    ),
+  })), [activeAnalyticsTab, activeAnalyticsTabsByModel, analyticsTabLabel, neighborhoodTabLabel, sortedAnalyticsModels]);
+
+  const dataTabItems = useMemo(() => visibleDataTabs.map((tab) => {
+    const componentType = tab.key;
+    const effectiveDataColumns = tab.dataColumns.length ? tab.dataColumns : ['name', 'correlation_id'];
+    const isLoaded = dataFactoriesByType[componentType] !== undefined;
+    const loadedFactories = dataFactoriesByType[componentType] || [];
+
+    const isApplicationsTab = componentType === 'applications';
+    return {
+      key: componentType,
+      label: dataTabLabel(componentType, <span>{getDataTypeDisplayName(componentType)}</span>),
+      children: renderScrollablePane(
+        isApplicationsTab ? (
+          isLoaded ? (
+            <ApplicationFactory
+              defaultSearch={factorySearch[componentType]}
+              defaultAdd={typeof factoryAdd[componentType] === 'string' ? factoryAdd[componentType] : ''}
+              userRole={user.role}
+              readOnly={readOnly}
+              dataColumns={effectiveDataColumns}
+              dataRows={loadedFactories.flatMap((factory) => factory.rows || [])}
+              foreignKeyColumns={loadedFactories.flatMap((factory) => factory.foreignKeyColumns || [])}
+              requestedDetailRequest={requestedApplicationDetail}
+              onNavigateToFactory={(navTab: string, search: string) => {
+                setFactorySearch((prev) => ({ ...prev, [navTab]: search }));
+                setActiveDataTab(navTab);
+              }}
+              onDeleteAllComponents={() => handleDeleteDataComponentType(componentType, Array.from(new Set(loadedFactories.map((factory) => String(factory.dataType || factory.componentType || factory.name || '').trim()).filter(Boolean))))}
+              deleteLoading={deleteComponentTypeLoading === componentType}
+            />
+          ) : (
+            <div className="flex min-h-[240px] items-center justify-center">
+              <Spin size="large" tip={`Loading ${getDataTypeDisplayName(componentType)}...`} />
+            </div>
+          )
+        ) : (
+          <SystemComponentSummary
+            dataType={getDataTypeDisplayName(componentType)}
+            batchCount={tab.batchCount}
+            dataRows={loadedFactories.flatMap((factory) => factory.rows || [])}
+            dataColumns={tab.dataColumns}
+            isLoaded={isLoaded}
+            neighborhoodName={REFERENCE_DATA_NEIGHBORHOOD_NAME}
+            readOnly={readOnly}
+            onDeleteAllComponents={() => handleDeleteDataComponentType(
+              componentType,
+              tab.dataTypeValues.length ? tab.dataTypeValues : [tab.dataType],
+            )}
+            deleteLoading={deleteComponentTypeLoading === componentType}
+          />
+        ),
+      ),
+    };
+  }), [
+    dataFactoriesByType,
+    dataTabLabel,
+    deleteComponentTypeLoading,
+    factoryAdd,
+    factorySearch,
+    getDataTypeDisplayName,
+    handleDeleteDataComponentType,
+    readOnly,
+    requestedApplicationDetail,
+    renderScrollablePane,
+    setActiveDataTab,
+    user.role,
+    visibleDataTabs,
+  ]);
+
+  const sortedNeighborhoodTabItems = useMemo(() => {
+    return [...neighborhoodTabs].sort((left, right) => {
+      const leftIndex = neighborhoodTabOrder.indexOf(left.name);
+      const rightIndex = neighborhoodTabOrder.indexOf(right.name);
+      const safeLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+      const safeRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+      return safeLeft - safeRight;
+    });
+  }, [neighborhoodTabOrder, neighborhoodTabs]);
+
+  const neighborhoodTabItems = useMemo(() => sortedNeighborhoodTabItems.map((neighborhood) => ({
+    key: neighborhood.name,
+    label: neighborhoodTabLabel(neighborhood.name, neighborhood.name),
+    children: (
+      <div className="flex h-full min-h-0 flex-col">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
+          <div>
+            <Space size="small">
+              <NeighborhoodFactory
+                canManageFactories={canEditFactories}
+                fixedNeighborhoodName={neighborhood.name}
+                onNeighborhoodsChanged={() => refreshNeighborhoodModelData(neighborhood.name)}
+                onNeighborhoodCreated={(name) => {
+                  setActiveOuterTab('neighborhoods');
+                  setActiveNeighborhoodTab(name);
+                }}
+                onNeighborhoodDeleted={(name) => {
+                  setNeighborhoodFactories((current) => {
+                    if (!current[name]) return current;
+                    const next = { ...current };
+                    delete next[name];
+                    return next;
+                  });
+                  setActiveModelComponentTabs((current) => {
+                    if (!current[name]) return current;
+                    const next = { ...current };
+                    delete next[name];
+                    return next;
+                  });
+                  setActiveFactoryTabs((current) => {
+                    if (!current[name]) return current;
+                    const next = { ...current };
+                    delete next[name];
+                    return next;
+                  });
+                  setActiveNeighborhoodTab((current) => {
+                    if (current !== name) return current;
+                    const remaining = neighborhoodTabs
+                      .map((tab) => tab.name)
+                      .filter((tabName) => tabName !== name);
+                    if (remaining.includes(DEFAULT_NEIGHBORHOOD_NAME)) return DEFAULT_NEIGHBORHOOD_NAME;
+                    return remaining[0] || '';
+                  });
+                  setActiveOuterTab('neighborhoods');
+                }}
+                showCreateNeighborhood={false}
+                mode="action"
+              />
+            </Space>
+          </div>
+          <div style={{ marginLeft: 'auto' }}>
+            <Button
+              size="small"
+              icon={<UploadOutlined />}
+              onClick={() => handleImportModelBpmn(neighborhood.name)}
+              className="btn-bulk-import"
+            >
+              Bulk Import BPMN 2.0 XML
+            </Button>
+          </div>
+        </div>
+        <Tabs
+          className="factory-tabs model-factory-tabs"
+          defaultActiveKey={getModelCatalogTabKey(neighborhood.name)}
+          activeKey={(() => {
+            const modelCatalogTabKey = getModelCatalogTabKey(neighborhood.name);
+            const modelComponentsTabKey = getModelComponentsTabKey(neighborhood.name);
+            const currentModelTab = activeFactoryTabs[neighborhood.name];
+            if (currentModelTab === modelCatalogTabKey || currentModelTab === modelComponentsTabKey) {
+              return currentModelTab;
+            }
+            return modelCatalogTabKey;
+          })()}
+          onChange={(key) => {
+            setActiveFactoryTabs((current) => ({ ...current, [neighborhood.name]: key }));
+          }}
+          destroyInactiveTabPane
+          items={[
+            {
+              key: getModelCatalogTabKey(neighborhood.name),
+              label: fTabLabel(getModelCatalogTabKey(neighborhood.name), <><DatabaseOutlined /> Model</>),
+              children: renderScrollablePane(
+                <ModelCatalog
+                  modelName={neighborhood.name}
+                  requestedSearch={modelCatalogSearchRequest[neighborhood.name] || null}
+                />,
+              ),
+            },
+            {
+              key: getModelComponentsTabKey(neighborhood.name),
+              label: fTabLabel(getModelComponentsTabKey(neighborhood.name), <><AppstoreOutlined /> Model Components</>),
+              children: renderScrollablePane(
+                <ComponentsViewer
+                  neighborhoodName={neighborhood.name}
+                  availableComponentIds={(neighborhoodFactories[neighborhood.name] || []).map((f) => f._id)}
+                  onComponentTabSelect={(componentId, componentName) => {
+                    setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
+                  }}
+                  onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
+                    if (!correlationId) return;
+                    const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
+                    setFactorySearch((current) => ({
+                      ...current,
+                      applications: applicationSearch,
+                    }));
+                    setActiveOuterTab('data');
+                    setActiveDataTab('applications');
+                    setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
+                  }}
+                  renderComponentContent={(componentId, componentName, highlightedRowName) => {
+                    const factoryComponent = (neighborhoodFactories[neighborhood.name] || []).find((f) => f._id === componentId);
+                    if (!factoryComponent) return <div>Component not found</div>;
+
+                    return (
+                      <NeighborhoodFactory
+                        canManageFactories={canEditFactories}
+                        fixedNeighborhoodName={neighborhood.name}
+                        fixedFactoryId={componentId}
+                        defaultRowSearch={highlightedRowName || factorySearch[componentId]}
+                        defaultRowSearchColumn="name"
+                        hideFactoryList
+                        onNeighborhoodsChanged={loadNeighborhoodTabs}
+                        onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
+                        onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
+                          if (!correlationId) return;
+                          const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
+                          setFactorySearch((current) => ({
+                            ...current,
+                            applications: applicationSearch,
+                          }));
+                          setActiveOuterTab('data');
+                          setActiveDataTab('applications');
+                          setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
+                        }}
+                      />
+                    );
+                  }}
+                />,
+              ),
+            },
+          ]}
+        />
+      </div>
+    ),
+  })), [
+    activeFactoryTabs,
+    canEditFactories,
+    DEFAULT_NEIGHBORHOOD_NAME,
+    fTabLabel,
+    factorySearch,
+    getModelCatalogTabKey,
+    getModelComponentsTabKey,
+    handleImportModelBpmn,
+    loadNeighborhoodFactoriesFor,
+    loadNeighborhoodTabs,
+    modelCatalogSearchRequest,
+    neighborhoodFactories,
+    neighborhoodTabLabel,
+    neighborhoodTabs,
+    refreshNeighborhoodModelData,
+    setActiveDataTab,
+    setActiveFactoryTabs,
+    setActiveModelComponentTabs,
+    setActiveNeighborhoodTab,
+    setActiveOuterTab,
+    setFactorySearch,
+    setRequestedApplicationDetail,
+    sortedNeighborhoodTabItems,
+  ]);
+
   return (
     <Layout className="h-screen overflow-hidden" style={{ height: 'var(--app-h)' }}>
       {/* Hidden file input for local upload */}
@@ -2028,7 +2342,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
             type="card"
             size="small"
             className="factory-tabs"
-            destroyInactiveTabPane={false}
+            destroyInactiveTabPane
             renderTabBar={(props, DefaultBar) => (
               <div ref={tabNavWrapRef} style={{ background: '#f1f5f9', borderBottom: '1px solid #d1d9e0' }}>
                 <DefaultBar {...props} />
@@ -2043,40 +2357,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                     className="factory-tabs"
                     activeKey={activeAnalyticsModel}
                     onChange={setActiveAnalyticsModel}
-                    items={(neighborhoodTabs.length ? neighborhoodTabs : [{ name: DEFAULT_NEIGHBORHOOD_NAME, factoryCount: 0 } as FactoryNeighborhoodSummary])
-                      .sort((left, right) => {
-                        const leftIndex = neighborhoodTabOrder.indexOf(left.name);
-                        const rightIndex = neighborhoodTabOrder.indexOf(right.name);
-                        const safeLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
-                        const safeRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
-                        return safeLeft - safeRight;
-                      })
-                      .map((model) => ({
-                        key: model.name,
-                        label: neighborhoodTabLabel(model.name, model.name),
-                        children: (
-                          <Tabs
-                            className="factory-tabs"
-                            activeKey={activeAnalyticsTabsByModel[model.name] || activeAnalyticsTab || 'dashboard'}
-                            onChange={(key) => {
-                              setActiveAnalyticsTab(key);
-                              setActiveAnalyticsTabsByModel((current) => ({ ...current, [model.name]: key }));
-                            }}
-                            items={[
-                              {
-                                key: 'dashboard',
-                                label: analyticsTabLabel('dashboard', <span><DashboardOutlined /> Dashboards</span>),
-                                children: <Dashboard key={`dashboard:${model.name}`} />,
-                              },
-                              {
-                                key: 'reports',
-                                label: analyticsTabLabel('reports', <span><FileTextOutlined /> Reports</span>),
-                                children: <ReportsPanel key={`reports:${model.name}`} />,
-                              },
-                            ].sort((a, b) => analyticsTabOrder.indexOf(a.key) - analyticsTabOrder.indexOf(b.key))}
-                          />
-                        ),
-                      }))}
+                    items={analyticsModelTabItems}
                   />
                 ),
               },
@@ -2200,69 +2481,15 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                 key: 'data',
                 label: outerTabLabel('data', <span><DatabaseOutlined /> System Components</span>),
                 children: (
-                  <div className="flex h-full min-h-0 flex-col">
-                    <div style={{ display: 'flex', justifyContent: 'flex-start', padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
-                      {!readOnly && (
-                        <SystemComponentsImportButton
-                          neighborhoodName={REFERENCE_DATA_NEIGHBORHOOD_NAME}
-                          onUploaded={async (dataType) => {
-                            await loadNeighborhoodTabs();
-                            await loadDataTypeSummaries();
-                            await loadDataFactoriesForType(dataType);
-                          }}
-                        />
-                      )}
-                    </div>
-                    {visibleDataTabs.length ? (
-                      <Tabs
-                        className="factory-tabs"
-                        activeKey={activeDataTab}
-                        onChange={(key) => {
-                          setActiveDataTab(key);
-                          void loadDataFactoriesForType(key);
-                        }}
-                        items={visibleDataTabs.map((tab) => {
-                          const componentType = tab.key;
-                          const effectiveDataColumns = tab.dataColumns.length ? tab.dataColumns : ['name', 'correlation_id'];
-                          const isLoaded = dataFactoriesByType[componentType] !== undefined;
-                          const loadedFactories = dataFactoriesByType[componentType] || [];
-
-                          return {
-                            key: componentType,
-                            label: dataTabLabel(componentType, <span>{getDataTypeDisplayName(componentType)}</span>),
-                            children: renderScrollablePane(
-                              isLoaded ? (
-                                <ApplicationFactory
-                                  defaultSearch={factorySearch[componentType]}
-                                  defaultAdd={typeof factoryAdd[componentType] === 'string' ? factoryAdd[componentType] : ''}
-                                  userRole={user.role}
-                                  readOnly={readOnly}
-                                  dataColumns={effectiveDataColumns}
-                                  dataRows={loadedFactories.flatMap((factory) => factory.rows || [])}
-                                  foreignKeyColumns={loadedFactories.flatMap((factory) => factory.foreignKeyColumns || [])}
-                                  requestedDetailRequest={componentType === 'applications' ? requestedApplicationDetail : undefined}
-                                  onNavigateToFactory={(navTab: string, search: string) => {
-                                    setFactorySearch((prev) => ({ ...prev, [navTab]: search }));
-                                    setActiveDataTab(navTab);
-                                  }}
-                                  onDeleteAllComponents={() => handleDeleteDataComponentType(componentType, Array.from(new Set(loadedFactories.map((factory) => String(factory.dataType || factory.componentType || factory.name || '').trim()).filter(Boolean))))}
-                                  deleteLoading={deleteComponentTypeLoading === componentType}
-                                />
-                              ) : (
-                                <div className="flex min-h-[240px] items-center justify-center">
-                                  <Spin size="large" tip={`Loading ${getDataTypeDisplayName(componentType)}...`} />
-                                </div>
-                              ),
-                            ),
-                          };
-                        })}
-                      />
-                    ) : (
-                      <div className="flex min-h-[240px] items-center justify-center px-4">
-                        <Empty description="No System Components data found" />
-                      </div>
-                    )}
-                  </div>
+                  <SystemComponentsPane
+                    neighborhoodName={REFERENCE_DATA_NEIGHBORHOOD_NAME}
+                    readOnly={readOnly}
+                    visibleDataTabsLength={visibleDataTabs.length}
+                    activeDataTab={activeDataTab}
+                    dataTabItems={dataTabItems}
+                    onActiveDataTabChange={handleActiveDataTabChange}
+                    onUploaded={handleSystemComponentsUploaded}
+                  />
                 ),
               },
               {
@@ -2291,158 +2518,8 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
                       className="neighborhood-tabs"
                       activeKey={activeNeighborhoodTab}
                       onChange={setActiveNeighborhoodTab}
-                      items={neighborhoodTabs
-                        .sort((left, right) => {
-                          const leftIndex = neighborhoodTabOrder.indexOf(left.name);
-                          const rightIndex = neighborhoodTabOrder.indexOf(right.name);
-                          const safeLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
-                          const safeRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
-                          return safeLeft - safeRight;
-                        })
-                        .map((neighborhood) => ({
-                          key: neighborhood.name,
-                          label: neighborhoodTabLabel(neighborhood.name, neighborhood.name),
-                          children: (
-                            <div className="flex h-full min-h-0 flex-col">
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid #dbe3ec', background: '#f8fafc' }}>
-                                <div>
-                                  <Space size="small">
-                                    <NeighborhoodFactory
-                                      canManageFactories={canEditFactories}
-                                      fixedNeighborhoodName={neighborhood.name}
-                                      onNeighborhoodsChanged={() => refreshNeighborhoodModelData(neighborhood.name)}
-                                      onNeighborhoodCreated={(name) => {
-                                        setActiveOuterTab('neighborhoods');
-                                        setActiveNeighborhoodTab(name);
-                                      }}
-                                      onNeighborhoodDeleted={(name) => {
-                                        setNeighborhoodFactories((current) => {
-                                          if (!current[name]) return current;
-                                          const next = { ...current };
-                                          delete next[name];
-                                          return next;
-                                        });
-                                        setActiveModelComponentTabs((current) => {
-                                          if (!current[name]) return current;
-                                          const next = { ...current };
-                                          delete next[name];
-                                          return next;
-                                        });
-                                        setActiveFactoryTabs((current) => {
-                                          if (!current[name]) return current;
-                                          const next = { ...current };
-                                          delete next[name];
-                                          return next;
-                                        });
-                                        setActiveNeighborhoodTab((current) => {
-                                          if (current !== name) return current;
-                                          const remaining = neighborhoodTabs
-                                            .map((tab) => tab.name)
-                                            .filter((tabName) => tabName !== name);
-                                          if (remaining.includes(DEFAULT_NEIGHBORHOOD_NAME)) return DEFAULT_NEIGHBORHOOD_NAME;
-                                          return remaining[0] || '';
-                                        });
-                                        setActiveOuterTab('neighborhoods');
-                                      }}
-                                      showCreateNeighborhood={false}
-                                      mode="action"
-                                    />
-                                  </Space>
-                                </div>
-                                <div style={{ marginLeft: 'auto' }}>
-                                  <Button
-                                    size="small"
-                                    icon={<UploadOutlined />}
-                                    onClick={() => handleImportModelBpmn(neighborhood.name)}
-                                    className="btn-bulk-import"
-                                  >
-                                    Bulk Import BPMN 2.0 XML
-                                  </Button>
-                                </div>
-                              </div>
-                              <Tabs
-                                className="factory-tabs model-factory-tabs"
-                                defaultActiveKey={getModelCatalogTabKey(neighborhood.name)}
-                                activeKey={(() => {
-                                  const modelCatalogTabKey = getModelCatalogTabKey(neighborhood.name);
-                                  const modelComponentsTabKey = getModelComponentsTabKey(neighborhood.name);
-                                  const currentModelTab = activeFactoryTabs[neighborhood.name];
-                                  if (currentModelTab === modelCatalogTabKey || currentModelTab === modelComponentsTabKey) {
-                                    return currentModelTab;
-                                  }
-                                  return modelCatalogTabKey;
-                                })()}
-                                onChange={(key) => {
-                                  setActiveFactoryTabs((current) => ({ ...current, [neighborhood.name]: key }));
-                                }}
-                                items={[
-                                  {
-                                    key: getModelCatalogTabKey(neighborhood.name),
-                                    label: fTabLabel(getModelCatalogTabKey(neighborhood.name), <><DatabaseOutlined /> Model</>),
-                                    children: renderScrollablePane(
-                                      <ModelCatalog
-                                        modelName={neighborhood.name}
-                                        requestedSearch={modelCatalogSearchRequest[neighborhood.name] || null}
-                                      />,
-                                    ),
-                                  },
-                                  {
-                                    key: getModelComponentsTabKey(neighborhood.name),
-                                    label: fTabLabel(getModelComponentsTabKey(neighborhood.name), <><AppstoreOutlined /> Model Components</>),
-                                    children: renderScrollablePane(
-                                      <ComponentsViewer
-                                        neighborhoodName={neighborhood.name}
-                                        availableComponentIds={(neighborhoodFactories[neighborhood.name] || []).map((f) => f._id)}
-                                        onComponentTabSelect={(componentId, componentName) => {
-                                          setActiveModelComponentTabs((current) => ({ ...current, [neighborhood.name]: componentId }));
-                                        }}
-                                        onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
-                                          if (!correlationId) return;
-                                          const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
-                                          setFactorySearch((current) => ({
-                                            ...current,
-                                            applications: applicationSearch,
-                                          }));
-                                          setActiveOuterTab('data');
-                                          setActiveDataTab('applications');
-                                          setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
-                                        }}
-                                        renderComponentContent={(componentId, componentName, highlightedRowName) => {
-                                          const factoryComponent = (neighborhoodFactories[neighborhood.name] || []).find((f) => f._id === componentId);
-                                          if (!factoryComponent) return <div>Component not found</div>;
-
-                                          return (
-                                            <NeighborhoodFactory
-                                              canManageFactories={canEditFactories}
-                                              fixedNeighborhoodName={neighborhood.name}
-                                              fixedFactoryId={componentId}
-                                              defaultRowSearch={highlightedRowName || factorySearch[componentId]}
-                                              defaultRowSearchColumn="name"
-                                              hideFactoryList
-                                              onNeighborhoodsChanged={loadNeighborhoodTabs}
-                                              onFactoryDeleted={() => loadNeighborhoodFactoriesFor(neighborhood.name)}
-                                              onApplicationLinkClick={(applicationName, correlationId, rowSearchText) => {
-                                                if (!correlationId) return;
-                                                const applicationSearch = encodeExactFactorySearch(`correlation_id:${correlationId}`);
-                                                setFactorySearch((current) => ({
-                                                  ...current,
-                                                  applications: applicationSearch,
-                                                }));
-                                                setActiveOuterTab('data');
-                                                setActiveDataTab('applications');
-                                                setRequestedApplicationDetail({ correlationId, nonce: Date.now() });
-                                              }}
-                                            />
-                                          );
-                                        }}
-                                      />,
-                                    ),
-                                  },
-                                ]}
-                              />
-                            </div>
-                          ),
-                        }))}
+                      destroyInactiveTabPane
+                      items={neighborhoodTabItems}
                     />
                   </div>
                 ),

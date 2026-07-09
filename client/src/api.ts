@@ -209,8 +209,8 @@ export const getModelCatalog = (
     params: { page, limit, search, searchColumn, exact },
   }).then((r) => r.data);
 
-export const getModelCatalogTree = (name: string): Promise<CatalogTreeResponse> =>
-  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog/tree`).then((r) => r.data);
+export const getModelCatalogTree = (name: string, mode: 'full' | 'lazy' = 'full'): Promise<CatalogTreeResponse> =>
+  api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog/tree`, { params: mode === 'lazy' ? { mode } : undefined }).then((r) => r.data);
 
 export const getModelCatalogTreeChildren = (name: string, path: string[]): Promise<CatalogTreeChildrenResponse> =>
   api.get(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/catalog/tree/children`, {
@@ -244,6 +244,23 @@ export const getDataFactoryTypes = (neighborhoodName?: string): Promise<Array<{ 
       ...(neighborhoodName ? { neighborhoodName } : {}),
     },
   }).then((r) => r.data.types || []);
+
+export const getDataDistributions = (
+  dataType: string,
+  neighborhoodName?: string,
+): Promise<{
+  distributions: Array<{ column: string; valueCounts: Array<{ value: string; count: number }> }>;
+  recordCount: number;
+  computedAt: string | null;
+  aggregateColumns?: string[];
+  locationSummary?: {
+    stateCounts?: Array<{ state: string; count: number }>;
+    cityCounts?: Array<{ city: string; count: number }>;
+  } | null;
+}> =>
+  api.get(`/custom-factories/data/${encodeURIComponent(dataType)}/distributions`, {
+    params: neighborhoodName ? { neighborhoodName } : {},
+  }).then((r) => r.data);
 
 export const getDataFactories = (neighborhoodName?: string, dataType?: string): Promise<CustomFactory[]> =>
   api.get('/custom-factories', {
@@ -412,19 +429,21 @@ export const getDashboardCapabilityFlowRelationships = (): Promise<{
   links: Array<{ capability: string; businessFlow: string; count: number }>;
 }> => api.get('/dashboard/capability-flow-relationships').then((r) => r.data);
 
-export const getDashboardLobDrilldownTree = (): Promise<{
+export const getDashboardLobDrilldownTree = (path?: string[]): Promise<{
   levels: string[];
   totalDiagrams: number;
   rootCount: number;
+  mode?: 'full' | 'lazy';
   tree: Array<{
     id: string;
     name: string;
     level: string;
     count: number;
     metadata?: { correlationId?: string };
+    hasChildren?: boolean;
     children: any[];
   }>;
-}> => api.get('/dashboard/lob-drilldown-tree').then((r) => r.data);
+}> => api.get('/dashboard/lob-drilldown-tree', { params: path && path.length ? { path: path.join('|') } : undefined }).then((r) => r.data);
 
 export const getDashboardFlow3D = (): Promise<{ businessFlows: string[]; points: Array<{ appName: string; businessCriticality: string; lifecycleStatus: string; task: string; businessFlow: string; taskOrder: number }>; taskOrders: Record<string, string[]> }> =>
   api.get('/dashboard/flow-3d').then((r) => r.data);

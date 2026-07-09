@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { memo, useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { App as AntApp, Card, Input, Select, Space, Spin, Switch, Table, Tree, Button, Segmented, Checkbox, Popover } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { DataNode } from 'antd/es/tree';
@@ -93,7 +93,7 @@ interface ModelCatalogProps {
   } | null;
 }
 
-export default function ModelCatalog({ modelName, requestedSearch = null }: ModelCatalogProps) {
+function ModelCatalog({ modelName, requestedSearch = null }: ModelCatalogProps) {
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const SEARCH_SETTINGS_STORAGE_PREFIX = 'modelCatalogSearch:';
@@ -110,7 +110,7 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
   const [tablePage, setTablePage] = useState(1);
 
   // Tree view state (server-driven, independent of table pagination)
-  const [treeMode, setTreeMode] = useState<'full' | 'lazy'>('full');
+  const [treeMode, setTreeMode] = useState<'full' | 'lazy'>('lazy');
   const [treeRoots, setTreeRoots] = useState<CatalogTreeNode[]>([]);
   const [treeTupleColumns, setTreeTupleColumns] = useState<string[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
@@ -405,15 +405,12 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
 
     (async () => {
       try {
-        const resp = await getModelCatalogTree(modelName);
+        const resp = await getModelCatalogTree(modelName, 'lazy');
         if (cancelled) return;
         setTreeMode(resp.mode);
         setTreeTupleColumns(resp.tupleColumns || []);
         setTreeRoots(resp.roots || []);
-        // Auto-expand the first level for full trees so the user sees structure.
-        if (resp.mode === 'full') {
-          setExpandedKeys((resp.roots || []).map((r) => r.key));
-        }
+        setExpandedKeys([]);
       } catch (error: any) {
         if (!cancelled) {
           treeLoadedModelRef.current = null;
@@ -483,18 +480,6 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
     }, 300);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [treeSearchText, viewMode, modelName, message]);
-
-  const handleExpandAll = () => {
-    const allKeys: React.Key[] = [];
-    const collect = (nodes: DataNode[]) => {
-      nodes.forEach((node) => {
-        allKeys.push(node.key);
-        if (node.children) collect(node.children);
-      });
-    };
-    collect(treeData);
-    setExpandedKeys(allKeys);
-  };
 
   const handleCollapseAll = () => {
     setExpandedKeys([]);
@@ -794,9 +779,11 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
   }, [selectedNodeKey, viewMode, expandedKeys]);
 
   useEffect(() => {
-    const typeKeys = treeData.map((node) => node.key);
-    setExpandedKeys(typeKeys);
-  }, [treeData]);
+    if (treeMode === 'full') {
+      const typeKeys = treeData.map((node) => node.key);
+      setExpandedKeys(typeKeys);
+    }
+  }, [treeMode, treeData]);
 
   useEffect(() => {
     if (!catalog) return;
@@ -880,7 +867,6 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
                   value={treeSearchText}
                   onChange={(event) => setTreeSearchText(event.target.value)}
                 />
-                <Button size="small" onClick={handleExpandAll}>Expand All</Button>
                 <Button size="small" onClick={handleCollapseAll}>Collapse All</Button>
                 {treeLoading && <Spin size="small" />}
               </>
@@ -971,3 +957,5 @@ export default function ModelCatalog({ modelName, requestedSearch = null }: Mode
     </Card>
   );
 }
+
+export default memo(ModelCatalog);

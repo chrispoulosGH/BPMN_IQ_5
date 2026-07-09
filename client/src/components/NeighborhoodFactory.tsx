@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useState, useRef } from 'react';
+import { memo, startTransition, useCallback, useDeferredValue, useEffect, useMemo, useState, useRef } from 'react';
 import { App as AntApp, Button, Card, Form, Input, List, Modal, Popconfirm, Select, Space, Spin, Table, Tag, Tooltip, Upload, Dropdown, Checkbox } from 'antd';
 import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, FolderAddOutlined, InboxOutlined, PlusOutlined, ColumnHeightOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -72,7 +72,7 @@ function getDataTabKeyForTargetScope(value: unknown) {
   return aliases[normalized] || normalized;
 }
 
-export default function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel', defaultRowSearch, defaultRowSearchColumn = 'name' }: NeighborhoodFactoryProps) {
+function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedFactoryId, hideFactoryList = false, onNeighborhoodsChanged, onNeighborhoodCreated, onFactoryDeleted, onNeighborhoodDeleted, showCreateNeighborhood = true, showAddFactory = true, showDeleteNeighborhood = true, mode = 'panel', defaultRowSearch, defaultRowSearchColumn = 'name' }: NeighborhoodFactoryProps) {
   const { message } = AntApp.useApp();
   const ALL_COLUMNS_OPTION = '__all__';
   const PRIMARY_KEY_COLUMN = 'name';
@@ -1321,3 +1321,5 @@ export default function NeighborhoodFactory({ canManageFactories, fixedNeighborh
     </div>
   );
 }
+
+export default memo(NeighborhoodFactory);

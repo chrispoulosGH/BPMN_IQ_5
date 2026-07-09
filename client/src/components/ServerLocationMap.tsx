@@ -102,7 +102,7 @@ const STATE_NAMES_TO_CODE: Record<string, string> = {
   WISCONSIN: 'WI', WYOMING: 'WY', 'DISTRICT OF COLUMBIA': 'DC',
 };
 
-const CITY_COORDS: Record<string, { lat: number; lon: number }> = {
+export const CITY_COORDS: Record<string, { lat: number; lon: number }> = {
   'NEW YORK': { lat: 40.7128, lon: -74.006 }, 'LOS ANGELES': { lat: 34.0522, lon: -118.2437 },
   CHICAGO: { lat: 41.8781, lon: -87.6298 }, HOUSTON: { lat: 29.7604, lon: -95.3698 },
   PHOENIX: { lat: 33.4484, lon: -112.074 }, DALLAS: { lat: 32.7767, lon: -96.797 },
@@ -139,7 +139,7 @@ function inferStateCode(location: string): string | null {
   return null;
 }
 
-function inferCityCoord(location: string): { lat: number; lon: number } | null {
+export function inferCityCoord(location: string): { lat: number; lon: number } | null {
   const upper = location.toUpperCase();
   for (const [city, coord] of Object.entries(CITY_COORDS)) {
     if (upper.includes(city)) return coord;

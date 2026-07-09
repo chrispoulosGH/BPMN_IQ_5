@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, Col, Descriptions, Divider, Empty, List, Row, Spin, Statistic, Tag, Tooltip, Typography } from 'antd';
 import { LoadingOutlined } from '@ant-design/icons';
 import { getApplicationByCorrelationId, getApplicationDatabases, getApplicationServers, getDashboardLobDrilldownTree, getDatabase, getDatabases, getRefItems, getServers, getServer, getTasks } from '../api';
@@ -10,6 +10,7 @@ interface TreeNode {
   name: string;
   level: string;
   count: number;
+  hasChildren?: boolean;
   metadata?: {
     correlationId?: string;
     itemId?: string;
@@ -36,6 +37,17 @@ interface SelectedInfrastructure {
 interface SelectedFactoryRecord {
   title: string;
   record: Record<string, unknown>;
+}
+
+function insertTreeChildrenAtPath(nodes: TreeNode[], path: string[], children: TreeNode[]): TreeNode[] {
+  if (!path.length) return nodes;
+
+  const [head, ...rest] = path;
+  return nodes.map((node) => {
+    if (node.name !== head) return node;
+    if (!rest.length) return { ...node, children };
+    return { ...node, children: insertTreeChildrenAtPath(node.children || [], rest, children) };
+  });
 }
 
 interface PositionedNode {
@@ -223,7 +235,7 @@ function renderLinkedApplications(apps?: Array<{ name?: string | null; acronym?:
   );
 }
 
-export default function LobDrilldownTree() {
+function LobDrilldownTree() {
   const [data, setData] = useState<TreeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -231,6 +243,7 @@ export default function LobDrilldownTree() {
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null);
   const [infrastructureByApplicationNodeId, setInfrastructureByApplicationNodeId] = useState<Record<string, TreeNode[]>>({});
   const [infrastructureLoadStatusByApplicationNodeId, setInfrastructureLoadStatusByApplicationNodeId] = useState<Record<string, InfrastructureLoadStatus>>({});
+  const [loadingTreeChildrenById, setLoadingTreeChildrenById] = useState<Record<string, boolean>>({});
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const nodeRefMap = useRef(new Map<string, HTMLButtonElement>());
@@ -461,8 +474,8 @@ export default function LobDrilldownTree() {
       .then((result) => {
         setData(result);
         if (result.tree.length > 0) {
-          setExpanded(new Set(result.tree.slice(0, 1).map((n) => n.id)));
           setSelectedNode(result.tree[0]);
+          setExpanded(new Set());
         }
         setInfrastructureByApplicationNodeId({});
         setInfrastructureLoadStatusByApplicationNodeId({});
@@ -562,6 +575,27 @@ export default function LobDrilldownTree() {
     }
   };
 
+  const loadTreeChildrenForNode = async (node: TreeNode) => {
+    if (node.level === 'application') return;
+    if (!node.hasChildren || node.children.length > 0 || loadingTreeChildrenById[node.id]) return;
+
+    const path = nodePathById.get(node.id)?.map((pathNode) => pathNode.name) || [node.name];
+
+    setLoadingTreeChildrenById((prev) => ({ ...prev, [node.id]: true }));
+    try {
+      const response = await getDashboardLobDrilldownTree(path);
+      const nextChildren = Array.isArray(response.tree) ? response.tree : [];
+      setData((current) => current ? ({
+        ...current,
+        tree: insertTreeChildrenAtPath(current.tree, path, nextChildren),
+      }) : current);
+    } catch {
+      // Ignore branch load failures; the node will stay collapsed.
+    } finally {
+      setLoadingTreeChildrenById((prev) => ({ ...prev, [node.id]: false }));
+    }
+  };
+
   const dimensions = useMemo(() => {
     const maxDepth = positioned.reduce((m, p) => Math.max(m, p.depth), 0);
     const width = PADDING * 2 + maxDepth * COLUMN_GAP + NODE_WIDTH;
@@ -601,10 +635,10 @@ export default function LobDrilldownTree() {
     setSelectedInfrastructure(null);
     const isApplicationNode = node.level === 'application';
     const loadStatus = infrastructureLoadStatusByApplicationNodeId[node.id];
-    const appInfrastructureChildren = isApplicationNode ? (infrastructureByApplicationNodeId[node.id] || []) : [];
     const hasChildren = isApplicationNode
-      ? (appInfrastructureChildren.length > 0 || !loadStatus || loadStatus === 'loading')
-      : node.children.length > 0;
+      ? (infrastructureByApplicationNodeId[node.id] || []).length > 0 || !loadStatus || loadStatus === 'loading'
+      : node.hasChildren ?? node.children.length > 0;
+    const appInfrastructureChildren = isApplicationNode ? (infrastructureByApplicationNodeId[node.id] || []) : [];
 
     if (isApplicationNode && !expanded.has(node.id) && !loadStatus) {
       setExpanded((prev) => {
@@ -633,6 +667,9 @@ export default function LobDrilldownTree() {
 
     next.add(node.id);
     setExpanded(next);
+    if (!isApplicationNode && (node.children.length === 0) && (node.hasChildren ?? false)) {
+      void loadTreeChildrenForNode(node);
+    }
     const nextChildId = isApplicationNode
       ? appInfrastructureChildren[0]?.id
       : node.children[0]?.id;
@@ -707,10 +744,11 @@ export default function LobDrilldownTree() {
               const isApplicationNode = p.node.level === 'application';
               const isLeafInfrastructureNode = p.node.level === 'server' || p.node.level === 'database';
               const isSelectedNode = selectedNode?.id === p.node.id;
+              const isBranchLoading = Boolean(loadingTreeChildrenById[p.node.id]);
               const appLoadStatus = isApplicationNode ? infrastructureLoadStatusByApplicationNodeId[p.node.id] : undefined;
               const hasChildren = isApplicationNode
                 ? ((infrastructureByApplicationNodeId[p.node.id] || []).length > 0 || !appLoadStatus || appLoadStatus === 'loading')
-                : p.node.children.length > 0;
+                : (p.node.hasChildren ?? p.node.children.length > 0);
 
               return (
                 <button
@@ -752,7 +790,7 @@ export default function LobDrilldownTree() {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Tag color="default" style={{ marginRight: 0 }}>{p.node.count}</Tag>
-                    {isApplicationNode && appLoadStatus === 'loading' && <LoadingOutlined style={{ color: '#64748b', fontSize: 12 }} />}
+                    {((isApplicationNode && appLoadStatus === 'loading') || isBranchLoading) && <LoadingOutlined style={{ color: '#64748b', fontSize: 12 }} />}
                     {hasChildren && appLoadStatus !== 'loading' && <span style={{ color: '#64748b', fontSize: 12 }}>{isExpanded ? '▾' : '▸'}</span>}
                   </div>
                 </button>
@@ -947,3 +985,5 @@ export default function LobDrilldownTree() {
     </>
   );
 }
+
+export default memo(LobDrilldownTree);

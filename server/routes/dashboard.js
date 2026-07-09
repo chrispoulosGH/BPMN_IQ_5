@@ -550,6 +550,8 @@ router.get('/capability-flow-relationships', async (req, res) => {
  */
 router.get('/lob-drilldown-tree', async (req, res) => {
   try {
+    const rawPath = String(req.query?.path || '').trim();
+    const pathValues = rawPath ? rawPath.split('|').map((value) => value.trim()).filter(Boolean) : [];
     const [diagrams, applications] = await Promise.all([
       Diagram.find(
         withNeighborhood(req),
@@ -619,11 +621,13 @@ router.get('/lob-drilldown-tree', async (req, res) => {
     }
 
     const tree = mapToTreeArray(root);
+    const targetNode = pathValues.length ? findTreeNodeByPath(tree, pathValues) : null;
+    const responseTree = targetNode ? pruneTreeNodes(targetNode.children || []) : pruneTreeNodes(tree);
     res.json({
       levels: ['lob', 'channel', 'product', 'domain', 'subdomain', 'businessFlow', 'task', 'application'],
       totalDiagrams: diagrams.length,
       rootCount: tree.length,
-      tree,
+      tree: responseTree,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -699,6 +703,31 @@ function mapToTreeArray(map) {
       ...(node.metadata ? { metadata: node.metadata } : {}),
       children: mapToTreeArray(node.children),
     }));
+}
+
+function pruneTreeNodes(nodes) {
+  return nodes.map((node) => ({
+    id: node.id,
+    name: node.name,
+    level: node.level,
+    count: node.count,
+    ...(node.metadata ? { metadata: node.metadata } : {}),
+    hasChildren: Array.isArray(node.children) && node.children.length > 0,
+    children: [],
+  }));
+}
+
+function findTreeNodeByPath(nodes, pathValues) {
+  let currentNodes = nodes;
+  let currentNode = null;
+
+  for (const pathValue of pathValues) {
+    currentNode = currentNodes.find((node) => node.name === pathValue) || null;
+    if (!currentNode) return null;
+    currentNodes = currentNode.children || [];
+  }
+
+  return currentNode;
 }
 
 function countValues(apps, field) {

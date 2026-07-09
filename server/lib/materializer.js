@@ -71,11 +71,16 @@ async function materializeFromBatches({ neighborhoodName, batchIds = null, batch
     ? config.batchCollectionNames
     : [config.batchCollectionName];
 
+  const matStart = Date.now();
+  let batchDocCount = 0;
   for (const batchCollectionName of batchCollectionNames) {
+    console.log(`[MATERIALIZER TRACE] Scanning collection ${batchCollectionName} query=${JSON.stringify(query)}`);
     const cursor = db.collection(batchCollectionName).find(query).batchSize(batchSize);
     while (await cursor.hasNext()) {
       const batch = await cursor.next();
       if (!batch || !Array.isArray(batch.rows)) continue;
+      batchDocCount++;
+      if (batchDocCount % 100 === 0) console.log(`[MATERIALIZER TRACE] ...processed ${batchDocCount} batch docs, ${totalProcessed} rows so far (${Date.now() - matStart}ms)`);
 
       const ops = [];
       for (let i = 0; i < batch.rows.length; i++) {
@@ -104,11 +109,15 @@ async function materializeFromBatches({ neighborhoodName, batchIds = null, batch
     }
   }
 
+  console.log(`[MATERIALIZER TRACE] bulkWrite phase done: ${batchDocCount} batch docs, ${totalProcessed} rows in ${Date.now() - matStart}ms`);
   const result = { processed: totalProcessed };
 
   // Automatically run postProcess (rebuild ComponentSearchIndex) when neighborhoodName provided
   try {
+    console.log('[MATERIALIZER TRACE] Starting automatic postProcess...');
+    const ppStart = Date.now();
     await materializeFromBatches.postProcess({ neighborhoodName, domain });
+    console.log(`[MATERIALIZER TRACE] Automatic postProcess done in ${Date.now() - ppStart}ms`);
   } catch (err) {
     console.error('[MATERIALIZER] automatic postProcess failed:', err && err.message);
   }
@@ -124,8 +133,10 @@ materializeFromBatches.postProcess = async function({ neighborhoodName, domain =
   const batchCollectionNames = Array.isArray(config.batchCollectionNames) && config.batchCollectionNames.length
     ? config.batchCollectionNames
     : [config.batchCollectionName];
+  const ppTotal = Date.now();
   try {
     console.log(`[MATERIALIZER] Post-process: populating legacy ${config.domain} docs for`, neighborhoodName);
+    const legacyStart = Date.now();
     // Populate legacy `components` collection from canonical so the search index builder has source data
     try {
       for (const batchCollectionName of batchCollectionNames) {
@@ -136,7 +147,7 @@ materializeFromBatches.postProcess = async function({ neighborhoodName, domain =
           logPrefix: config.legacyLabel,
         });
       }
-      console.log(`[MATERIALIZER] Post-process: legacy ${config.domain} docs populated for`, neighborhoodName);
+      console.log(`[MATERIALIZER] Post-process: legacy ${config.domain} docs populated for`, neighborhoodName, `in ${Date.now() - legacyStart}ms`);
     } catch (err) {
       console.error('[MATERIALIZER] Post-process populateComponentsFromBatches failed:', err && err.message);
     }
@@ -145,6 +156,7 @@ materializeFromBatches.postProcess = async function({ neighborhoodName, domain =
     // so the index builder can walk parentRefs to produce full lineage paths.
     try {
       console.log('[MATERIALIZER] Post-process: resolving parentRefs on canonical docs for', neighborhoodName);
+      const refsStart = Date.now();
       let refResult = null;
       for (const batchCollectionName of batchCollectionNames) {
         // Merge parent refs from every batch source for the same domain.
@@ -155,18 +167,20 @@ materializeFromBatches.postProcess = async function({ neighborhoodName, domain =
           CanonicalModel: config.CanonicalModel,
         });
       }
-      console.log('[MATERIALIZER] Post-process: parentRefs resolved for', neighborhoodName, refResult);
+      console.log('[MATERIALIZER] Post-process: parentRefs resolved for', neighborhoodName, refResult, `in ${Date.now() - refsStart}ms`);
     } catch (err) {
       console.error('[MATERIALIZER] Post-process resolveParentRefs failed:', err && err.message);
     }
 
     console.log(`[MATERIALIZER] Post-process: rebuilding ${config.indexLabel} for`, neighborhoodName);
+    const idxStart = Date.now();
     await rebuildSearchIndex(neighborhoodName, {
       CanonicalModel: config.CanonicalModel,
       SearchIndexModel: config.SearchIndexModel,
       indexLabel: config.indexLabel,
     });
-    console.log(`[MATERIALIZER] Post-process: ${config.indexLabel} rebuilt for`, neighborhoodName);
+    console.log(`[MATERIALIZER] Post-process: ${config.indexLabel} rebuilt for`, neighborhoodName, `in ${Date.now() - idxStart}ms`);
+    console.log(`[MATERIALIZER] Post-process TOTAL for ${neighborhoodName}: ${Date.now() - ppTotal}ms`);
   } catch (err) {
     console.error('[MATERIALIZER] Post-process rebuildSearchIndex failed:', err && err.message);
   }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { memo, useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Modal,
   Input,
@@ -600,4 +600,4 @@ const GlobalComponentSearch: React.FC<GlobalComponentSearchProps> = ({
   );
 };
 
-export default GlobalComponentSearch;
+export default memo(GlobalComponentSearch);

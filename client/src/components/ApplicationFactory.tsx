@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Table, Input, App as AntApp, Tag, Tooltip, Drawer, Descriptions, Popover, Checkbox, Button, Modal, Form, Select, List, Spin, Typography, Space } from 'antd';
 import { SearchOutlined, SettingOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ApplicationItem, ServerItem } from '../types';
@@ -139,7 +139,7 @@ const ALL_COLUMNS: { key: string; title: string; defaultVisible: boolean }[] = [
   { key: 'owner', title: 'Owner', defaultVisible: true },
 ];
 
-export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, dataColumns = [], dataRows, foreignKeyColumns = [], onNavigateToFactory, requestedDetailRequest, onDeleteAllComponents, deleteLoading }: ApplicationFactoryProps) {
+function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, dataColumns = [], dataRows, foreignKeyColumns = [], onNavigateToFactory, requestedDetailRequest, onDeleteAllComponents, deleteLoading }: ApplicationFactoryProps) {
   const { message, modal } = AntApp.useApp();
   const [items, setItems] = useState<ApplicationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -841,3 +841,5 @@ export default function ApplicationFactory({ defaultSearch, defaultAdd, userRole
     </div>
   );
 }
+
+export default memo(ApplicationFactory);
