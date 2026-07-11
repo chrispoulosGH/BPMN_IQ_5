@@ -26,7 +26,7 @@ const Diagram = require('./models/Diagram');
 const Task = require('./models/Task');
 const Actor = require('./models/Actor');
 const Capability = require('./models/Capability');
-const { BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness } = require('./models/ReferenceData');
+const { BusinessFlow, Product, Channel, Domain, Subdomain, LineOfBusiness } = require('./models/ReferenceData');
 const Component = require('./models/Component');
 const Model = require('./models/Model');
 const { DEFAULT_NEIGHBORHOOD_NAME } = require('./utils/neighborhoodScope');
@@ -115,7 +115,7 @@ app.use('/api/materialize', materializeRouter);
 
 // Connect to MongoDB then start server
 async function backfillNeighborhoods() {
-  const collections = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness, Component];
+  const collections = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Channel, Domain, Subdomain, LineOfBusiness, Component];
   const missingNeighborhoodFilter = {
     $or: [{ neighborhoodName: { $exists: false } }, { neighborhoodName: null }, { neighborhoodName: '' }],
   };
@@ -131,10 +131,6 @@ async function backfillNeighborhoods() {
     )));
   }
 
-  await Application.updateMany(
-    { correlationId: '' },
-    { $set: { correlationId: null } }
-  );
 }
 
 async function migrateLegacyModelCollection() {
@@ -218,7 +214,7 @@ async function migrateLegacyComponentCollection() {
 }
 
 async function syncNeighborhoodIndexes() {
-  const models = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Application, Channel, Domain, Subdomain, LineOfBusiness, Component, Model];
+  const models = [Diagram, Task, Actor, Capability, BusinessFlow, Product, Channel, Domain, Subdomain, LineOfBusiness, Component, Model];
   await Promise.all(models.map((Model) => Model.syncIndexes()));
 }
 

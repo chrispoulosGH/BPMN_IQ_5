@@ -6,16 +6,16 @@ const { DEFAULT_NEIGHBORHOOD_NAME, buildNeighborhoodFilter } = require('../utils
 const Component = require('../models/Component');
 
 // Models that support state transitions
-const { BusinessFlow, Product, Application, Actor: RefActor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
+const { BusinessFlow, Product, Actor: RefActor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
 const Task = require('../models/Task');
 const Actor = require('../models/Actor');
 const Capability = require('../models/Capability');
 const Diagram = require('../models/Diagram');
+const { listApplicationReferences } = require('../utils/applicationReferenceLookup');
 
 const collectionModelMap = {
   businessFlows: BusinessFlow,
   products: Product,
-  applications: Application,
   actors: Actor,
   channels: Channel,
   domains: Domain,
@@ -171,7 +171,7 @@ async function validateDiagramForSubmission(diagram) {
 
   const [taskComponent, knownApplications, knownActorNames] = await Promise.all([
     Component.findOne(taskComponentFilter, { rows: 1 }).lean(),
-    Application.find(neighborhoodFilter, { name: 1, acronym: 1, correlationId: 1 }).lean(),
+    listApplicationReferences(neighborhoodName),
     Actor.distinct('name', neighborhoodFilter),
   ]);
 

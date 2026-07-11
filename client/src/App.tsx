@@ -1292,11 +1292,25 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       message.info('No applications found in the current diagram');
       return;
     }
-    if (!allApplications.length) {
+    let referenceApplications = allApplications;
+    try {
+      const reference = await getTaskReferenceForNeighborhood(DEFAULT_NEIGHBORHOOD_NAME);
+      referenceApplications = reference.applications || [];
+      setAllApplications(referenceApplications);
+      setAllAppNames(referenceApplications.map((app: ApplicationItem) => app.name).filter(Boolean).sort());
+    } catch {
+      if (!referenceApplications.length) {
+        message.warning('Application reference data not loaded');
+        return;
+      }
+    }
+
+    if (!referenceApplications.length) {
       message.warning('Application reference data not loaded');
       return;
     }
-    const results = computeAppMatches(apps, allApplications);
+
+    const results = computeAppMatches(apps, referenceApplications);
     const fuzzy = results.filter((r) => !r.exact);
     if (!fuzzy.length) {
       message.success('All applications already match reference data');
@@ -1304,7 +1318,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
     }
     setAppMatchResults(fuzzy);
     setShowAppMatch(true);
-  }, [allApplications, message]);
+  }, [allApplications, message, DEFAULT_NEIGHBORHOOD_NAME]);
 
   /** Handle approved application matches */
   const handleAppMatchApprove = useCallback(async (approved: AppMatchResult[]) => {

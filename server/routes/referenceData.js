@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, BusinessCapability } = require('../models/ReferenceData');
+const { BusinessFlow, Product, Actor, Channel, Domain, Subdomain, BusinessCapability } = require('../models/ReferenceData');
+const { findApplicationByCorrelationId, findApplicationByName, listApplicationReferences } = require('../utils/applicationReferenceLookup');
 const { getNeighborhoodName, buildNeighborhoodFilter, withNeighborhood } = require('../utils/neighborhoodScope');
 
 const models = {
-  applications: Application,
   businessFlows: BusinessFlow,
   products: Product,
   actors: Actor,
@@ -17,10 +17,7 @@ const models = {
 // GET /api/reference/applications/by-correlation/:correlationId — get application by correlationId (specific route first)
 router.get('/applications/by-correlation/:correlationId', async (req, res) => {
   try {
-    const app = await Application.findOne({
-      neighborhoodName: getNeighborhoodName(req),
-      correlationId: req.params.correlationId,
-    }).lean();
+    const app = await findApplicationByCorrelationId(getNeighborhoodName(req), req.params.correlationId);
     
     if (!app) {
       return res.status(404).json({ error: 'Application not found' });
@@ -35,10 +32,7 @@ router.get('/applications/by-correlation/:correlationId', async (req, res) => {
 // GET /api/reference/applications/by-name/:name — get application by name
 router.get('/applications/by-name/:name', async (req, res) => {
   try {
-    const app = await Application.findOne({
-      neighborhoodName: getNeighborhoodName(req),
-      name: req.params.name,
-    }).lean();
+    const app = await findApplicationByName(getNeighborhoodName(req), req.params.name);
     
     if (!app) {
       return res.status(404).json({ error: 'Application not found' });
@@ -52,6 +46,10 @@ router.get('/applications/by-name/:name', async (req, res) => {
 
 // GET /api/reference/:collection — list all items
 router.get('/:collection', async (req, res) => {
+  if (req.params.collection === 'applications') {
+    return res.json(await listApplicationReferences(getNeighborhoodName(req)));
+  }
+
   const Model = models[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
   const items = await Model.find(withNeighborhood(req)).sort('name').lean();
@@ -60,6 +58,10 @@ router.get('/:collection', async (req, res) => {
 
 // POST /api/reference/:collection — create item
 router.post('/:collection', async (req, res) => {
+  if (req.params.collection === 'applications') {
+    return res.status(410).json({ error: 'Application records are derived from loaded data and cannot be created here' });
+  }
+
   const Model = models[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
   const { name } = req.body;
@@ -87,6 +89,10 @@ router.post('/:collection', async (req, res) => {
 
 // PUT /api/reference/:collection/:id — update item
 router.put('/:collection/:id', async (req, res) => {
+  if (req.params.collection === 'applications') {
+    return res.status(410).json({ error: 'Application records are derived from loaded data and cannot be edited here' });
+  }
+
   const Model = models[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
   const { name } = req.body;

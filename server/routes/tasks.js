@@ -3,7 +3,8 @@ const router = express.Router();
 const Task = require('../models/Task');
 const Diagram = require('../models/Diagram');
 const Component = require('../models/Component');
-const { BusinessFlow, Product, Application, Actor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
+const { BusinessFlow, Product, Actor, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
+const { findApplicationByCorrelationId, listApplicationReferences } = require('../utils/applicationReferenceLookup');
 const { getNeighborhoodName, buildNeighborhoodFilter, withNeighborhood } = require('../utils/neighborhoodScope');
 
 const APPLICATION_FIELDS = [
@@ -177,6 +178,10 @@ async function getTasksFromDiagrams(req) {
 }
 
 async function getMergedReferenceItems(req, collection) {
+  if (collection === 'applications') {
+    return listApplicationReferences(getNeighborhoodName(req));
+  }
+
   const Model = refModels[collection];
   const legacyItems = Model ? await Model.find(withNeighborhood(req)).sort('name').lean() : [];
 
@@ -210,14 +215,14 @@ async function getMergedReferenceItems(req, collection) {
 }
 
 // ─── Reference Data ──────────────────────────────────────────
-const refModels = { businessFlows: BusinessFlow, products: Product, applications: Application, actors: Actor, channels: Channel, domains: Domain, subdomains: Subdomain, linesOfBusiness: LineOfBusiness };
+const refModels = { businessFlows: BusinessFlow, products: Product, actors: Actor, channels: Channel, domains: Domain, subdomains: Subdomain, linesOfBusiness: LineOfBusiness };
 
 router.get('/reference', async (_req, res) => {
   const req = _req;
   const [businessFlows, products, applications, actors, channels, domains, subdomains, linesOfBusiness] = await Promise.all([
     getMergedReferenceItems(req, 'businessFlows'),
     getMergedReferenceItems(req, 'products'),
-    Application.find(withNeighborhood(req)).sort('name').lean(),
+    listApplicationReferences(getNeighborhoodName(req)),
     getMergedReferenceItems(req, 'actors'),
     getMergedReferenceItems(req, 'channels'),
     getMergedReferenceItems(req, 'domains'),
@@ -232,27 +237,26 @@ router.get('/reference/applications/by-correlation/:correlationId', async (req, 
   const correlationId = String(req.params.correlationId || '').trim();
   if (!correlationId) return res.status(400).json({ error: 'correlationId is required' });
 
-  const item = await Application.findOne({
-    $and: [
-      buildNeighborhoodFilter(getNeighborhoodName(req)),
-      { correlationId },
-    ],
-  }).lean();
+  const item = await findApplicationByCorrelationId(getNeighborhoodName(req), correlationId);
   if (!item) return res.status(404).json({ error: 'Application not found' });
   res.json(item);
 });
 
 router.get('/reference/:collection', async (req, res) => {
-  if (!refModels[req.params.collection]) return res.status(404).json({ error: 'Unknown collection' });
   if (req.params.collection === 'applications') {
-    const items = await Application.find(withNeighborhood(req)).sort('name').lean();
+    const items = await listApplicationReferences(getNeighborhoodName(req));
     return res.json(items);
   }
+  if (!refModels[req.params.collection]) return res.status(404).json({ error: 'Unknown collection' });
   const items = await getMergedReferenceItems(req, req.params.collection);
   res.json(items);
 });
 
 router.post('/reference/:collection', async (req, res) => {
+  if (req.params.collection === 'applications') {
+    return res.status(410).json({ error: 'Application records are derived from loaded data and cannot be created here' });
+  }
+
   const Model = refModels[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
   try {
@@ -275,6 +279,10 @@ router.post('/reference/:collection', async (req, res) => {
 });
 
 router.put('/reference/:collection/:id', async (req, res) => {
+  if (req.params.collection === 'applications') {
+    return res.status(410).json({ error: 'Application records are derived from loaded data and cannot be edited here' });
+  }
+
   const Model = refModels[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
   try {
@@ -300,6 +308,10 @@ router.put('/reference/:collection/:id', async (req, res) => {
 });
 
 router.delete('/reference/:collection/:id', async (req, res) => {
+  if (req.params.collection === 'applications') {
+    return res.status(410).json({ error: 'Application records are derived from loaded data and cannot be deleted here' });
+  }
+
   const Model = refModels[req.params.collection];
   if (!Model) return res.status(404).json({ error: 'Unknown collection' });
   const item = await Model.findOneAndDelete({

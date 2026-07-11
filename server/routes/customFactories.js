@@ -11,7 +11,7 @@ const ComponentSearchIndex = require('../models/ComponentSearchIndex');
 const Data = require('../models/Data');
 const DataSearchIndex = require('../models/DataSearchIndex');
 const Model = require('../models/Model');
-const { Application, Actor, Product } = require('../models/ReferenceData');
+const { Actor, Product } = require('../models/ReferenceData');
 const Server = require('../models/Server');
 const DatabaseInstance = require('../models/DatabaseInstance');
 const { rebuildSearchIndex } = require('../utils/searchIndexBuilder');
@@ -21,6 +21,7 @@ const { materializeFromBatches } = require('../lib/materializer');
 const CanonicalComponent = require('../models/CanonicalComponent');
 const CanonicalData = require('../models/CanonicalData');
 const { DEFAULT_NEIGHBORHOOD_NAME } = require('../utils/neighborhoodScope');
+const { findApplicationByAcronym, findApplicationByCorrelationId } = require('../utils/applicationReferenceLookup');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 250 * 1024 * 1024 } });
@@ -1105,27 +1106,13 @@ async function doesDataComponentExist({ type, value, neighborhoodName, correlati
   const exactMatchRegex = new RegExp(`^${escapeRegExp(trimmedValue)}$`, 'i');
 
   if (type === 'application') {
-    const neighborhoodScope = { $in: [DEFAULT_NEIGHBORHOOD_NAME, neighborhoodName] };
-
     if (trimmedCorrelationId) {
-      const correlationIdRegex = new RegExp(`^${escapeRegExp(trimmedCorrelationId)}$`, 'i');
-      const appByCorrelation = await Application.findOne(
-        {
-          correlationId: correlationIdRegex,
-          neighborhoodName: neighborhoodScope,
-        },
-        { _id: 1 }
-      ).lean();
-
+      const appByCorrelation = await findApplicationByCorrelationId(neighborhoodName, trimmedCorrelationId);
       if (appByCorrelation) return true;
     }
 
     if (!trimmedAcronym) return false;
-    const acronymRegex = new RegExp(`^${escapeRegExp(trimmedAcronym)}$`, 'i');
-    const app = await Application.findOne({
-      acronym: acronymRegex,
-      neighborhoodName: neighborhoodScope,
-    }, { _id: 1 }).lean();
+    const app = await findApplicationByAcronym(neighborhoodName, trimmedAcronym);
     if (!app) {
       console.log('[VALIDATION TRACE] Missing application reference', {
         type: 'application',
@@ -1133,7 +1120,6 @@ async function doesDataComponentExist({ type, value, neighborhoodName, correlati
         neighborhoodName,
         correlationId: trimmedCorrelationId,
         acronym: trimmedAcronym,
-        query: { acronymRegex: acronymRegex.toString() },
       });
     }
     return Boolean(app);
@@ -2480,7 +2466,6 @@ router.delete('/data/:dataType', requireAdminWrite, async (req, res) => {
       const typeRegex = makeExactRegex(candidate);
       return ([{ componentName: typeRegex }, { dataType: typeRegex }]);
     }) };
-
     const distTypeMatch = { $or: typeTerms.map((t) => ({ dataType: new RegExp(`^${escapeRegExp(t)}$`, 'i') })) };
     const [deletedBatches, , deletedData, deletedCanonicalData, deletedDataIndex] = await Promise.all([
       db.collection('dataBatches').deleteMany(batchFilter).catch(() => ({ deletedCount: 0 })),

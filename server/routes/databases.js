@@ -1,7 +1,7 @@
 const express = require('express');
 const DatabaseInstance = require('../models/DatabaseInstance');
-const { Application } = require('../models/ReferenceData');
 const { getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+const { listApplicationReferences } = require('../utils/applicationReferenceLookup');
 
 const router = express.Router();
 
@@ -42,10 +42,7 @@ function safeJson(value) {
 
 async function buildNeighborhoodApplicationFilter(req) {
   const neighborhoodName = getNeighborhoodName(req);
-  const applications = await Application.find(
-    buildNeighborhoodFilter(neighborhoodName),
-    { correlationId: 1, acronym: 1, name: 1, _id: 0 }
-  ).lean();
+  const applications = await listApplicationReferences(neighborhoodName);
 
   const correlationIds = applications.map((item) => String(item.correlationId || '').trim()).filter(Boolean);
   const acronyms = applications.map((item) => String(item.acronym || '').trim()).filter(Boolean);

@@ -410,6 +410,12 @@ export default function ComponentsViewer({
     }
   }, [components, activeTabKey]);
 
+  // When the user selects a component tab, always start in the table view.
+  useEffect(() => {
+    if (!activeTabKey) return;
+    setViewMode('table');
+  }, [activeTabKey]);
+
   // Helper to extract all keys from tree data recursively
   const getAllTreeKeys = (nodes: DataNode[]): string[] => {
     const keys: string[] = [];

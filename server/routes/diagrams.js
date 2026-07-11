@@ -4,8 +4,9 @@ const Diagram = require('../models/Diagram');
 const Component = require('../models/Component');
 const Model = require('../models/Model');
 const Actor = require('../models/Actor');
-const { Product, Application, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
+const { Product, Channel, Domain, Subdomain, LineOfBusiness } = require('../models/ReferenceData');
 const { DEFAULT_NEIGHBORHOOD_NAME, getNeighborhoodName, buildNeighborhoodFilter } = require('../utils/neighborhoodScope');
+const { listApplicationReferences } = require('../utils/applicationReferenceLookup');
 
 /** Strip title/status housekeeping text annotations from the XML (they clutter the canvas) */
 function stripTitleAnnotations(xml) {
@@ -533,7 +534,7 @@ async function validateDiagramObjectIntegrity(diagramLike, neighborhoodName = DE
 
   const [taskComponent, knownApplications, knownActorNames] = await Promise.all([
     Component.findOne(taskComponentFilter, { rows: 1 }).lean(),
-    Application.find(neighborhoodFilter, { name: 1, acronym: 1, correlationId: 1 }).lean(),
+    listApplicationReferences(neighborhoodName),
     Actor.distinct('name', neighborhoodFilter),
   ]);
 

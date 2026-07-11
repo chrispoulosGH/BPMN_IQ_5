@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const Task = require('../models/Task');
-const { Application, BusinessFlow } = require('../models/ReferenceData');
+const { BusinessFlow } = require('../models/ReferenceData');
 const Diagram = require('../models/Diagram');
 const Component = require('../models/Component');
 const Server = require('../models/Server');
 const DatabaseInstance = require('../models/DatabaseInstance');
 const { getNeighborhoodName, withNeighborhood } = require('../utils/neighborhoodScope');
 const { loadScopedFlowCostDocumentsFromComponentsAndDiagrams } = require('../utils/flowCostSource');
+const { listApplicationReferences } = require('../utils/applicationReferenceLookup');
 
 function buildNeighborhoodApplicationKeys(applications) {
   return {
@@ -235,10 +236,10 @@ async function loadScopedTasks(req) {
 }
 
 async function loadScopedApplications(req) {
-  const legacyApps = await Application.find(withNeighborhood(req)).lean();
+  const neighborhoodName = getNeighborhoodName(req);
+  const legacyApps = await listApplicationReferences(neighborhoodName);
   if (legacyApps.length) return legacyApps;
 
-  const neighborhoodName = getNeighborhoodName(req);
   const components = await Component.find(
     withNeighborhood(req, { name: { $regex: /^application$/i } }),
     { name: 1, columns: 1, rows: 1 }
@@ -290,25 +291,7 @@ async function loadScopedApplications(req) {
 
   if (!referenceOrConditions.length) return fallbackApps;
 
-  const referenceApps = await Application.find(
-    { $or: referenceOrConditions },
-    {
-      name: 1,
-      acronym: 1,
-      correlationId: 1,
-      lifecycleStatus: 1,
-      businessCriticality: 1,
-      applicationType: 1,
-      customerFacing: 1,
-      internetFacing: 1,
-      cpniIndicator: 1,
-      handleSpi: 1,
-      storeSpi: 1,
-      pciData: 1,
-      pciDataStored: 1,
-      soxFsa: 1,
-    }
-  ).lean();
+  const referenceApps = await listApplicationReferences(neighborhoodName);
 
   if (!referenceApps.length) return fallbackApps;
 
