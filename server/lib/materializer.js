@@ -34,37 +34,6 @@ function normalizeLooseKey(value) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
-function getRowValues(row) {
-  if (!row) return {};
-    ]) || null,
-    lifecycle: getRowValueByCandidates(rowValues, [
-      'X_ATT2_ITAP_U_APPLICATION_LIFECYCLE_2',
-      'lifecycle',
-    ]) || null,
-    lifecycleStatus: getRowValueByCandidates(rowValues, [
-      'X_ATT2_ITAP_U_APPLICATION_LIFECYCLE_STATUS_1',
-      'lifecycle_status',
-      'lifecycle status',
-    ]) || null,
-    businessPurpose: getRowValueByCandidates(rowValues, [
-      'X_ATT2_ITAP_U_BUSINESS_PURPOSE',
-      'business_purpose',
-      'business purpose',
-    ]) || null,
-    pciDataStored: getRowValueByCandidates(rowValues, [
-      'X_ATT2_ITAP_U_PCI_DATA_STORED',
-      'pci_data_stored',
-      'pci data stored',
-    ]) || null,
-    userInterface: getRowValueByCandidates(rowValues, [
-      'X_ATT2_ITAP_U_USER_INTERFACE',
-      'user_interface',
-      'user interface',
-    ]) || null,
-    owner: String(row?.owner || batch?.owner || '').trim() || null,
-  };
-}
-
 function getMaterializationConfig(domain = 'component') {
   if (domain === 'data') {
     return {

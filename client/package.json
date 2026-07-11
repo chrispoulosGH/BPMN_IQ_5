@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.3.7",
+    "@bpmn-io/cm-theme": "^0.2.2",
     "@bpmn-io/properties-panel": "^3.22.0",
     "antd": "^5.18.3",
     "axios": "^1.7.2",
