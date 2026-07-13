@@ -323,6 +323,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   const [neighborhoodTabs, setNeighborhoodTabs] = useState<FactoryNeighborhoodSummary[]>([]);
   const [activeNeighborhoodTab, setActiveNeighborhoodTab] = useState<string>(DEFAULT_NEIGHBORHOOD_NAME);
   const [loadingNeighborhoodTabs, setLoadingNeighborhoodTabs] = useState(false);
+  const [neighborhoodTabsResolved, setNeighborhoodTabsResolved] = useState(false);
   const [neighborhoodFactories, setNeighborhoodFactories] = useState<Record<string, CustomFactory[]>>({});
   const [dataTypeSummaries, setDataTypeSummaries] = useState<Array<{ key: string; dataType: string; batchCount: number }>>([]);
   const [dataFactoriesByType, setDataFactoriesByType] = useState<Record<string, CustomFactory[]>>({});
@@ -659,6 +660,7 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
       message.error(error.response?.data?.error || error.message || 'Failed to load neighborhoods');
     } finally {
       setLoadingNeighborhoodTabs(false);
+      setNeighborhoodTabsResolved(true);
     }
   }, [DEFAULT_NEIGHBORHOOD_NAME, message]);
 
@@ -727,8 +729,12 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
         : activeNeighborhoodTab;
 
   useLayoutEffect(() => {
+    // Wait until the real neighborhood list has resolved at least once before setting the
+    // scope header — otherwise requests fire against the hardcoded default (which may not
+    // exist in this database) and return empty results before self-correcting.
+    if (!neighborhoodTabsResolved) return;
     setApiNeighborhoodScope(scopedNeighborhoodName);
-  }, [scopedNeighborhoodName]);
+  }, [scopedNeighborhoodName, neighborhoodTabsResolved]);
 
   const loadNeighborhoodFactoriesFor = useCallback(async (neighborhoodName: string) => {
     setLoadingNeighborhoodFactories((current) => ({ ...current, [neighborhoodName]: true }));
@@ -1094,6 +1100,12 @@ function AuthenticatedApp({ user, onLogout }: { user: { _id: string; userId: str
   ] as const;
 
   const refresh = useCallback(() => setRefreshTick((t) => t + 1), []);
+
+  // Force the diagram list to refetch once the real neighborhood scope is known, so it
+  // doesn't get stuck showing the empty result from the pre-resolution default scope.
+  useEffect(() => {
+    if (neighborhoodTabsResolved) refresh();
+  }, [neighborhoodTabsResolved, refresh]);
 
   // Load validation reference data: tasks/actors from current model scope, applications from Data scope.
   const refreshReferenceData = useCallback((neighborhoodName: string) => {
