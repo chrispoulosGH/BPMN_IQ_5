@@ -6,6 +6,7 @@ const DataSearchIndex = require('../models/DataSearchIndex');
 const { populateComponentsFromBatches } = require('./populateComponentsFromBatches');
 const { resolveParentRefs } = require('./resolveParentRefs');
 const { rebuildSearchIndex } = require('../utils/searchIndexBuilder');
+const { generateFlowDiagramsForNeighborhood } = require('./generateFlowDiagrams');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/bpmn_iq';
 
@@ -175,6 +176,19 @@ materializeFromBatches.postProcess = async function({ neighborhoodName, domain =
       console.log('[MATERIALIZER] Post-process: parentRefs resolved for', neighborhoodName, refResult, `in ${Date.now() - refsStart}ms`);
     } catch (err) {
       console.error('[MATERIALIZER] Post-process resolveParentRefs failed:', err && err.message);
+    }
+
+    // Auto-generate BPMN 2.0 diagrams from Business Process Flow / Task / Application
+    // components (Model Components domain only — not System Components/'data' uploads).
+    if (config.domain === 'component') {
+      try {
+        console.log('[MATERIALIZER] Post-process: generating flow diagrams for', neighborhoodName);
+        const diagStart = Date.now();
+        const diagResult = await generateFlowDiagramsForNeighborhood({ neighborhoodName });
+        console.log('[MATERIALIZER] Post-process: flow diagram generation done for', neighborhoodName, diagResult, `in ${Date.now() - diagStart}ms`);
+      } catch (err) {
+        console.error('[MATERIALIZER] Post-process generateFlowDiagramsForNeighborhood failed:', err && err.message);
+      }
     }
 
     console.log(`[MATERIALIZER] Post-process: rebuilding ${config.indexLabel} for`, neighborhoodName);

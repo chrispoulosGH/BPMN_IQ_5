@@ -7,6 +7,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { STATE_TRANSITIONS, getAllowedActions, stateTagColor, transitionState } from '../stateUtils';
 import { matchesFactorySearch, parseFactorySearch, encodeExactFactorySearch } from '../utils/factorySearch';
 import { enhanceColumnsWithSortAndFilters } from '../utils/tableEnhancer';
+import CostGroupCharts from './CostGroupCharts';
 
 interface ApplicationFactoryProps {
   defaultSearch?: string;
@@ -636,6 +637,8 @@ function ApplicationFactory({ defaultSearch, defaultAdd, userRole, readOnly, dat
           New Application
         </Button>}
       </div>
+
+      <CostGroupCharts dataColumns={dataColumns} dataRows={dataRows} />
 
       <Table
         dataSource={filtered}

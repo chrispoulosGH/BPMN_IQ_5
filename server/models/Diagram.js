@@ -63,6 +63,7 @@ const diagramSchema = new mongoose.Schema(
           name: { type: String, required: true, trim: true },
           source: { type: String, default: null, trim: true },
           target: { type: String, default: null, trim: true },
+          actor: { type: String, default: null, trim: true },
           applications: [
             {
               name: { type: String, required: true, trim: true },
@@ -72,6 +73,7 @@ const diagramSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    businessCapability: { type: String, default: null, trim: true },
     // Parsed from <bpmndi:BPMNDiagram name="..."> on save
     lineOfBusiness: { type: String, default: null },
     channel: { type: String, default: null },
@@ -96,6 +98,7 @@ diagramSchema.index({
   description: 'text',
   tags: 'text',
   'tasks.name': 'text',
+  'tasks.actor': 'text',
   'tasks.applications.name': 'text',
   lineOfBusiness: 'text',
   channel: 'text',
@@ -103,6 +106,7 @@ diagramSchema.index({
   subdomain: 'text',
   product: 'text',
   businessFlow: 'text',
+  businessCapability: 'text',
   status: 'text',
   createdBy: 'text',
   updatedBy: 'text',
@@ -110,6 +114,7 @@ diagramSchema.index({
 
 // Multikey indexes for efficient cross-diagram task/app lookups
 diagramSchema.index({ 'tasks.name': 1 });
+diagramSchema.index({ 'tasks.actor': 1 });
 diagramSchema.index({ 'tasks.applications.name': 1 });
 diagramSchema.index({ 'tasks.name': 1, businessFlow: 1 });
 

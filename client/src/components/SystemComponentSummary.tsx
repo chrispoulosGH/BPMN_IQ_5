@@ -4,6 +4,7 @@ import { Button, Card, Col, Row, Statistic, Tooltip, Typography, Spin } from 'an
 import { CheckCircleOutlined, ExclamationCircleOutlined, TableOutlined } from '@ant-design/icons';
 import { getDataDistributions } from '../api';
 import { inferCityCoord } from './ServerLocationMap';
+import CostGroupCharts from './CostGroupCharts';
 
 const { Text, Title } = Typography;
 
@@ -338,6 +339,8 @@ function CityMap({ cityCounts }: CityMapProps) {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
+type DataRow = { values?: Record<string, unknown> } | Record<string, unknown>;
+
 interface SystemComponentSummaryProps {
   dataType: string;
   batchCount: number;
@@ -359,6 +362,8 @@ type LocationSummary = {
 export default function SystemComponentSummary({
   dataType,
   batchCount,
+  dataRows,
+  dataColumns,
   neighborhoodName,
   readOnly,
   onDeleteAllComponents,
@@ -482,6 +487,9 @@ export default function SystemComponentSummary({
               ))}
             </Row>
           )}
+
+          {/* Cost structure charts (columns ending in cost_grp_N, grouped by N) */}
+          <CostGroupCharts dataColumns={dataColumns} dataRows={dataRows} />
 
           {/* SVR_LOC map — full width */}
           {svrLocCounts.length > 0 && (

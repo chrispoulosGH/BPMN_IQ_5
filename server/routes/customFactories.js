@@ -2398,13 +2398,9 @@ router.delete('/neighborhoods/:name/components', requireAdminWrite, async (req, 
       success: true,
       neighborhoodName: name,
       deletedFactoryCount: deletedFactories.deletedCount || 0,
-      deletedDataCount: deletedData.deletedCount || 0,
       deletedBatchCount: deletedBatches.deletedCount || 0,
-      deletedDataBatchCount: deletedDataBatches.deletedCount || 0,
       deletedCanonicalCount: deletedCanonical.deletedCount || 0,
-      deletedCanonicalDataCount: deletedCanonicalData.deletedCount || 0,
       deletedIndexCount: deletedIndex.deletedCount || 0,
-      deletedDataIndexCount: deletedDataIndex.deletedCount || 0,
     });
   } catch (err) {
     console.error('[DELETE ALL COMPONENTS] error', err && err.message);

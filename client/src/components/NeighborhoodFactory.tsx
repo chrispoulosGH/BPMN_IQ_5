@@ -8,6 +8,7 @@ import { parseFactorySearch } from '../utils/factorySearch';
 import {
   createFactoryNeighborhood,
   deleteFactoryNeighborhood,
+  deleteAllNeighborhoodComponents,
   deleteCustomFactory,
   deleteCustomFactoryRow,
   getCustomFactories,
@@ -542,18 +543,8 @@ function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedF
     if (!name) return;
     try {
       setLoadingFactories(true);
-      const all = await getCustomFactories(name);
-      let deletedCount = 0;
-      for (const f of all) {
-        try {
-          await deleteCustomFactory(f._id);
-          deletedCount++;
-        } catch (err) {
-          // continue deleting others but log error
-          console.warn('Failed to delete component', f._id, err);
-        }
-      }
-      message.success(`Deleted ${deletedCount} components from ${name}`);
+      const result = await deleteAllNeighborhoodComponents(name);
+      message.success(`Deleted ${result.deletedFactoryCount} components from ${name}`);
       // Refresh lists
       await loadNeighborhoods();
       if (!fixedNeighborhoodName) setSelectedNeighborhood(DEFAULT_NEIGHBORHOOD_NAME);
@@ -758,7 +749,7 @@ function NeighborhoodFactory({ canManageFactories, fixedNeighborhoodName, fixedF
                 size="small"
                 icon={<FolderAddOutlined />}
                 onClick={openNeighborhoodModal}
-                className="btn-create-model"
+                className="btn-create-model btn-import-framework"
               >
                 Import Framework
               </Button>

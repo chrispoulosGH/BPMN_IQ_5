@@ -197,6 +197,16 @@ export const createFactoryNeighborhood = (params: { name: string; file: File }):
 export const deleteFactoryNeighborhood = (name: string): Promise<{ success: boolean; name: string; deletedFactoryCount: number }> =>
   api.delete(`/custom-factories/neighborhoods/${encodeURIComponent(name)}`).then((r) => r.data);
 
+export const deleteAllNeighborhoodComponents = (name: string): Promise<{
+  success: boolean;
+  neighborhoodName: string;
+  deletedFactoryCount: number;
+  deletedBatchCount: number;
+  deletedCanonicalCount: number;
+  deletedIndexCount: number;
+}> =>
+  api.delete(`/custom-factories/neighborhoods/${encodeURIComponent(name)}/components`).then((r) => r.data);
+
 export const getModelCatalog = (
   name: string,
   page = 1,
