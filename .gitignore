@@ -14,3 +14,4 @@ data/ITAP_SRV_BRD_appication_homegrown_production.csv
 
 # Error reports (except directory marker)
 data/error-reports/*.xlsx
+server/data/*.csv
